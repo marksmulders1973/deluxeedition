@@ -115,6 +115,12 @@
                    font-size:13px;font-weight:900;cursor:pointer}
     #knop-whatsapp:active{transform:scale(.94)}
 
+    /* Versie-badge */
+    #versie-badge{position:fixed;top:8px;right:10px;z-index:99;
+                  font-size:11px;font-weight:700;letter-spacing:.5px;
+                  color:rgba(255,255,255,0.25);pointer-events:none;
+                  font-family:monospace}
+
     /* Fase-badge in HUD */
     #hud-fase{font-size:11px;font-weight:900;letter-spacing:1.5px;padding:3px 8px;
               border-radius:99px;opacity:.85}
@@ -223,9 +229,17 @@
   </div>
 </div>
 
+<div id="versie-badge">v1.4</div>
+
 <script>
 // ══════════════════════════════════════════════════════════
 // DELUXE BATTLE — ruimte-shooter voor iedereen in de klas
+// Versie-log:
+//   v1.0 — Supabase backend (geen Vercel Blob meer)
+//   v1.1 — Schip-kleur = HP, bot-kogels stoppen bij treffer
+//   v1.2 — Explosie-effect bij kogeltreffer
+//   v1.3 — Grote explosie bij dood
+//   v1.4 — Versienummer zichtbaar in spel
 // ══════════════════════════════════════════════════════════
 
 const $ = id => document.getElementById(id);
