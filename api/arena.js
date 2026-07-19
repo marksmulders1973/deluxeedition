@@ -221,8 +221,9 @@ export default async function handler(req, res) {
           return res.status(200).json({ ok: true });
         }
 
-        // ── Schade aan een speler (alleen in battle-fase) ──
-        if (kamer.fase !== "battle") return res.status(200).json({ ok: true });
+        // ── Schade aan een speler (battle-fase, of bot raakt speler in coop) ──
+        const vanBot = b.vanBot === true;
+        if (kamer.fase !== "battle" && !vanBot) return res.status(200).json({ ok: true });
         const sp = kamer.spelers.find(s => s.naam === schoonNaam(doelwit));
         if (!sp || !sp.alive) return res.status(200).json({ ok: true });
         if (sp.spawnTijd && Date.now() < sp.spawnTijd) return res.status(200).json({ ok: true, beschermd: true });

@@ -229,7 +229,7 @@
   </div>
 </div>
 
-<div id="versie-badge">v1.5</div>
+<div id="versie-badge">v1.6</div>
 
 <script>
 // ══════════════════════════════════════════════════════════
@@ -241,6 +241,7 @@
 //   v1.3 — Grote explosie bij dood
 //   v1.4 — Versienummer zichtbaar in spel
 //   v1.5 — Bugfix: host gebruikt live bullet-posities + rode scherm-flits bij treffer
+//   v1.6 — Bugfix: bot kan speler doden in coop-fase (vanBot:true)
 // ══════════════════════════════════════════════════════════
 
 const $ = id => document.getElementById(id);
@@ -850,7 +851,7 @@ function checkBotBullets() {
     if (dx * dx + dy * dy < 18 * 18) {
       maakExplosie(b.x, b.y, '#ff6600');
       geraakt_ids.add(b.t);
-      api({ actie: 'schade', code: mijnCode, doelwit: mijnNaam });
+      api({ actie: 'schade', code: mijnCode, doelwit: mijnNaam, vanBot: true });
       // Host verwijdert de kogel direct zodat hij stopt
       if (isHost) {
         const idx = botLokaal.bullets.findIndex(bl => bl.t === b.t);
