@@ -257,6 +257,7 @@ const MAX_V = 300;
 
 // Bullets (lokaal bijgehouden)
 const bullets = [];
+const explosies = [];
 const BULLET_SNELHEID = 500;
 const BULLET_LEVENSDUUR = 1500; // ms
 const SHOOT_COOLDOWN = 350; // ms
@@ -541,6 +542,7 @@ function gameFrame(nu) {
   if (kamerData?.state === 'game' || kamerData?.state === 'aftellen') {
     updateSpeler(dt);
     updateBullets(dt);
+    updateExplosies(dt);
   }
   // Schade + bot AI alleen als spel echt bezig is
   if (kamerData?.state === 'game') {
@@ -631,6 +633,7 @@ function checkTreffers() {
       const b = bullets[i];
       const dx = b.x - bot.x, dy = b.y - bot.y;
       if (dx * dx + dy * dy < 28 * 28) {
+        maakExplosie(b.x, b.y, '#ff4400');
         bullets.splice(i, 1);
         api({ actie: 'schade', code: mijnCode, naam: mijnNaam, doelwit: '__bot__' });
         break;
@@ -648,11 +651,56 @@ function checkTreffers() {
       const b = bullets[i];
       const dx = b.x - sp.x, dy = b.y - sp.y;
       if (dx * dx + dy * dy < 18 * 18) {
+        maakExplosie(b.x, b.y, sp.kleur || '#ffffff');
         bullets.splice(i, 1);
         api({ actie: 'schade', code: mijnCode, naam: mijnNaam, doelwit: sp.naam });
         break;
       }
     }
+  }
+}
+
+// ── EXPLOSIES ─────────────────────────────────────────────
+function maakExplosie(x, y, kleur) {
+  for (let i = 0; i < 10; i++) {
+    const hoek = (i / 10) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
+    const snelheid = 60 + Math.random() * 130;
+    explosies.push({
+      x, y,
+      dx: Math.cos(hoek) * snelheid,
+      dy: Math.sin(hoek) * snelheid,
+      t: performance.now(),
+      kleur,
+      r: 2.5 + Math.random() * 3,
+    });
+  }
+}
+
+function updateExplosies(dt) {
+  const nu = performance.now();
+  for (let i = explosies.length - 1; i >= 0; i--) {
+    const e = explosies[i];
+    if (nu - e.t > 500) { explosies.splice(i, 1); continue; }
+    e.x += e.dx * dt;
+    e.y += e.dy * dt;
+    e.dx *= Math.pow(0.86, dt * 60);
+    e.dy *= Math.pow(0.86, dt * 60);
+  }
+}
+
+function tekenExplosies() {
+  const nu = performance.now();
+  for (const e of explosies) {
+    const alpha = Math.max(0, 1 - (nu - e.t) / 500);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = e.kleur;
+    ctx.shadowColor = e.kleur;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.r * (0.5 + 0.5 * alpha), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 }
 
@@ -747,6 +795,7 @@ function checkBotBullets() {
     if (geraakt_ids.has(b.t)) continue;
     const dx = b.x - mijn.x, dy = b.y - mijn.y;
     if (dx * dx + dy * dy < 18 * 18) {
+      maakExplosie(b.x, b.y, '#ff6600');
       geraakt_ids.add(b.t);
       api({ actie: 'schade', code: mijnCode, doelwit: mijnNaam });
       // Host verwijdert de kogel direct zodat hij stopt
@@ -821,6 +870,9 @@ function teken() {
     ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
     ctx.fill();
   });
+
+  // Explosies
+  tekenExplosies();
 
   ctx.restore();
   ctx.restore();
