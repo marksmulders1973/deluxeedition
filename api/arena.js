@@ -2,8 +2,13 @@
 // DELUXE BATTLE 🚀 — twee fases
 //   Fase 1: iedereen samen vs de bot (co-op)
 //   Fase 2: de bot is dood → ieder voor zich (battle)
+//
+//   Game-state opgeslagen in Supabase (tabel: game_rooms)
+//   Geen npm-pakket nodig — Supabase REST API via fetch
 // ══════════════════════════════════════════════════════
-import { put, list } from "@vercel/blob";
+
+const SUPA_URL = process.env.SUPABASE_URL;
+const SUPA_KEY = process.env.SUPABASE_ANON_KEY;
 
 const LETTERS = "BCDFGHJKLMNPRSTVWXZ";
 const KLEUREN = ["#ff3b3b","#3b82ff","#22c55e","#f59e0b","#a855f7","#ec4899","#06b6d4","#f97316","#84cc16","#6366f1"];
@@ -14,19 +19,45 @@ function maakCode() {
 function schoonNaam(n) { return String(n || "").trim().replace(/[^a-zA-Z0-9_\- ]/g, "").slice(0, 20); }
 function schoonCode(c) { return String(c || "").toUpperCase().replace(/[^BCDFGHJKLMNPRSTVWXZ]/g, "").slice(0, 4); }
 
+// ── Supabase helpers ──────────────────────────────────
+
 async function leesKamer(code) {
   try {
-    const { blobs } = await list({ prefix: `arena/${code}.json`, limit: 1 });
-    if (!blobs.length) return null;
-    return await (await fetch(blobs[0].url + "?t=" + Date.now(), { cache: "no-store" })).json();
+    const r = await fetch(
+      `${SUPA_URL}/rest/v1/game_rooms?code=eq.${encodeURIComponent(code)}&select=data`,
+      { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }, cache: "no-store" }
+    );
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return rows.length ? rows[0].data : null;
   } catch { return null; }
 }
 
 async function schrijfKamer(k) {
-  await put(`arena/${k.code}.json`, JSON.stringify(k), {
-    access: "public", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json",
+  // Schoon af en toe oude kamers op (5% kans per write)
+  if (Math.random() < 0.05) opruimenOudeKamers();
+
+  await fetch(`${SUPA_URL}/rest/v1/game_rooms`, {
+    method: "POST",
+    headers: {
+      apikey: SUPA_KEY,
+      Authorization: `Bearer ${SUPA_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates",
+    },
+    body: JSON.stringify({ code: k.code, data: k, updated_at: new Date().toISOString() }),
   });
 }
+
+function opruimenOudeKamers() {
+  const tweeLuurGeleden = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  fetch(`${SUPA_URL}/rest/v1/game_rooms?updated_at=lt.${tweeLuurGeleden}`, {
+    method: "DELETE",
+    headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
+  }).catch(() => {});
+}
+
+// ── Overige helpers ───────────────────────────────────
 
 function spawnPositie(idx, totaal) {
   const hoek = (idx / Math.max(totaal, 1)) * Math.PI * 2;
@@ -73,9 +104,9 @@ export default async function handler(req, res) {
         const pos = spawnPositie(0, 1);
         const kamer = {
           code, host: naam, state: "lobby",
-          fase: "coop",           // fase 1: samen vs bot
-          botKiller: null,        // wie versloeg de bot
-          kills: {},              // kills per speler in de battle fase
+          fase: "coop",
+          botKiller: null,
+          kills: {},
           startTijd: 0, winnaar: null,
           bot: null,
           spelers: [{ naam, kleur: KLEUREN[0], ...pos, vx: 0, vy: 0, hp: 3, alive: true, lastUpdate: Date.now(), spawnTijd: 0 }],
@@ -98,7 +129,7 @@ export default async function handler(req, res) {
         const pos = kamer.state === "lobby"
           ? spawnPositie(idx, idx + 1)
           : { x: 80 + Math.random() * 640, y: 80 + Math.random() * 440, hoek: Math.random() * Math.PI * 2 };
-        const spawnTijd = kamer.state !== "lobby" ? Date.now() + 4000 : 0;
+        const spawnTijd = kamer.state !== "lobby" ? Date.now() + 3000 : 0;
         kamer.spelers.push({ naam, kleur: KLEUREN[idx % KLEUREN.length], ...pos, vx: 0, vy: 0, hp: 3, alive: true, lastUpdate: Date.now(), spawnTijd });
         kamer.updated = Date.now();
         await schrijfKamer(kamer);
@@ -123,7 +154,6 @@ export default async function handler(req, res) {
         kamer.fase = "coop";
         kamer.botKiller = null;
         kamer.kills = {};
-        // Altijd bot toevoegen — het spel begint altijd in coop-fase
         kamer.bot = maakBot(totaal);
         kamer.updated = nu;
         await schrijfKamer(kamer);
@@ -152,14 +182,14 @@ export default async function handler(req, res) {
       if (actie === "schade") {
         const code = schoonCode(b.code);
         const doelwit = String(b.doelwit || "");
-        const schutter = schoonNaam(b.naam); // wie schiet
+        const schutter = schoonNaam(b.naam);
         const kamer = await leesKamer(code);
         if (!kamer || kamer.state !== "game") return res.status(400).json({ fout: "spel niet actief" });
 
         // ── Schade aan de bot (alleen in coop-fase) ──
         if (doelwit === "__bot__") {
           if (!kamer.bot || !kamer.bot.alive || kamer.fase !== "coop") return res.status(200).json({ ok: true });
-          // Rate-limit: max 1 HP-verlies per 80ms (voorkomt race-condition met meerdere spelers)
+          // Rate-limit: max 1 HP-verlies per 80ms (voorkomt race-condition)
           const nu = Date.now();
           if (kamer.bot.lastHitTime && nu - kamer.bot.lastHitTime < 80) {
             return res.status(200).json({ ok: true });
@@ -168,20 +198,18 @@ export default async function handler(req, res) {
           kamer.bot.hp = Math.max(0, kamer.bot.hp - 1);
 
           if (kamer.bot.hp <= 0) {
-            // BOT IS DOOD → overgang naar battle-fase!
             kamer.bot.alive = false;
-            kamer.bot.bullets = []; // opruimen
+            kamer.bot.bullets = [];
             kamer.botKiller = schutter || "onbekend";
             kamer.fase = "battle";
-            // Iedereen die nog leeft krijgt volle HP terug
-            const nu = Date.now();
+            const nu2 = Date.now();
             for (const sp of kamer.spelers) {
               if (sp.alive) {
                 sp.hp = 3;
-                sp.spawnTijd = nu + 3000; // 3 sec bescherming tijdens overgang
+                sp.spawnTijd = nu2 + 3000;
               }
             }
-            // Solo-speler? Direct winnaar bepalen (niemand om tegen te vechten)
+            // Solo-speler wint direct
             const overNaBotDood = kamer.spelers.filter(s => s.alive);
             if (overNaBotDood.length <= 1) {
               kamer.state = "klaar";
@@ -201,7 +229,6 @@ export default async function handler(req, res) {
         sp.hp = Math.max(0, sp.hp - 1);
         if (sp.hp <= 0) {
           sp.alive = false;
-          // Kill bijhouden
           if (schutter) {
             kamer.kills[schutter] = (kamer.kills[schutter] || 0) + 1;
           }

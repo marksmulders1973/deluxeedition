@@ -1,7 +1,5 @@
 {
   "name": "deluxeedition",
   "private": true,
-  "dependencies": {
-    "@vercel/blob": "^0.27.0"
-  }
+  "dependencies": {}
 }
