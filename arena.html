@@ -258,6 +258,7 @@ const MAX_V = 300;
 // Bullets (lokaal bijgehouden)
 const bullets = [];
 const explosies = [];
+const vorigeSpelerStatus = new Map(); // bijhouden wie leefde → detecteer dood
 const BULLET_SNELHEID = 500;
 const BULLET_LEVENSDUUR = 1500; // ms
 const SHOOT_COOLDOWN = 350; // ms
@@ -501,6 +502,7 @@ function toonAftellen(startTijd) {
 async function snelPollen() {
   const data = await apiGet(mijnCode);
   if (!data || data.fout) return;
+  controleerDoden(kamerData, data);
   kamerData = data;
 
   if (data.state === 'klaar') {
@@ -680,7 +682,7 @@ function updateExplosies(dt) {
   const nu = performance.now();
   for (let i = explosies.length - 1; i >= 0; i--) {
     const e = explosies[i];
-    if (nu - e.t > 500) { explosies.splice(i, 1); continue; }
+    if (nu - e.t > (e.levensduur || 500)) { explosies.splice(i, 1); continue; }
     e.x += e.dx * dt;
     e.y += e.dy * dt;
     e.dx *= Math.pow(0.86, dt * 60);
@@ -691,7 +693,8 @@ function updateExplosies(dt) {
 function tekenExplosies() {
   const nu = performance.now();
   for (const e of explosies) {
-    const alpha = Math.max(0, 1 - (nu - e.t) / 500);
+    const ld = e.levensduur || 500;
+    const alpha = Math.max(0, 1 - (nu - e.t) / ld);
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.fillStyle = e.kleur;
@@ -701,6 +704,39 @@ function tekenExplosies() {
     ctx.arc(e.x, e.y, e.r * (0.5 + 0.5 * alpha), 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+  }
+}
+
+function maakDoodExplosie(x, y, kleur) {
+  // Grote ring van gekleurde deeltjes
+  for (let i = 0; i < 22; i++) {
+    const hoek = (i / 22) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+    const snelheid = 120 + Math.random() * 220;
+    explosies.push({ x, y,
+      dx: Math.cos(hoek) * snelheid, dy: Math.sin(hoek) * snelheid,
+      t: performance.now(), kleur, r: 5 + Math.random() * 5, levensduur: 900 });
+  }
+  // Witte flits-deeltjes in het midden
+  for (let i = 0; i < 10; i++) {
+    const hoek = Math.random() * Math.PI * 2;
+    explosies.push({ x, y,
+      dx: Math.cos(hoek) * (40 + Math.random() * 80),
+      dy: Math.sin(hoek) * (40 + Math.random() * 80),
+      t: performance.now(), kleur: '#ffffff', r: 3 + Math.random() * 3, levensduur: 400 });
+  }
+}
+
+function controleerDoden(oudeData, nieuweData) {
+  if (!oudeData || !nieuweData) return;
+  for (const sp of nieuweData.spelers) {
+    const wasLevend = vorigeSpelerStatus.get(sp.naam);
+    if (wasLevend === true && !sp.alive) {
+      // Gebruik lokale positie voor eigen schip (nauwkeuriger)
+      const ex = sp.naam === mijnNaam ? mijn.x : sp.x;
+      const ey = sp.naam === mijnNaam ? mijn.y : sp.y;
+      maakDoodExplosie(ex, ey, sp.kleur || '#ffffff');
+    }
+    vorigeSpelerStatus.set(sp.naam, !!sp.alive);
   }
 }
 
