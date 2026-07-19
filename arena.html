@@ -786,11 +786,10 @@ function teken() {
   tekenSchip(mijn.x, mijn.y, mijn.hoek, mijnKleur, mijn.hp > 0, mijnNaam, mijn.hp, true, 0);
 
   // Bot (alleen in fase 1: coop)
-  if (kamerData?.fase === 'coop') {
-    const botSrc = isHost ? botLokaal : kamerData?.bot;
-    if (botSrc?.alive) {
-      tekenBot(botSrc.x, botSrc.y, botSrc.hoek, botSrc, kamerData.bot);
-    }
+  if (kamerData?.fase === 'coop' && kamerData?.bot?.alive) {
+    // Host gebruikt lokale positie (vloeiender), anderen de server-positie
+    const botSrc = isHost ? botLokaal : kamerData.bot;
+    tekenBot(botSrc.x, botSrc.y, botSrc.hoek, botSrc, kamerData.bot);
     const botBullets = isHost ? botLokaal.bullets : (kamerData?.bot?.bullets || []);
     ctx.fillStyle = '#ff4400';
     botBullets.forEach(b => {
