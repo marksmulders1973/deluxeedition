@@ -480,14 +480,16 @@ function startGameLoop() {
 
 function toonAftellen(startTijd) {
   $('aftellen').style.display = 'flex';
-  startGameLoop(); // render alvast de arena
+  $('aftellen-getal').textContent = '3';
+  startGameLoop(); // render alvast de arena — speler kan al bewegen
 
   attelInterval = setInterval(() => {
     const over = Math.ceil((startTijd - Date.now()) / 1000);
     if (over <= 0) {
-      $('aftellen').style.display = 'none';
+      $('aftellen-getal').textContent = 'GA! 🚀';
+      setTimeout(() => { $('aftellen').style.display = 'none'; }, 600);
       clearInterval(attelInterval);
-      // Host triggert gamestart
+      attelInterval = null;
       if (isHost) api({ actie: 'gamestart', naam: mijnNaam, code: mijnCode });
     } else {
       $('aftellen-getal').textContent = over;
@@ -506,9 +508,13 @@ async function snelPollen() {
     toonWinnaar(data);
   }
 
+  if (data.state === 'aftellen' && !attelInterval) {
+    // Aftellen gemist (Blob was nog stale bij beginSpel) — start alsnog
+    toonAftellen(data.startTijd);
+  }
   if (data.state === 'game' && $('aftellen').style.display !== 'none') {
     $('aftellen').style.display = 'none';
-    clearInterval(attelInterval);
+    if (attelInterval) { clearInterval(attelInterval); attelInterval = null; }
   }
 
   // Fase-overgang detecteren: coop → battle (guard voorkomt dubbele trigger)
@@ -531,9 +537,13 @@ function gameFrame(nu) {
   const dt = Math.min((nu - vorigeTijd) / 1000, 0.05); // max 50ms stap
   vorigeTijd = nu;
 
-  if (kamerData?.state === 'game') {
+  // Bewegen + bullets ook al tijdens aftellen (zodat speler meteen kan richten)
+  if (kamerData?.state === 'game' || kamerData?.state === 'aftellen') {
     updateSpeler(dt);
     updateBullets(dt);
+  }
+  // Schade + bot AI alleen als spel echt bezig is
+  if (kamerData?.state === 'game') {
     checkTreffers();
     if (kamerData.fase === 'coop') {
       if (isHost) updateBot(dt);

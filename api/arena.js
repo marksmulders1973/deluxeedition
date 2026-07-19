@@ -115,10 +115,10 @@ export default async function handler(req, res) {
         const nu = Date.now();
         kamer.spelers = kamer.spelers.map((sp, i) => {
           const pos = spawnPositie(i, totaal);
-          return { ...sp, ...pos, vx: 0, vy: 0, hp: 3, alive: true, spawnTijd: nu + 4000 };
+          return { ...sp, ...pos, vx: 0, vy: 0, hp: 3, alive: true, spawnTijd: nu + 3000 };
         });
         kamer.state = "aftellen";
-        kamer.startTijd = nu + 4000;
+        kamer.startTijd = nu + 3000;
         kamer.winnaar = null;
         kamer.fase = "coop";
         kamer.botKiller = null;
@@ -253,10 +253,10 @@ export default async function handler(req, res) {
         const nu = Date.now();
         kamer.spelers = kamer.spelers.map((sp, i) => {
           const pos = spawnPositie(i, totaal);
-          return { ...sp, ...pos, vx: 0, vy: 0, hp: 3, alive: true, spawnTijd: nu + 4000 };
+          return { ...sp, ...pos, vx: 0, vy: 0, hp: 3, alive: true, spawnTijd: nu + 3000 };
         });
         kamer.state = "aftellen";
-        kamer.startTijd = nu + 4000;
+        kamer.startTijd = nu + 3000;
         kamer.winnaar = null;
         kamer.fase = "coop";
         kamer.botKiller = null;
