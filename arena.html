@@ -229,7 +229,7 @@
   </div>
 </div>
 
-<div id="versie-badge">v1.4</div>
+<div id="versie-badge">v1.5</div>
 
 <script>
 // ══════════════════════════════════════════════════════════
@@ -240,6 +240,7 @@
 //   v1.2 — Explosie-effect bij kogeltreffer
 //   v1.3 — Grote explosie bij dood
 //   v1.4 — Versienummer zichtbaar in spel
+//   v1.5 — Bugfix: host gebruikt live bullet-posities + rode scherm-flits bij treffer
 // ══════════════════════════════════════════════════════════
 
 const $ = id => document.getElementById(id);
@@ -273,6 +274,7 @@ const MAX_V = 300;
 const bullets = [];
 const explosies = [];
 const vorigeSpelerStatus = new Map(); // bijhouden wie leefde → detecteer dood
+let raakTijd = 0; // timestamp van laatste treffer → rode scherm-flits
 const BULLET_SNELHEID = 500;
 const BULLET_LEVENSDUUR = 1500; // ms
 const SHOOT_COOLDOWN = 350; // ms
@@ -839,7 +841,8 @@ function updateBot(dt) {
 const geraakt_ids = new Set();
 function checkBotBullets() {
   if (mijn.hp <= 0 || Date.now() < spawnBescherming) return;
-  const botBullets = kamerData?.bot?.bullets;
+  // Host gebruikt live lokale posities (server-data is tot 420ms oud → kogels vlogen al door)
+  const botBullets = isHost ? botLokaal.bullets : kamerData?.bot?.bullets;
   if (!botBullets) return;
   for (const b of botBullets) {
     if (geraakt_ids.has(b.t)) continue;
@@ -924,7 +927,15 @@ function teken() {
   // Explosies
   tekenExplosies();
 
-  ctx.restore();
+  ctx.restore(); // schaal opheffen
+
+  // Rode scherm-flits als geraakt (trekt weg in 400ms)
+  const flitsAlpha = Math.max(0, 1 - (performance.now() - raakTijd) / 400);
+  if (flitsAlpha > 0) {
+    ctx.fillStyle = `rgba(255, 30, 30, ${(flitsAlpha * 0.5).toFixed(3)})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
   ctx.restore();
 }
 
@@ -1071,7 +1082,10 @@ function tekenSchip(x, y, hoek, kleur, alive, naam, hp, ikBen, spawnTijd) {
 function updateHUD() {
   if (!kamerData) return;
   const ikData = kamerData.spelers.find(s => s.naam === mijnNaam);
-  if (ikData) mijn.hp = ikData.hp;
+  if (ikData) {
+    if (ikData.hp < mijn.hp) raakTijd = performance.now(); // treffer → flits
+    mijn.hp = ikData.hp;
+  }
 
   $('hud-hp').innerHTML = '❤️'.repeat(Math.max(0, mijn.hp)) + '🖤'.repeat(Math.max(0, 3 - mijn.hp));
   $('hud-naam').textContent = mijnNaam;
