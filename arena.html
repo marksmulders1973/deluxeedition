@@ -83,12 +83,41 @@
                     animation:puls .9s ease-in-out infinite}
     @keyframes puls{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
 
+    /* Fase-overgang overlay */
+    #fase-overlay{position:fixed;inset:0;z-index:25;display:none;
+                  flex-direction:column;align-items:center;justify-content:center;gap:12px;
+                  background:rgba(5,7,15,.88);pointer-events:none;text-align:center}
+    #fase-titel{font-size:clamp(26px,6vw,52px);font-weight:900;
+                background:linear-gradient(90deg,#ff3b3b,#f97316);
+                -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+                animation:puls .6s ease-in-out infinite}
+    #fase-sub{color:rgba(255,255,255,.7);font-size:15px}
+
     /* Winnaar overlay */
     #winnaar{position:fixed;inset:0;z-index:30;display:none;
-             flex-direction:column;align-items:center;justify-content:center;gap:16px;
-             background:rgba(5,7,15,.93);text-align:center;padding:20px}
-    #winnaar-naam{font-size:clamp(32px,8vw,60px);font-weight:900}
+             flex-direction:column;align-items:center;justify-content:center;gap:12px;
+             background:rgba(5,7,15,.95);text-align:center;padding:20px;overflow-y:auto}
+    #winnaar-naam{font-size:clamp(28px,7vw,54px);font-weight:900}
+    #scorebord{width:min(360px,92vw);background:rgba(255,255,255,.05);border-radius:16px;
+               padding:14px 16px;display:flex;flex-direction:column;gap:8px;margin-top:4px}
+    .sb-entry{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700}
+    .sb-pos{width:24px;text-align:center;opacity:.5;font-size:13px}
     .confetti{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:29}
+
+    /* In-game code + WhatsApp knop */
+    #game-code-balk{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:15;
+                    display:none;align-items:center;gap:8px;
+                    background:rgba(5,7,15,.75);border:1px solid rgba(255,255,255,.12);
+                    border-radius:99px;padding:6px 10px 6px 14px;backdrop-filter:blur(6px)}
+    #game-code-tekst{font-size:13px;font-weight:700;letter-spacing:3px;opacity:.7}
+    #knop-whatsapp{border:none;border-radius:99px;padding:6px 14px;
+                   background:linear-gradient(90deg,#128c7e,#25d366);color:#fff;
+                   font-size:13px;font-weight:900;cursor:pointer}
+    #knop-whatsapp:active{transform:scale(.94)}
+
+    /* Fase-badge in HUD */
+    #hud-fase{font-size:11px;font-weight:900;letter-spacing:1.5px;padding:3px 8px;
+              border-radius:99px;opacity:.85}
 
     /* Mobiele knoppen */
     #mobiel{position:fixed;bottom:0;left:0;right:0;z-index:15;display:none;
@@ -116,11 +145,11 @@
 <!-- ══ HOME ══ -->
 <div id="s-home">
   <div class="titel">🚀 DELUXE BATTLE</div>
-  <div class="subtitel">ruimte-shooter · tot 10 spelers · schiet op elkaar!</div>
+  <div class="subtitel">Fase 1: samen de bot verslaan · Fase 2: ieder voor zich!</div>
   <input id="inp-naam" class="inp" placeholder="jouw naam" maxlength="20" autocomplete="off"/>
-  <button class="knop knop-rood" onclick="maakKamer('battle')">⚔️ BATTLE — tegen elkaar</button>
-  <button class="knop" style="background:linear-gradient(90deg,#7c3aed,#a855f7);color:#fff" onclick="maakKamer('coop')">🤖 CO-OP — samen vs de bot</button>
+  <button class="knop knop-rood" onclick="maakKamer()">🚀 MAAK SPEL</button>
   <hr class="lijn"/>
+  <div style="color:rgba(255,255,255,0.35);font-size:12px">— of join een vriend —</div>
   <input id="inp-code" class="inp inp-code" placeholder="CODE" maxlength="4" autocomplete="off"/>
   <button class="knop knop-blauw" onclick="joinKamer()">🔑 JOIN</button>
   <div id="fout-home" class="fout"></div>
@@ -149,7 +178,10 @@
   <div id="hud">
     <div id="hud-hp"></div>
     <div id="hud-naam"></div>
-    <div id="hud-teller"></div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <div id="hud-fase"></div>
+      <div id="hud-teller"></div>
+    </div>
   </div>
 
   <!-- Spelersbord links boven -->
@@ -158,13 +190,26 @@
   <!-- Aftellen overlay -->
   <div id="aftellen"><div id="aftellen-getal">3</div></div>
 
+  <!-- Fase-overgang overlay -->
+  <div id="fase-overlay">
+    <div id="fase-titel">⚔️ NU IS HET IEDER VOOR ZICH!</div>
+    <div id="fase-sub">De bot is verslagen — nu ga je tegen je vrienden!</div>
+  </div>
+
   <!-- Winnaar overlay -->
   <div id="winnaar">
-    <div style="font-size:60px" id="winnaar-emoji">🏆</div>
+    <div style="font-size:54px" id="winnaar-emoji">🏆</div>
     <div id="winnaar-naam"></div>
-    <div style="color:rgba(255,255,255,.5);font-size:15px" id="winnaar-sub"></div>
+    <div style="color:rgba(255,255,255,.5);font-size:14px" id="winnaar-sub"></div>
+    <div id="scorebord"></div>
     <button id="knop-opnieuw" class="knop knop-groen" style="display:none;margin-top:8px" onclick="opnieuw()">🔄 OPNIEUW!</button>
     <button class="knop knop-grijs" style="margin-top:4px" onclick="location.reload()">↩ terug naar home</button>
+  </div>
+
+  <!-- Code + WhatsApp knop (zweeft onderaan tijdens spel) -->
+  <div id="game-code-balk">
+    <span id="game-code-tekst">CODE: ----</span>
+    <button id="knop-whatsapp" onclick="deelViaWhatsApp()">📲 Nodig uit via WhatsApp</button>
   </div>
 
   <!-- Mobiele knoppen -->
@@ -194,6 +239,8 @@ let kamerId = null;
 let pollInterval = null;
 let kamerData = null;
 let attelInterval = null;
+let vorigeFase = null; // bijhouden om fase-overgang te detecteren
+let faseOvergangGetoond = false; // guard: voorkomt dubbele fase-overlay
 
 // Game-objecten
 const canvas = $('canvas');
@@ -234,16 +281,22 @@ function toon(id) {
 
 // ── API-hulpjes ───────────────────────────────────────────
 async function api(body) {
-  const r = await fetch('/api/arena', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  return r.json();
+  try {
+    const r = await fetch('/api/arena', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) return { fout: 'server ' + r.status };
+    return r.json();
+  } catch { return { fout: 'netwerk' }; }
 }
 async function apiGet(code) {
-  const r = await fetch('/api/arena?code=' + code + '&t=' + Date.now(), { cache: 'no-store' });
-  return r.json();
+  try {
+    const r = await fetch('/api/arena?code=' + code + '&t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return { fout: 'server ' + r.status };
+    return r.json();
+  } catch { return { fout: 'netwerk' }; }
 }
 
 // ── HOME: naam invullen ───────────────────────────────────
@@ -258,20 +311,38 @@ $('inp-code').addEventListener('input', () => {
 $('inp-code').addEventListener('keydown', e => { if (e.key === 'Enter') joinKamer(); });
 $('inp-naam').addEventListener('keydown', e => { if (e.key === 'Enter') $('inp-code').value ? joinKamer() : maakKamer(); });
 
-async function maakKamer(modus) {
+// URL param: arena.html?join=CODE → vul code automatisch in
+(function() {
+  const param = new URLSearchParams(location.search).get('join');
+  if (param) $('inp-code').value = param.toUpperCase().slice(0, 4);
+})();
+
+// ── SPEL AANMAKEN — direct starten, geen lobby ───────────
+async function maakKamer() {
   const naam = $('inp-naam').value.trim();
   if (!naam) { $('fout-home').textContent = 'Vul eerst je naam in!'; return; }
-  $('fout-home').textContent = 'Kamer aanmaken...';
-  const res = await api({ actie: 'maak', naam, modus });
+  $('fout-home').textContent = 'Spel aanmaken...';
+  const res = await api({ actie: 'maak', naam });
   if (res.fout) { $('fout-home').textContent = res.fout; return; }
   mijnNaam = naam;
   mijnCode = res.code;
   isHost = true;
-  toon('s-lobby');
-  $('toon-code').textContent = mijnCode;
-  $('knop-start').style.display = '';
-  $('wacht-msg').style.display = 'none';
-  startPolling();
+  faseOvergangGetoond = false;
+  localStorage.setItem('deluxe-speler', naam);
+  $('fout-home').textContent = 'Starten...';
+  await api({ actie: 'start', naam, code: mijnCode });
+  const data = await apiGet(mijnCode);
+  if (data && !data.fout) {
+    vorigeFase = data.fase || 'coop';
+    beginSpel(data);
+  }
+}
+
+// ── WhatsApp uitnodiging ──────────────────────────────────
+function deelViaWhatsApp() {
+  const link = `https://deluxeedition.nl/arena.html?join=${mijnCode}`;
+  const tekst = `🚀 Kom DELUXE BATTLE spelen! Klik de link en je zit meteen in het spel:\n${link}\n(code: ${mijnCode})`;
+  window.open('https://wa.me/?text=' + encodeURIComponent(tekst), '_blank');
 }
 
 async function joinKamer() {
@@ -289,6 +360,7 @@ async function joinKamer() {
   // Kamer al actief? Direct het spel in
   const check = await apiGet(code);
   if (check && !check.fout && (check.state === 'game' || check.state === 'aftellen')) {
+    vorigeFase = check.fase || 'coop';
     beginSpel(check);
     return;
   }
@@ -335,21 +407,22 @@ async function pollen() {
 
   } else if (data.state === 'aftellen' || data.state === 'game' || data.state === 'klaar') {
     clearInterval(pollInterval);
+    vorigeFase = data.fase || 'coop';
     beginSpel(data);
   }
 }
 
 async function startSpel() {
-  if (kamerData && kamerData.spelers.length < 2) {
-    $('fout-lobby').textContent = 'Je hebt minstens 2 spelers nodig!';
-    return;
-  }
   const res = await api({ actie: 'start', naam: mijnNaam, code: mijnCode });
   if (res.fout) $('fout-lobby').textContent = res.fout;
 }
 
 // ── GAME BEGINNEN ─────────────────────────────────────────
 function beginSpel(data) {
+  // Stop eventuele bestaande loops eerst (voorkomt dubbele poll + dubbele fase-trigger)
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+  if (attelInterval) { clearInterval(attelInterval); attelInterval = null; }
+
   kamerData = data;
   toon('s-game');
 
@@ -360,13 +433,15 @@ function beginSpel(data) {
   pasCanvasAan();
   window.addEventListener('resize', pasCanvasAan);
 
-  // Mijn positie van server
+  // Mijn positie van server + isHost syncen (ook na refresh)
+  isHost = (data.host === mijnNaam);
   const ikServer = data.spelers.find(s => s.naam === mijnNaam);
   if (ikServer) {
     mijn.x = ikServer.x; mijn.y = ikServer.y;
     mijn.hoek = ikServer.hoek; mijn.hp = ikServer.hp;
   }
-  spawnBescherming = data.startTijd + 1000; // 1 sec extra na starttijd
+  // Spawnbescherming uit server-data (niet startTijd die al verlopen kan zijn)
+  spawnBescherming = ikServer?.spawnTijd || (Date.now() + 4000);
 
   // Input
   document.addEventListener('keydown', e => { toetsen[e.code] = true; e.preventDefault(); });
@@ -377,6 +452,10 @@ function beginSpel(data) {
 
   gameActief = true;
   vorigeTijd = performance.now();
+
+  // Code-balk + WhatsApp-knop tonen
+  $('game-code-tekst').textContent = 'CODE: ' + mijnCode;
+  $('game-code-balk').style.display = 'flex';
 
   // Aftellen starten
   if (data.state === 'aftellen') {
@@ -431,6 +510,19 @@ async function snelPollen() {
     $('aftellen').style.display = 'none';
     clearInterval(attelInterval);
   }
+
+  // Fase-overgang detecteren: coop → battle (guard voorkomt dubbele trigger)
+  if (data.fase === 'battle' && vorigeFase !== 'battle' && !faseOvergangGetoond) {
+    faseOvergangGetoond = true;
+    vorigeFase = 'battle';
+    spawnBescherming = Date.now() + 3000; // synchroon met server 3000ms
+    toonFaseOvergang(data.botKiller);
+  } else if (data.fase) {
+    vorigeFase = data.fase;
+  }
+
+  // isHost syncen (als host refresht en terugjoinet)
+  if (data.host) isHost = (data.host === mijnNaam);
 }
 
 // ── GAME LOOP ─────────────────────────────────────────────
@@ -443,8 +535,10 @@ function gameFrame(nu) {
     updateSpeler(dt);
     updateBullets(dt);
     checkTreffers();
-    if (isHost && kamerData.modus === 'coop') updateBot(dt);
-    if (kamerData.modus === 'coop') checkBotBullets();
+    if (kamerData.fase === 'coop') {
+      if (isHost) updateBot(dt);
+      checkBotBullets();
+    }
   }
   teken();
   updateHUD();
@@ -484,9 +578,10 @@ function updateSpeler(dt) {
   mijn.x = (mijn.x + mijn.vx * dt + W) % W;
   mijn.y = (mijn.y + mijn.vy * dt + H) % H;
 
-  // Elke 200ms naar server sturen (throttle met timestamp)
-  if (!mijn._laatsGestuurd || nu - mijn._laatsGestuurd > 200) {
-    mijn._laatsGestuurd = performance.now();
+  // Elke 200ms naar server sturen (throttle — nu is gameFrame-parameter, gebruik stampNu)
+  const stampNu = performance.now();
+  if (!mijn._laatsGestuurd || stampNu - mijn._laatsGestuurd > 200) {
+    mijn._laatsGestuurd = stampNu;
     api({ actie: 'beweeg', code: mijnCode, naam: mijnNaam,
           x: mijn.x, y: mijn.y, hoek: mijn.hoek, vx: mijn.vx, vy: mijn.vy });
   }
@@ -518,24 +613,24 @@ function updateBullets(dt) {
 
 function checkTreffers() {
   if (!kamerData) return;
-  const coop = kamerData.modus === 'coop';
 
-  // Co-op: mijn bullets raken de bot
-  if (coop && kamerData.bot?.alive) {
+  // Fase 1 (coop): mijn bullets raken de bot
+  if (kamerData.fase === 'coop' && kamerData.bot?.alive) {
     const bot = kamerData.bot;
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
       const dx = b.x - bot.x, dy = b.y - bot.y;
       if (dx * dx + dy * dy < 28 * 28) {
         bullets.splice(i, 1);
-        api({ actie: 'schade', code: mijnCode, doelwit: '__bot__' });
+        api({ actie: 'schade', code: mijnCode, naam: mijnNaam, doelwit: '__bot__' });
         break;
       }
     }
-    return; // in co-op geen friendly fire
+    return; // geen friendly fire in coop
   }
 
-  // Battle: mijn bullets raken andere spelers
+  // Fase 2 (battle): mijn bullets raken andere spelers
+  if (kamerData.fase !== 'battle') return;
   for (const sp of kamerData.spelers) {
     if (sp.naam === mijnNaam || !sp.alive) continue;
     if (sp.spawnTijd && Date.now() < sp.spawnTijd) continue;
@@ -544,7 +639,7 @@ function checkTreffers() {
       const dx = b.x - sp.x, dy = b.y - sp.y;
       if (dx * dx + dy * dy < 18 * 18) {
         bullets.splice(i, 1);
-        api({ actie: 'schade', code: mijnCode, doelwit: sp.naam });
+        api({ actie: 'schade', code: mijnCode, naam: mijnNaam, doelwit: sp.naam });
         break;
       }
     }
@@ -647,8 +742,11 @@ function checkBotBullets() {
       break;
     }
   }
-  // Opruimen: verwijder oude ids
-  if (geraakt_ids.size > 50) geraakt_ids.clear();
+  // Opruimen: verwijder alleen verlopen ids (niet alles ineens — dat geeft dubbele schade)
+  const nuMs = performance.now();
+  for (const id of geraakt_ids) {
+    if (nuMs - id > BULLET_LEVENSDUUR + 200) geraakt_ids.delete(id);
+  }
 }
 
 // ── TEKENEN ───────────────────────────────────────────────
@@ -687,13 +785,12 @@ function teken() {
   const mijnKleur = ikData?.kleur || '#ffffff';
   tekenSchip(mijn.x, mijn.y, mijn.hoek, mijnKleur, mijn.hp > 0, mijnNaam, mijn.hp, true, 0);
 
-  // Bot (co-op vijand)
-  if (kamerData?.modus === 'coop') {
+  // Bot (alleen in fase 1: coop)
+  if (kamerData?.fase === 'coop') {
     const botSrc = isHost ? botLokaal : kamerData?.bot;
     if (botSrc?.alive) {
       tekenBot(botSrc.x, botSrc.y, botSrc.hoek, botSrc, kamerData.bot);
     }
-    // Bot bullets tekenen
     const botBullets = isHost ? botLokaal.bullets : (kamerData?.bot?.bullets || []);
     ctx.fillStyle = '#ff4400';
     botBullets.forEach(b => {
@@ -827,12 +924,25 @@ function updateHUD() {
 
   $('hud-hp').innerHTML = '❤️'.repeat(Math.max(0, mijn.hp)) + '🖤'.repeat(Math.max(0, 3 - mijn.hp));
   $('hud-naam').textContent = mijnNaam;
+  const fase = kamerData.fase || 'coop';
   const levend = kamerData.spelers.filter(s => s.alive).length;
-  $('hud-teller').textContent = kamerData.modus === 'coop' ? (levend + ' spelers over') : (levend + ' over');
 
-  // Bot HP-balk bovenin (co-op)
+  // Fase-badge
+  const faseBadge = $('hud-fase');
+  if (fase === 'coop') {
+    faseBadge.textContent = '🤝 SAMEN VS BOT';
+    faseBadge.style.background = 'rgba(34,197,94,.2)';
+    faseBadge.style.color = '#22c55e';
+  } else {
+    faseBadge.textContent = '⚔️ IEDER VOOR ZICH';
+    faseBadge.style.background = 'rgba(255,59,59,.2)';
+    faseBadge.style.color = '#ff3b3b';
+  }
+  $('hud-teller').textContent = levend + ' over';
+
+  // Bot HP-balk bovenin (alleen in coop fase)
   let botBalk = $('bot-hpbalk');
-  if (kamerData.modus === 'coop' && kamerData.bot) {
+  if (fase === 'coop' && kamerData.bot) {
     if (!botBalk) {
       botBalk = document.createElement('div');
       botBalk.id = 'bot-hpbalk';
@@ -868,28 +978,79 @@ function updateHUD() {
   }).join('');
 }
 
-// ── WINNAAR ───────────────────────────────────────────────
+// ── FASE-OVERGANG: coop → battle ──────────────────────────
+function toonFaseOvergang(botKiller) {
+  // Mijn HP resetten (server doet dit ook, maar alvast lokaal)
+  mijn.hp = 3;
+  bullets.length = 0;
+
+  const el = $('fase-overlay');
+  $('fase-sub').textContent = botKiller
+    ? `${esc(botKiller)} gaf de laatste klap! Nu: ieder voor zich 🔥`
+    : 'De bot is verslagen! Nu: ieder voor zich 🔥';
+  el.style.display = 'flex';
+  setTimeout(() => { el.style.display = 'none'; }, 3500);
+  confettiBurst();
+}
+
+// ── WINNAAR + SCOREBORD ───────────────────────────────────
 function toonWinnaar(data) {
+  $('game-code-balk').style.display = 'none';
   $('winnaar').style.display = 'flex';
-  if (data.winnaar === 'IEDEREEN') {
-    // Co-op overwinning — iedereen wint samen!
-    $('winnaar-emoji').textContent = '🎉';
-    $('winnaar-naam').textContent = 'JULLIE WINNEN SAMEN!';
-    $('winnaar-naam').style.color = '#22c55e';
-    $('winnaar-sub').textContent = 'De bot is verslagen! Geweldig teamwork!';
-    confettiBurst();
-  } else if (data.winnaar) {
+
+  // Winnaar-kopje
+  if (data.winnaar) {
     const isIk = data.winnaar === mijnNaam;
-    $('winnaar-naam').textContent = isIk ? '🎉 JIJ WINT!' : data.winnaar + ' wint!';
-    $('winnaar-naam').style.color = isIk ? '#ffd93b' : '#fff';
-    $('winnaar-sub').textContent = isIk ? 'Jij bent de laatste die over is!' : 'Beter geluk volgende keer!';
     $('winnaar-emoji').textContent = isIk ? '🏆' : '💀';
+    $('winnaar-naam').textContent = isIk ? '🎉 JIJ WINT!' : esc(data.winnaar) + ' wint!';
+    $('winnaar-naam').style.color = isIk ? '#ffd93b' : '#fff';
+    $('winnaar-sub').textContent = isIk ? 'Je bent de laatste die over is!' : 'Beter geluk volgende keer!';
     if (isIk) confettiBurst();
   } else {
     $('winnaar-emoji').textContent = '💀';
     $('winnaar-naam').textContent = 'Gelijkspel!';
+    $('winnaar-naam').style.color = '#fff';
     $('winnaar-sub').textContent = 'Iedereen is tegelijk gevallen';
   }
+
+  // Scorebord opbouwen
+  const kills = data.kills || {};
+  const botKiller = data.botKiller;
+  const spelers = data.spelers || [];
+
+  // Sorteer: winnaar bovenaan, daarna op kills
+  const gesorteerd = [...spelers].sort((a, b) => {
+    if (a.naam === data.winnaar) return -1;
+    if (b.naam === data.winnaar) return 1;
+    return (kills[b.naam] || 0) - (kills[a.naam] || 0);
+  });
+
+  const medals = ['🥇','🥈','🥉'];
+  let html = '';
+
+  // Wie versloeg de bot?
+  if (botKiller) {
+    const botsp = spelers.find(s => s.naam === botKiller);
+    html += `<div class="sb-entry" style="border-bottom:1px solid rgba(255,68,0,.25);padding-bottom:8px;margin-bottom:2px">
+      <span style="font-size:20px">👾</span>
+      <span style="color:#ff6633;flex:1">Versloeg de bot</span>
+      <span style="color:${botsp?.kleur || '#ff6633'};font-weight:900">${esc(botKiller)}</span>
+    </div>`;
+  }
+
+  // Ranking
+  html += gesorteerd.map((sp, i) => {
+    const k = kills[sp.naam] || 0;
+    const isIk = sp.naam === mijnNaam;
+    return `<div class="sb-entry"${isIk ? ' style="background:rgba(255,255,255,.06);border-radius:8px;padding:2px 6px;margin:-2px -6px"' : ''}>
+      <span class="sb-pos">${medals[i] || (i+1)+'.'}</span>
+      <div class="sb-dot" style="background:${sp.kleur};width:10px;height:10px;border-radius:50%;flex-shrink:0"></div>
+      <span style="flex:1;color:${sp.kleur}">${esc(sp.naam)}</span>
+      <span style="opacity:.6;font-size:12px">${k > 0 ? k + ' kill' + (k>1?'s':'') : ''}</span>
+    </div>`;
+  }).join('');
+
+  $('scorebord').innerHTML = html;
   if (isHost) $('knop-opnieuw').style.display = '';
 }
 
@@ -897,19 +1058,29 @@ async function opnieuw() {
   const res = await api({ actie: 'reset', naam: mijnNaam, code: mijnCode });
   if (res.fout) return;
   mijn.hp = 3; bullets.length = 0;
+  faseOvergangGetoond = false;
   $('winnaar').style.display = 'none';
+  // pollInterval wordt in beginSpelVanaf gezet — stop eerst de oude
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
   gameLoopGestart = false;
-  pollInterval = setInterval(snelPollen, 220);
   const data = await apiGet(mijnCode);
   if (data && !data.fout) beginSpelVanaf(data);
 }
 
 function beginSpelVanaf(data) {
   kamerData = data;
+  gameLoopGestart = false; // altijd resetten zodat startGameLoop() niet blokkeert
+  isHost = (data.host === mijnNaam);
   const ikServer = data.spelers.find(s => s.naam === mijnNaam);
-  if (ikServer) { mijn.x = ikServer.x; mijn.y = ikServer.y; mijn.hoek = ikServer.hoek; mijn.hp = ikServer.hp; }
-  spawnBescherming = data.startTijd + 1000;
+  if (ikServer) {
+    mijn.x = ikServer.x; mijn.y = ikServer.y;
+    mijn.hoek = ikServer.hoek; mijn.hp = ikServer.hp;
+  }
+  spawnBescherming = ikServer?.spawnTijd || (Date.now() + 4000);
+  // Snel pollen hervatten
+  pollInterval = setInterval(snelPollen, 220);
   if (data.state === 'aftellen') toonAftellen(data.startTijd);
+  else if (data.state === 'game') startGameLoop();
 }
 
 // ── CANVAS SCHALEN ────────────────────────────────────────

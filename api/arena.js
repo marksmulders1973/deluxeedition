@@ -1,15 +1,12 @@
 // ══════════════════════════════════════════════════════
-// DELUXE BATTLE 🚀 — ruimte-shooter voor tot 10 spelers
-// Lobby-code → iedereen joint → schiet op elkaar!
-// Server slaat speler-posities op; bullets = client-side.
-// Als een bullet raak is, POST de schutter "schade" voor
-// het doelwit. Server houdt hp + winnaar bij.
+// DELUXE BATTLE 🚀 — twee fases
+//   Fase 1: iedereen samen vs de bot (co-op)
+//   Fase 2: de bot is dood → ieder voor zich (battle)
 // ══════════════════════════════════════════════════════
 import { put, list } from "@vercel/blob";
 
 const LETTERS = "BCDFGHJKLMNPRSTVWXZ";
 const KLEUREN = ["#ff3b3b","#3b82ff","#22c55e","#f59e0b","#a855f7","#ec4899","#06b6d4","#f97316","#84cc16","#6366f1"];
-const RESPAWN_BESCHERMING = 3000; // 3 sec onkwetsbaar na spawn
 
 function maakCode() {
   return Array.from({ length: 4 }, () => LETTERS[Math.floor(Math.random() * LETTERS.length)]).join("");
@@ -32,12 +29,20 @@ async function schrijfKamer(k) {
 }
 
 function spawnPositie(idx, totaal) {
-  // Verspreid spelers gelijkmatig in een cirkel in het midden van de arena (800×600)
   const hoek = (idx / Math.max(totaal, 1)) * Math.PI * 2;
   return {
     x: 400 + Math.cos(hoek) * 220,
     y: 300 + Math.sin(hoek) * 180,
-    hoek: hoek + Math.PI, // wijst naar het midden
+    hoek: hoek + Math.PI,
+  };
+}
+
+function maakBot(aantalSpelers) {
+  return {
+    x: 400, y: 300, hoek: 0, vx: 0, vy: 0,
+    hp: 8 + aantalSpelers * 2,
+    maxHp: 8 + aantalSpelers * 2,
+    alive: true, bullets: [],
   };
 }
 
@@ -66,10 +71,13 @@ export default async function handler(req, res) {
         let code, poging = 0;
         do { code = maakCode(); poging++; } while ((await leesKamer(code)) && poging < 8);
         const pos = spawnPositie(0, 1);
-        const modus = b.modus === "coop" ? "coop" : "battle";
         const kamer = {
-          code, host: naam, state: "lobby", modus,
-          startTijd: 0, winnaar: null, bot: null,
+          code, host: naam, state: "lobby",
+          fase: "coop",           // fase 1: samen vs bot
+          botKiller: null,        // wie versloeg de bot
+          kills: {},              // kills per speler in de battle fase
+          startTijd: 0, winnaar: null,
+          bot: null,
           spelers: [{ naam, kleur: KLEUREN[0], ...pos, vx: 0, vy: 0, hp: 3, alive: true, lastUpdate: Date.now(), spawnTijd: 0 }],
           updated: Date.now(),
         };
@@ -87,7 +95,6 @@ export default async function handler(req, res) {
         if (kamer.spelers.length >= 10) return res.status(400).json({ fout: "kamer is vol (max 10)" });
         if (kamer.spelers.find(s => s.naam === naam)) return res.status(400).json({ fout: "naam al in gebruik — kies een andere" });
         const idx = kamer.spelers.length;
-        // Tijdens een lopend spel: spawn op een willekeurige rand-positie met bescherming
         const pos = kamer.state === "lobby"
           ? spawnPositie(idx, idx + 1)
           : { x: 80 + Math.random() * 640, y: 80 + Math.random() * 440, hoek: Math.random() * Math.PI * 2 };
@@ -98,7 +105,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      /* STARTEN */
+      /* STARTEN — 1 speler genoeg */
       if (actie === "start") {
         const code = schoonCode(b.code), naam = schoonNaam(b.naam);
         const kamer = await leesKamer(code);
@@ -106,7 +113,6 @@ export default async function handler(req, res) {
         if (kamer.state !== "lobby") return res.status(400).json({ fout: "al gestart" });
         const totaal = kamer.spelers.length;
         const nu = Date.now();
-        // Verspreid spelers opnieuw nu we het exacte aantal weten
         kamer.spelers = kamer.spelers.map((sp, i) => {
           const pos = spawnPositie(i, totaal);
           return { ...sp, ...pos, vx: 0, vy: 0, hp: 3, alive: true, spawnTijd: nu + 4000 };
@@ -114,25 +120,23 @@ export default async function handler(req, res) {
         kamer.state = "aftellen";
         kamer.startTijd = nu + 4000;
         kamer.winnaar = null;
-        // Co-op: voeg de bot toe
-        if (kamer.modus === "coop") {
-          kamer.bot = { x: 400, y: 300, hoek: 0, vx: 0, vy: 0,
-            hp: 8 + kamer.spelers.length * 2, maxHp: 8 + kamer.spelers.length * 2,
-            alive: true, bullets: [] };
-        }
+        kamer.fase = "coop";
+        kamer.botKiller = null;
+        kamer.kills = {};
+        // Altijd bot toevoegen — het spel begint altijd in coop-fase
+        kamer.bot = maakBot(totaal);
         kamer.updated = nu;
         await schrijfKamer(kamer);
         return res.status(200).json({ ok: true });
       }
 
-      /* POSITIE UPDATEN (elke ~200ms per speler) */
+      /* POSITIE UPDATEN */
       if (actie === "beweeg") {
         const code = schoonCode(b.code), naam = schoonNaam(b.naam);
         const kamer = await leesKamer(code);
         if (!kamer || kamer.state === "lobby") return res.status(400).json({ fout: "spel is niet actief" });
         const sp = kamer.spelers.find(s => s.naam === naam);
         if (!sp) return res.status(404).json({ fout: "speler niet gevonden" });
-        // Alleen eigen positie updaten
         sp.x = Math.max(0, Math.min(800, Number(b.x) || sp.x));
         sp.y = Math.max(0, Math.min(600, Number(b.y) || sp.y));
         sp.hoek = Number(b.hoek) || sp.hoek;
@@ -144,42 +148,68 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      /* SCHADE TOEBRENGEN (bullet heeft iemand geraakt) */
+      /* SCHADE TOEBRENGEN */
       if (actie === "schade") {
         const code = schoonCode(b.code);
         const doelwit = String(b.doelwit || "");
+        const schutter = schoonNaam(b.naam); // wie schiet
         const kamer = await leesKamer(code);
         if (!kamer || kamer.state !== "game") return res.status(400).json({ fout: "spel niet actief" });
 
-        // ── Schade aan de bot ──
+        // ── Schade aan de bot (alleen in coop-fase) ──
         if (doelwit === "__bot__") {
-          if (!kamer.bot || !kamer.bot.alive) return res.status(200).json({ ok: true });
+          if (!kamer.bot || !kamer.bot.alive || kamer.fase !== "coop") return res.status(200).json({ ok: true });
+          // Rate-limit: max 1 HP-verlies per 80ms (voorkomt race-condition met meerdere spelers)
+          const nu = Date.now();
+          if (kamer.bot.lastHitTime && nu - kamer.bot.lastHitTime < 80) {
+            return res.status(200).json({ ok: true });
+          }
+          kamer.bot.lastHitTime = nu;
           kamer.bot.hp = Math.max(0, kamer.bot.hp - 1);
+
           if (kamer.bot.hp <= 0) {
+            // BOT IS DOOD → overgang naar battle-fase!
             kamer.bot.alive = false;
-            kamer.state = "klaar";
-            kamer.winnaar = "IEDEREEN"; // iedereen wint samen!
+            kamer.bot.bullets = []; // opruimen
+            kamer.botKiller = schutter || "onbekend";
+            kamer.fase = "battle";
+            // Iedereen die nog leeft krijgt volle HP terug
+            const nu = Date.now();
+            for (const sp of kamer.spelers) {
+              if (sp.alive) {
+                sp.hp = 3;
+                sp.spawnTijd = nu + 3000; // 3 sec bescherming tijdens overgang
+              }
+            }
+            // Solo-speler? Direct winnaar bepalen (niemand om tegen te vechten)
+            const overNaBotDood = kamer.spelers.filter(s => s.alive);
+            if (overNaBotDood.length <= 1) {
+              kamer.state = "klaar";
+              kamer.winnaar = overNaBotDood.length === 1 ? overNaBotDood[0].naam : null;
+            }
           }
           kamer.updated = Date.now();
           await schrijfKamer(kamer);
           return res.status(200).json({ ok: true });
         }
 
-        // ── Schade aan een speler ──
+        // ── Schade aan een speler (alleen in battle-fase) ──
+        if (kamer.fase !== "battle") return res.status(200).json({ ok: true });
         const sp = kamer.spelers.find(s => s.naam === schoonNaam(doelwit));
         if (!sp || !sp.alive) return res.status(200).json({ ok: true });
         if (sp.spawnTijd && Date.now() < sp.spawnTijd) return res.status(200).json({ ok: true, beschermd: true });
         sp.hp = Math.max(0, sp.hp - 1);
         if (sp.hp <= 0) {
           sp.alive = false;
-          if (kamer.modus !== "coop") {
-            const over = kamer.spelers.filter(s => s.alive);
-            if (over.length <= 1) {
-              kamer.state = "klaar";
-              kamer.winnaar = over.length === 1 ? over[0].naam : null;
-            }
+          // Kill bijhouden
+          if (schutter) {
+            kamer.kills[schutter] = (kamer.kills[schutter] || 0) + 1;
           }
-          // Co-op: spelers kunnen sterven maar het spel gaat door zolang de bot leeft
+          const over = kamer.spelers.filter(s => s.alive);
+          if (over.length <= 1) {
+            kamer.state = "klaar";
+            kamer.winnaar = over.length === 1 ? over[0].naam : null;
+          }
         }
         kamer.updated = Date.now();
         await schrijfKamer(kamer);
@@ -190,7 +220,7 @@ export default async function handler(req, res) {
       if (actie === "bot_beweeg") {
         const code = schoonCode(b.code), naam = schoonNaam(b.naam);
         const kamer = await leesKamer(code);
-        if (!kamer || kamer.host !== naam || !kamer.bot || kamer.state !== "game") return res.status(200).json({ ok: true });
+        if (!kamer || kamer.host !== naam || !kamer.bot || kamer.state !== "game" || kamer.fase !== "coop") return res.status(200).json({ ok: true });
         kamer.bot.x = Math.max(0, Math.min(800, Number(b.x) || 400));
         kamer.bot.y = Math.max(0, Math.min(600, Number(b.y) || 300));
         kamer.bot.hoek = Number(b.hoek) || 0;
@@ -202,7 +232,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      /* GAME STARTEN NA AFTELLEN (host triggert dit) */
+      /* GAME STARTEN NA AFTELLEN */
       if (actie === "gamestart") {
         const code = schoonCode(b.code), naam = schoonNaam(b.naam);
         const kamer = await leesKamer(code);
@@ -228,11 +258,10 @@ export default async function handler(req, res) {
         kamer.state = "aftellen";
         kamer.startTijd = nu + 4000;
         kamer.winnaar = null;
-        if (kamer.modus === "coop") {
-          kamer.bot = { x: 400, y: 300, hoek: 0, vx: 0, vy: 0,
-            hp: 8 + kamer.spelers.length * 2, maxHp: 8 + kamer.spelers.length * 2,
-            alive: true, bullets: [] };
-        }
+        kamer.fase = "coop";
+        kamer.botKiller = null;
+        kamer.kills = {};
+        kamer.bot = maakBot(totaal);
         kamer.updated = nu;
         await schrijfKamer(kamer);
         return res.status(200).json({ ok: true });
