@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Adventure Craft 3D — DELUXE EDITION</title>
+  <link rel="icon" href="images/logo.jpg" />
+  <style>
+    /* ══════════════════════════════════════════════════════
+       ADVENTURE CRAFT 3D — gemaakt door Claude AI 🤖
+       Je kijkt nu door de OGEN van je personage! Rondlopen,
+       blokken hakken, bouwen en diamanten zoeken — net echt
+       Minecraft. Schatten verzilveren = keys voor de winkel.
+       (De oude 2D-versie staat veilig in adventurecraft-2d-oud.html)
+       ══════════════════════════════════════════════════════ */
+    :root { --rood: #ff3b3b; --blauw: #3b82ff; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #060a18; font-family: 'Segoe UI', system-ui, sans-serif; color: #fff; }
+    canvas { display: block; }
+
+    /* bovenbalk */
+    #top {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+      display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+      flex-wrap: wrap; pointer-events: none;
+    }
+    #top > * { pointer-events: auto; }
+    .chip {
+      background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 999px; padding: 7px 13px; font-size: 13px; font-weight: 800; color: #fff;
+      text-decoration: none; cursor: pointer;
+    }
+    #verzilver { background: linear-gradient(135deg, #1f9d55, #2ecc71); border: none; cursor: pointer; }
+    #schat { border-color: rgba(255,217,59,0.5); }
+
+    /* richtkruis */
+    #kruis {
+      position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%);
+      font-size: 22px; z-index: 9; pointer-events: none; text-shadow: 0 0 6px #000;
+    }
+
+    /* hotbar onderaan */
+    #hotbar {
+      position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 6px; z-index: 10;
+    }
+    .slot {
+      width: 52px; height: 52px; border-radius: 10px; cursor: pointer;
+      border: 2px solid rgba(255,255,255,0.3); background: rgba(0,0,0,0.55);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 800; position: relative;
+    }
+    .slot .blokje { width: 22px; height: 22px; border-radius: 4px; margin-bottom: 2px; }
+    .slot .aantal { position: absolute; right: 4px; bottom: 2px; font-size: 11px; color: #ffd93b; }
+    .slot.aan { border-color: #ffd93b; box-shadow: 0 0 14px rgba(255,217,59,0.5); }
+
+    /* start / klik-om-te-spelen scherm */
+    #start {
+      position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px; text-align: center;
+      background: rgba(6,10,24,0.85); cursor: pointer; padding: 20px;
+    }
+    #start h1 { font-size: 28px; letter-spacing: 1px; }
+    #start p { color: rgba(255,255,255,0.75); max-width: 460px; line-height: 1.5; font-size: 14px; }
+    #start .knop {
+      background: linear-gradient(90deg, #e42222, #ff5940 45%, #3b82ff 55%, #1f5fe0);
+      border: none; color: #fff; font-size: 18px; font-weight: 900;
+      padding: 14px 34px; border-radius: 14px; cursor: pointer;
+    }
+
+    /* mobiele knoppen */
+    #mobiel { position: fixed; inset: 0; z-index: 8; pointer-events: none; display: none; }
+    #mobiel button {
+      pointer-events: auto; position: fixed; width: 58px; height: 58px; border-radius: 14px;
+      background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.35);
+      color: #fff; font-size: 22px; font-weight: 900;
+    }
+    #kn-voor    { left: 76px;  bottom: 150px; }
+    #kn-achter  { left: 76px;  bottom: 84px; }
+    #kn-links   { left: 12px;  bottom: 84px; }
+    #kn-rechts  { left: 140px; bottom: 84px; }
+    #kn-spring  { right: 14px; bottom: 150px; }
+    #kn-modus   { right: 14px; bottom: 84px; font-size: 18px; }
+    @media (pointer: coarse) { #mobiel { display: block; } #hotbar { bottom: 158px; } }
+  </style>
+</head>
+<body>
+
+  <div id="top">
+    <a class="chip" href="index.html">← HOME</a>
+    <span class="chip" id="schat">💎 0 🪙 0 ⚫ 0</span>
+    <button class="chip" id="verzilver">💰 VERZILVER → KEYS</button>
+    <span class="chip" id="keys">🔑 0</span>
+    <button class="chip" id="muziekknop">🔊</button>
+    <button class="chip" id="reset">🌍 NIEUW</button>
+  </div>
+
+  <div id="kruis">＋</div>
+
+  <div id="hotbar"></div>
+
+  <div id="mobiel">
+    <button id="kn-voor">▲</button>
+    <button id="kn-achter">▼</button>
+    <button id="kn-links">◀</button>
+    <button id="kn-rechts">▶</button>
+    <button id="kn-spring">⤒</button>
+    <button id="kn-modus">⛏️</button>
+  </div>
+
+  <div id="start">
+    <h1>⛏️ ADVENTURE CRAFT <span style="color:#3b82ff">3D</span></h1>
+    <p><b>Je kijkt nu door de ogen van je personage!</b><br><br>
+       🖱️ muis = rondkijken · WASD of pijltjes = lopen · spatie = springen<br>
+       linkermuisknop = ⛏️ hakken · rechtermuisknop = 🧱 bouwen · 1-5 = blok kiezen<br><br>
+       📱 op telefoon: knoppen links = lopen, vegen rechts = kijken, tikken = hakken/bouwen<br><br>
+       💎 diamant = 5 keys · 🪙 goud = 2 keys · ⚫ kolen = 1 key — hoe dieper je graaft, hoe meer diamant! Je wereld wordt automatisch bewaard.</p>
+    <button class="knop">▶ SPELEN</button>
+  </div>
+
+  <audio id="muziek" src="audio/diamant-droom.wav" loop preload="auto"></audio>
+
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+
+    // ── 🌍 de wereld (blokjes in een 3D-rooster) ──────────
+    // 0 lucht, 1 gras, 2 aarde, 3 steen, 4 hout, 5 blad,
+    // 6 kolen, 7 goud, 8 diamant, 9 bodem (onbreekbaar), 10 plank
+    const W = 48, H = 20, D = 48;
+    const KLEUR = { 1: 0x2ecc71, 2: 0x8b5a2b, 3: 0x8a8f98, 4: 0x6b4423, 5: 0x1e9e4a, 6: 0x2b2f36, 7: 0xffd93b, 8: 0x4dd8ff, 9: 0x14161c, 10: 0xc9974d };
+    const NAMEN = { 2: "aarde", 3: "steen", 4: "hout", 5: "blad", 10: "plank" };
+    const BOUWBAAR = [2, 3, 4, 10, 5]; // wat er in je hotbar kan
+
+    let wereld = new Uint8Array(W * H * D);
+    const idx = (x, y, z) => (y * D + z) * W + x;
+    const binnen = (x, y, z) => x >= 0 && x < W && y >= 0 && y < H && z >= 0 && z < D;
+    const blok = (x, y, z) => (binnen(x, y, z) ? wereld[idx(x, y, z)] : 0);
+
+    let inv = { 2: 0, 3: 0, 4: 0, 10: 0, 5: 0 };
+    let schatten = { kolen: 0, goud: 0, diamant: 0 };
+    let gekozen = 2; // welk blok je bouwt
+
+    function hoogteOp(x, z) {
+      for (let y = H - 1; y >= 0; y--) if (blok(x, y, z) !== 0) return y;
+      return 0;
+    }
+
+    function maakWereld() {
+      wereld.fill(0);
+      for (let x = 0; x < W; x++) for (let z = 0; z < D; z++) {
+        // zachte heuvels met sinus-golven (net als de 2D-versie, maar dan rondom)
+        const h = Math.max(3, Math.min(H - 6, Math.round(
+          8 + 2.6 * Math.sin(x * 0.22) + 2.2 * Math.cos(z * 0.19) + 1.4 * Math.sin((x + z) * 0.11)
+        )));
+        for (let y = 0; y <= h; y++) {
+          let t = 3; // steen
+          if (y === h) t = 1;                 // gras bovenop
+          else if (y >= h - 2) t = 2;         // aarde eronder
+          if (y === 0) t = 9;                 // onbreekbare bodem
+          // verstopte schatten: hoe dieper, hoe meer diamant! 💎
+          if (t === 3) {
+            const diepte = (h - y) / h;
+            const r = Math.random();
+            if (r < 0.010 + diepte * 0.030) t = 6;        // kolen
+            if (r > 0.995 - diepte * 0.012) t = 7;        // goud
+            if (y < 6 && r > 0.5 && r < 0.5 + 0.004 + (6 - y) * 0.004) t = 8; // diamant diep
+          }
+          wereld[idx(x, y, z)] = t;
+        }
+      }
+      // hier en daar een boom 🌳
+      for (let x = 2; x < W - 2; x++) for (let z = 2; z < D - 2; z++) {
+        if (Math.random() > 0.02) continue;
+        const top = hoogteOp(x, z);
+        if (wereld[idx(x, top, z)] !== 1 || top + 6 >= H) continue;
+        const stamH = 3 + (Math.random() < 0.5 ? 1 : 0);
+        for (let y = 1; y <= stamH; y++) wereld[idx(x, top + y, z)] = 4;
+        for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (let dy = 0; dy <= 1; dy++) {
+          const bx = x + dx, by = top + stamH + dy, bz = z + dz;
+          if (binnen(bx, by, bz) && wereld[idx(bx, by, bz)] === 0) wereld[idx(bx, by, bz)] = 5;
+        }
+      }
+    }
+
+    // ── 💾 bewaren en laden ───────────────────────────────
+    function bewaar() {
+      try {
+        let s = "";
+        for (let i = 0; i < wereld.length; i += 8192) s += String.fromCharCode(...wereld.subarray(i, i + 8192));
+        localStorage.setItem("deluxe-adventurecraft-3d", JSON.stringify({ b64: btoa(s), inv, schatten }));
+      } catch {}
+    }
+    let bewaarTimer = null;
+    const bewaarStraks = () => { clearTimeout(bewaarTimer); bewaarTimer = setTimeout(bewaar, 800); };
+    function laad() {
+      try {
+        const d = JSON.parse(localStorage.getItem("deluxe-adventurecraft-3d") || "null");
+        if (d && d.b64) {
+          const s = atob(d.b64);
+          if (s.length === wereld.length) {
+            for (let i = 0; i < s.length; i++) wereld[i] = s.charCodeAt(i);
+            inv = { ...inv, ...(d.inv || {}) };
+            schatten = { ...schatten, ...(d.schatten || {}) };
+            return true;
+          }
+        }
+      } catch {}
+      return false;
+    }
+
+    // ── 🎨 three.js: de 3D-tekenaar ───────────────────────
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x8fc8ff);          // lucht
+    scene.fog = new THREE.Fog(0x8fc8ff, 30, 70);
+    const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 200);
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    document.body.appendChild(renderer.domElement);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+    const zon = new THREE.DirectionalLight(0xffffff, 1.1);
+    zon.position.set(30, 60, 20);
+    scene.add(zon);
+
+    // alle zichtbare blokjes in één InstancedMesh (supersnel)
+    const blokGeo = new THREE.BoxGeometry(1, 1, 1);
+    const blokMat = new THREE.MeshLambertMaterial();
+    let mesh = null;
+    let instNaarVoxel = [];
+    const kleurTmp = new THREE.Color();
+    const matrixTmp = new THREE.Matrix4();
+
+    function bouwMesh() {
+      // welke blokjes zie je? alleen die met lucht ernaast
+      const zichtbaar = [];
+      for (let y = 0; y < H; y++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+        const t = wereld[idx(x, y, z)];
+        if (!t) continue;
+        if (!blok(x + 1, y, z) || !blok(x - 1, y, z) || !blok(x, y + 1, z) ||
+            (y > 0 && !blok(x, y - 1, z)) || !blok(x, y, z + 1) || !blok(x, y, z - 1)) {
+          zichtbaar.push([x, y, z, t]);
+        }
+      }
+      if (mesh) { scene.remove(mesh); mesh.dispose(); }
+      mesh = new THREE.InstancedMesh(blokGeo, blokMat, zichtbaar.length);
+      instNaarVoxel = new Array(zichtbaar.length);
+      zichtbaar.forEach(([x, y, z, t], i) => {
+        matrixTmp.setPosition(x + 0.5, y + 0.5, z + 0.5);
+        mesh.setMatrixAt(i, matrixTmp);
+        mesh.setColorAt(i, kleurTmp.setHex(KLEUR[t]));
+        instNaarVoxel[i] = idx(x, y, z);
+      });
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.instanceMatrix.needsUpdate = true;
+      scene.add(mesh);
+    }
+
+    // geel randje om het blok waar je naar kijkt
+    const rand = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1.01, 1.01, 1.01)),
+      new THREE.LineBasicMaterial({ color: 0xffd93b })
+    );
+    rand.visible = false;
+    scene.add(rand);
+
+    // ── 🚶 de speler (door de ogen kijken!) ───────────────
+    let yaw = 0, pitch = 0;
+    const speler = { x: W / 2 + 0.5, y: 0, z: D / 2 + 0.5, vy: 0, opGrond: false };
+    const HALF = 0.3, LENGTE = 1.75, OOG = 1.62;
+
+    function zetSpawn() {
+      speler.x = W / 2 + 0.5; speler.z = D / 2 + 0.5;
+      speler.y = hoogteOp(W / 2, D / 2) + 1.2; speler.vy = 0;
+    }
+
+    function botst(px, py, pz) {
+      // raakt de speler (een rechthoekje) ergens een blok?
+      for (let x = Math.floor(px - HALF); x <= Math.floor(px + HALF); x++)
+        for (let y = Math.floor(py); y <= Math.floor(py + LENGTE); y++)
+          for (let z = Math.floor(pz - HALF); z <= Math.floor(pz + HALF); z++)
+            if (blok(x, y, z)) return true;
+      return false;
+    }
+
+    const toets = {};
+    addEventListener("keydown", e => {
+      toets[e.code] = true;
+      if (e.code === "Space") e.preventDefault();
+      if (e.code >= "Digit1" && e.code <= "Digit5") kies(BOUWBAAR[+e.code.slice(5) - 1]);
+    });
+    addEventListener("keyup", e => { toets[e.code] = false; });
+
+    function beweeg(dt) {
+      const snel = 4.6;
+      let mx = 0, mz = 0;
+      if (toets.KeyW || toets.ArrowUp || mob.voor) mz += 1;
+      if (toets.KeyS || toets.ArrowDown || mob.achter) mz -= 1;
+      if (toets.KeyA || toets.ArrowLeft || mob.links) mx -= 1;
+      if (toets.KeyD || toets.ArrowRight || mob.rechts) mx += 1;
+      const l = Math.hypot(mx, mz) || 1;
+      // vooruit = de kant op waar je kijkt
+      const vx = (-Math.sin(yaw) * mz + Math.cos(yaw) * mx) / l * snel;
+      const vz = (-Math.cos(yaw) * mz - Math.sin(yaw) * mx) / l * snel;
+
+      speler.vy -= 22 * dt;                     // zwaartekracht
+      if ((toets.Space || mob.spring) && speler.opGrond) { speler.vy = 8; speler.opGrond = false; }
+
+      // per richting bewegen en netjes stoppen tegen blokken
+      const nx = speler.x + vx * dt;
+      if (!botst(nx, speler.y, speler.z)) speler.x = nx;
+      const nz = speler.z + vz * dt;
+      if (!botst(speler.x, speler.y, nz)) speler.z = nz;
+      const ny = speler.y + speler.vy * dt;
+      if (!botst(speler.x, ny, speler.z)) { speler.y = ny; speler.opGrond = false; }
+      else { if (speler.vy < 0) speler.opGrond = true; speler.vy = 0; }
+      if (speler.y < -10) zetSpawn();           // uit de wereld gevallen? terug!
+
+      camera.position.set(speler.x, speler.y + OOG, speler.z);
+      camera.rotation.set(pitch, yaw, 0, "YXZ");
+    }
+
+    // ── 🖱️ rondkijken met de muis (pointer lock) ─────────
+    const startScherm = document.getElementById("start");
+    const isMobiel = () => matchMedia("(pointer: coarse)").matches;
+    renderer.domElement.addEventListener("click", () => {
+      if (!isMobiel() && document.pointerLockElement !== renderer.domElement) renderer.domElement.requestPointerLock();
+    });
+    addEventListener("mousemove", e => {
+      if (document.pointerLockElement !== renderer.domElement) return;
+      yaw -= e.movementX * 0.0024;
+      pitch -= e.movementY * 0.0024;
+      pitch = Math.max(-1.45, Math.min(1.45, pitch));
+    });
+
+    // ── ⛏️🧱 hakken en bouwen ─────────────────────────────
+    const raycaster = new THREE.Raycaster();
+    raycaster.far = 5.2;
+    function mik() {
+      raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+      const hit = mesh ? raycaster.intersectObject(mesh)[0] : null;
+      if (!hit) return null;
+      const vi = instNaarVoxel[hit.instanceId];
+      const x = vi % W, z = Math.floor(vi / W) % D, y = Math.floor(vi / (W * D));
+      return { x, y, z, normaal: hit.face.normal };
+    }
+
+    function hak() {
+      const m = mik(); if (!m) return;
+      const t = blok(m.x, m.y, m.z);
+      if (!t || t === 9) return;                 // bodem is onbreekbaar
+      wereld[idx(m.x, m.y, m.z)] = 0;
+      if (t === 6) schatten.kolen++;
+      else if (t === 7) schatten.goud++;
+      else if (t === 8) schatten.diamant++;
+      else if (t === 4) { inv[4]++; inv[10] += 2; }   // hout = ook 2 gratis planken!
+      else if (t === 1) inv[2]++;                     // gras wordt aarde
+      else if (inv[t] !== undefined) inv[t]++;
+      naEdit();
+    }
+
+    function bouw() {
+      const m = mik(); if (!m) return;
+      if (!inv[gekozen]) return;
+      const bx = m.x + m.normaal.x, by = m.y + m.normaal.y, bz = m.z + m.normaal.z;
+      if (!binnen(bx, by, bz) || blok(bx, by, bz)) return;
+      // niet bouwen op de plek waar je zelf staat!
+      const inSpeler = bx === Math.floor(speler.x) && bz === Math.floor(speler.z) &&
+                       by >= Math.floor(speler.y) && by <= Math.floor(speler.y + LENGTE);
+      if (inSpeler) return;
+      wereld[idx(bx, by, bz)] = gekozen;
+      inv[gekozen]--;
+      naEdit();
+    }
+
+    function naEdit() { bouwMesh(); tekenHud(); bewaarStraks(); }
+
+    addEventListener("mousedown", e => {
+      if (document.pointerLockElement !== renderer.domElement) return;
+      if (e.button === 0) hak();
+      if (e.button === 2) bouw();
+    });
+    addEventListener("contextmenu", e => e.preventDefault());
+
+    // ── 📱 telefoon-besturing ─────────────────────────────
+    const mob = { voor: false, achter: false, links: false, rechts: false, spring: false, modus: "hak" };
+    for (const [id, veld] of [["kn-voor","voor"],["kn-achter","achter"],["kn-links","links"],["kn-rechts","rechts"],["kn-spring","spring"]]) {
+      const b = document.getElementById(id);
+      b.addEventListener("touchstart", e => { e.preventDefault(); mob[veld] = true; }, { passive: false });
+      b.addEventListener("touchend", () => { mob[veld] = false; });
+    }
+    document.getElementById("kn-modus").addEventListener("touchstart", e => {
+      e.preventDefault();
+      mob.modus = mob.modus === "hak" ? "bouw" : "hak";
+      document.getElementById("kn-modus").textContent = mob.modus === "hak" ? "⛏️" : "🧱";
+    }, { passive: false });
+    // vegen op het scherm = kijken, kort tikken = hakken/bouwen
+    let veeg = null;
+    renderer.domElement.addEventListener("touchstart", e => {
+      const t = e.changedTouches[0];
+      veeg = { id: t.identifier, x: t.clientX, y: t.clientY, bewogen: 0, tijd: Date.now() };
+    }, { passive: true });
+    renderer.domElement.addEventListener("touchmove", e => {
+      if (!veeg) return;
+      for (const t of e.changedTouches) if (t.identifier === veeg.id) {
+        yaw -= (t.clientX - veeg.x) * 0.006;
+        pitch -= (t.clientY - veeg.y) * 0.006;
+        pitch = Math.max(-1.45, Math.min(1.45, pitch));
+        veeg.bewogen += Math.abs(t.clientX - veeg.x) + Math.abs(t.clientY - veeg.y);
+        veeg.x = t.clientX; veeg.y = t.clientY;
+      }
+    }, { passive: true });
+    renderer.domElement.addEventListener("touchend", e => {
+      if (!veeg) return;
+      for (const t of e.changedTouches) if (t.identifier === veeg.id) {
+        if (veeg.bewogen < 14 && Date.now() - veeg.tijd < 400) (mob.modus === "hak" ? hak : bouw)();
+        veeg = null;
+      }
+    });
+
+    // ── 🎛️ hud: hotbar + schatten + keys ─────────────────
+    function kies(t) { gekozen = t; tekenHud(); }
+    function tekenHud() {
+      const bar = document.getElementById("hotbar");
+      bar.innerHTML = "";
+      BOUWBAAR.forEach((t, i) => {
+        const s = document.createElement("div");
+        s.className = "slot" + (t === gekozen ? " aan" : "");
+        s.innerHTML = '<div class="blokje" style="background:#' + KLEUR[t].toString(16).padStart(6, "0") + '"></div>' +
+                      NAMEN[t] + '<span class="aantal">' + (inv[t] || 0) + "</span>";
+        s.title = "toets " + (i + 1);
+        s.onclick = () => kies(t);
+        bar.appendChild(s);
+      });
+      document.getElementById("schat").textContent = "💎 " + schatten.diamant + " 🪙 " + schatten.goud + " ⚫ " + schatten.kolen;
+      document.getElementById("keys").textContent = "🔑 " + (parseInt(localStorage.getItem("deluxe-keys") || "0", 10) || 0);
+    }
+
+    // 💰 schatten → keys (zelfde regels als altijd)
+    document.getElementById("verzilver").onclick = () => {
+      const keys = schatten.kolen * 1 + schatten.goud * 2 + schatten.diamant * 5;
+      if (keys <= 0) { alert("Nog geen schatten! Hak ⚫ kolen, 🪙 goud of 💎 diamant uit de steen — hoe dieper, hoe meer diamant."); return; }
+      try {
+        const nu = (parseInt(localStorage.getItem("deluxe-keys") || "0", 10) || 0) + keys;
+        localStorage.setItem("deluxe-keys", String(nu));
+      } catch {}
+      schatten = { kolen: 0, goud: 0, diamant: 0 };
+      tekenHud(); bewaar();
+      alert("💰 " + keys + " keys erbij! Ga naar de winkel voor nieuwe skins.");
+    };
+
+    // 🌍 nieuwe wereld
+    document.getElementById("reset").onclick = () => {
+      if (!confirm("Nieuwe wereld maken? Je oude wereld is dan weg (je keys hou je).")) return;
+      maakWereld(); zetSpawn(); naEdit(); bewaar();
+    };
+
+    // 🔊 muziek (zelfde liedje: DJ NovaX — Diamant Droom)
+    const muziek = document.getElementById("muziek");
+    const muziekKnop = document.getElementById("muziekknop");
+    let muziekAan = localStorage.getItem("deluxe-ac-muziek") !== "uit";
+    function toonMuziek() { muziekKnop.textContent = muziekAan ? "🔊" : "🔇"; }
+    muziekKnop.onclick = () => {
+      muziekAan = !muziekAan;
+      localStorage.setItem("deluxe-ac-muziek", muziekAan ? "aan" : "uit");
+      if (muziekAan) muziek.play().catch(() => {}); else muziek.pause();
+      toonMuziek();
+    };
+    toonMuziek();
+
+    // ── ▶ start! ──────────────────────────────────────────
+    if (!laad()) maakWereld();
+    bouwMesh(); zetSpawn(); tekenHud();
+
+    startScherm.addEventListener("click", () => {
+      startScherm.style.display = "none";
+      if (muziekAan) muziek.play().catch(() => {});
+      if (!isMobiel()) renderer.domElement.requestPointerLock();
+    });
+
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    let vorige = performance.now();
+    function loop(nu) {
+      requestAnimationFrame(loop);
+      const dt = Math.min(0.05, (nu - vorige) / 1000);
+      vorige = nu;
+      beweeg(dt);
+      const m = mik();
+      if (m) { rand.visible = true; rand.position.set(m.x + 0.5, m.y + 0.5, m.z + 0.5); }
+      else rand.visible = false;
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(loop);
+  </script>
+  <script src="smiles-widget.js"></script>
+</body>
+</html>

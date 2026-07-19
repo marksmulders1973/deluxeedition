@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>DELUXE BATTLE 🚀 — DELUXE EDITION</title>
+  <link rel="icon" href="images/logo.jpg"/>
+  <style>
+    :root { --rood:#ff3b3b; --blauw:#3b82ff; }
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    body{background:#05070f;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;
+         overflow:hidden;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
+
+    /* ── HOME ── */
+    #s-home{display:flex;flex-direction:column;align-items:center;gap:18px;padding:20px;text-align:center}
+    .titel{font-size:clamp(28px,7vw,54px);font-weight:900;background:linear-gradient(90deg,var(--rood),var(--blauw));
+           -webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-1px}
+    .subtitel{color:rgba(255,255,255,0.45);font-size:14px}
+    .inp{background:rgba(255,255,255,0.07);color:#fff;border:2px solid rgba(255,255,255,0.15);
+         border-radius:14px;padding:14px 18px;font-size:18px;outline:none;text-align:center;
+         width:min(300px,90vw);font-weight:700}
+    .inp:focus{border-color:var(--blauw)}
+    .inp-code{text-transform:uppercase;letter-spacing:8px;font-size:26px}
+    .knop{border:none;border-radius:14px;padding:14px 28px;font-size:17px;font-weight:900;
+          cursor:pointer;width:min(300px,90vw);transition:transform .1s}
+    .knop:active{transform:scale(.96)}
+    .knop-rood{background:linear-gradient(90deg,#c92020,var(--rood));color:#fff}
+    .knop-blauw{background:linear-gradient(90deg,#1a55cc,var(--blauw));color:#fff}
+    .knop-grijs{background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7)}
+    .knop-groen{background:linear-gradient(90deg,#15803d,#22c55e);color:#fff}
+    .lijn{width:min(300px,90vw);border:none;border-top:1px solid rgba(255,255,255,0.1)}
+    .fout{color:#ff6b6b;font-size:13px;min-height:18px}
+
+    /* ── LOBBY ── */
+    #s-lobby{display:none;flex-direction:column;align-items:center;gap:14px;padding:20px;width:100%;max-width:420px}
+    .code-groot{font-size:clamp(40px,12vw,72px);font-weight:900;letter-spacing:12px;
+                background:linear-gradient(90deg,var(--rood),var(--blauw));
+                -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .code-hint{color:rgba(255,255,255,0.35);font-size:13px}
+    .spelerslijst{width:100%;background:rgba(255,255,255,0.04);border-radius:14px;padding:10px;
+                  display:flex;flex-direction:column;gap:6px;min-height:60px}
+    .speler-rij{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:10px;
+                background:rgba(255,255,255,0.05);font-weight:700;font-size:15px}
+    .kleur-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
+    .wacht{color:rgba(255,255,255,0.3);font-size:13px;text-align:center;padding:8px}
+
+    /* ── CANVAS / GAME ── */
+    #s-game{display:none;position:fixed;inset:0}
+    #canvas{display:block;width:100%;height:100%}
+
+    /* HUD bovenin */
+    #hud{position:fixed;top:0;left:0;right:0;z-index:10;padding:8px 12px;
+         display:flex;justify-content:space-between;align-items:center;gap:6px;
+         background:linear-gradient(180deg,rgba(5,7,15,.9),transparent);pointer-events:none}
+    #hud-hp{display:flex;gap:4px;align-items:center}
+    .hart{font-size:18px}
+    #hud-naam{font-weight:900;font-size:14px;opacity:.8}
+    #hud-teller{font-size:13px;opacity:.5}
+
+    /* Spelersbord links boven */
+    #spelersbord{
+      position:fixed;top:48px;left:10px;z-index:10;
+      display:flex;flex-direction:column;gap:4px;pointer-events:none;
+    }
+    .sb-rij{
+      display:flex;align-items:center;gap:7px;
+      background:rgba(5,7,15,.65);border-radius:8px;
+      padding:4px 8px 4px 6px;backdrop-filter:blur(4px);
+      transition:opacity .3s;
+    }
+    .sb-rij.dood{opacity:.35}
+    .sb-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+    .sb-naam{font-size:12px;font-weight:700;white-space:nowrap}
+    .sb-hp{font-size:10px;letter-spacing:1px}
+
+    /* Aftellen overlay */
+    #aftellen{position:fixed;inset:0;z-index:20;display:none;
+              align-items:center;justify-content:center;
+              background:rgba(5,7,15,.7);pointer-events:none}
+    #aftellen-getal{font-size:clamp(80px,20vw,160px);font-weight:900;
+                    background:linear-gradient(90deg,var(--rood),var(--blauw));
+                    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+                    animation:puls .9s ease-in-out infinite}
+    @keyframes puls{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+
+    /* Winnaar overlay */
+    #winnaar{position:fixed;inset:0;z-index:30;display:none;
+             flex-direction:column;align-items:center;justify-content:center;gap:16px;
+             background:rgba(5,7,15,.93);text-align:center;padding:20px}
+    #winnaar-naam{font-size:clamp(32px,8vw,60px);font-weight:900}
+    .confetti{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:29}
+
+    /* Mobiele knoppen */
+    #mobiel{position:fixed;bottom:0;left:0;right:0;z-index:15;display:none;
+            padding:10px 16px 20px;gap:0;pointer-events:none}
+    #joystick-zone{position:absolute;left:16px;bottom:20px;width:140px;height:140px;pointer-events:all}
+    #joystick-achter{width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,.08);
+                     border:2px solid rgba(255,255,255,.15);position:relative}
+    #joystick-knop{width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.3);
+                   position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+                   transition:none}
+    #knop-schiet{position:absolute;right:16px;bottom:20px;
+                 width:90px;height:90px;border-radius:50%;pointer-events:all;
+                 background:linear-gradient(135deg,#c92020,var(--rood));
+                 border:3px solid rgba(255,100,100,.4);
+                 display:flex;align-items:center;justify-content:center;
+                 font-size:32px;color:#fff;font-weight:900;
+                 box-shadow:0 0 30px rgba(255,59,59,.4);cursor:pointer}
+    #knop-schiet:active{transform:scale(.92)}
+
+    .schermnaam{color:rgba(255,255,255,0.5);font-size:13px}
+  </style>
+</head>
+<body>
+
+<!-- ══ HOME ══ -->
+<div id="s-home">
+  <div class="titel">🚀 DELUXE BATTLE</div>
+  <div class="subtitel">ruimte-shooter · tot 10 spelers · schiet op elkaar!</div>
+  <input id="inp-naam" class="inp" placeholder="jouw naam" maxlength="20" autocomplete="off"/>
+  <button class="knop knop-rood" onclick="maakKamer('battle')">⚔️ BATTLE — tegen elkaar</button>
+  <button class="knop" style="background:linear-gradient(90deg,#7c3aed,#a855f7);color:#fff" onclick="maakKamer('coop')">🤖 CO-OP — samen vs de bot</button>
+  <hr class="lijn"/>
+  <input id="inp-code" class="inp inp-code" placeholder="CODE" maxlength="4" autocomplete="off"/>
+  <button class="knop knop-blauw" onclick="joinKamer()">🔑 JOIN</button>
+  <div id="fout-home" class="fout"></div>
+  <a href="index.html" style="color:rgba(255,255,255,0.25);font-size:13px;text-decoration:none">← home</a>
+</div>
+
+<!-- ══ LOBBY ══ -->
+<div id="s-lobby">
+  <div class="schermnaam">📡 WACHTKAMER</div>
+  <div class="code-hint">geef deze code aan je vrienden:</div>
+  <div class="code-groot" id="toon-code">----</div>
+  <div class="spelerslijst" id="spelerslijst">
+    <div class="wacht">wachten op spelers...</div>
+  </div>
+  <div id="fout-lobby" class="fout"></div>
+  <button id="knop-start" class="knop knop-groen" onclick="startSpel()" style="display:none">🚀 START HET SPEL!</button>
+  <div id="wacht-msg" style="color:rgba(255,255,255,0.35);font-size:14px">wachten tot de host start...</div>
+  <button class="knop knop-grijs" onclick="location.reload()">↩ terug</button>
+</div>
+
+<!-- ══ GAME ══ -->
+<div id="s-game">
+  <canvas id="canvas"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="hud-hp"></div>
+    <div id="hud-naam"></div>
+    <div id="hud-teller"></div>
+  </div>
+
+  <!-- Spelersbord links boven -->
+  <div id="spelersbord"></div>
+
+  <!-- Aftellen overlay -->
+  <div id="aftellen"><div id="aftellen-getal">3</div></div>
+
+  <!-- Winnaar overlay -->
+  <div id="winnaar">
+    <div style="font-size:60px" id="winnaar-emoji">🏆</div>
+    <div id="winnaar-naam"></div>
+    <div style="color:rgba(255,255,255,.5);font-size:15px" id="winnaar-sub"></div>
+    <button id="knop-opnieuw" class="knop knop-groen" style="display:none;margin-top:8px" onclick="opnieuw()">🔄 OPNIEUW!</button>
+    <button class="knop knop-grijs" style="margin-top:4px" onclick="location.reload()">↩ terug naar home</button>
+  </div>
+
+  <!-- Mobiele knoppen -->
+  <div id="mobiel">
+    <div id="joystick-zone">
+      <div id="joystick-achter">
+        <div id="joystick-knop"></div>
+      </div>
+    </div>
+    <div id="knop-schiet" ontouchstart="schieten()">💥</div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// DELUXE BATTLE — ruimte-shooter voor iedereen in de klas
+// ══════════════════════════════════════════════════════════
+
+const $ = id => document.getElementById(id);
+
+// ── Spelerstatus ──────────────────────────────────────────
+let mijnNaam = localStorage.getItem('deluxe-speler') || '';
+let mijnCode = '';
+let isHost = false;
+let gameActief = false;
+let kamerId = null;
+let pollInterval = null;
+let kamerData = null;
+let attelInterval = null;
+
+// Game-objecten
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d');
+let W = 800, H = 600; // virtuele arena-grootte
+let schaal = 1, offsetX = 0, offsetY = 0;
+
+// Mijn schip
+let mijn = { x: 400, y: 300, hoek: 0, vx: 0, vy: 0, hp: 3 };
+const SNELHEID = 220;    // pixels/sec
+const DRAG = 0.97;       // luchtweerstand
+const ROTATIE = 3.2;     // rad/sec
+const MAX_V = 300;
+
+// Bullets (lokaal bijgehouden)
+const bullets = [];
+const BULLET_SNELHEID = 500;
+const BULLET_LEVENSDUUR = 1500; // ms
+const SHOOT_COOLDOWN = 350; // ms
+let laatsSchot = 0;
+
+// Input
+const toetsen = {};
+let joystickX = 0, joystickY = 0, joystickActief = false;
+let mobielSchiet = false;
+
+// Tijd
+let vorigeTijd = 0;
+let spawnBescherming = 0; // timestamp tot wanneer ik onkwetsbaar ben
+
+// ── Scherm wisselen ───────────────────────────────────────
+function toon(id) {
+  ['s-home','s-lobby','s-game'].forEach(s => {
+    const el = $(s);
+    if (el) el.style.display = s === id ? (s === 's-game' ? 'block' : 'flex') : 'none';
+  });
+}
+
+// ── API-hulpjes ───────────────────────────────────────────
+async function api(body) {
+  const r = await fetch('/api/arena', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return r.json();
+}
+async function apiGet(code) {
+  const r = await fetch('/api/arena?code=' + code + '&t=' + Date.now(), { cache: 'no-store' });
+  return r.json();
+}
+
+// ── HOME: naam invullen ───────────────────────────────────
+$('inp-naam').value = mijnNaam;
+$('inp-naam').addEventListener('input', () => {
+  mijnNaam = $('inp-naam').value.trim();
+  localStorage.setItem('deluxe-speler', mijnNaam);
+});
+$('inp-code').addEventListener('input', () => {
+  $('inp-code').value = $('inp-code').value.toUpperCase().replace(/[^BCDFGHJKLMNPRSTVWXZ]/g, '');
+});
+$('inp-code').addEventListener('keydown', e => { if (e.key === 'Enter') joinKamer(); });
+$('inp-naam').addEventListener('keydown', e => { if (e.key === 'Enter') $('inp-code').value ? joinKamer() : maakKamer(); });
+
+async function maakKamer(modus) {
+  const naam = $('inp-naam').value.trim();
+  if (!naam) { $('fout-home').textContent = 'Vul eerst je naam in!'; return; }
+  $('fout-home').textContent = 'Kamer aanmaken...';
+  const res = await api({ actie: 'maak', naam, modus });
+  if (res.fout) { $('fout-home').textContent = res.fout; return; }
+  mijnNaam = naam;
+  mijnCode = res.code;
+  isHost = true;
+  toon('s-lobby');
+  $('toon-code').textContent = mijnCode;
+  $('knop-start').style.display = '';
+  $('wacht-msg').style.display = 'none';
+  startPolling();
+}
+
+async function joinKamer() {
+  const naam = $('inp-naam').value.trim();
+  const code = $('inp-code').value.trim().toUpperCase();
+  if (!naam) { $('fout-home').textContent = 'Vul eerst je naam in!'; return; }
+  if (code.length !== 4) { $('fout-home').textContent = 'Code moet 4 letters zijn!'; return; }
+  $('fout-home').textContent = 'Joinen...';
+  const res = await api({ actie: 'join', code, naam });
+  if (res.fout) { $('fout-home').textContent = res.fout; return; }
+  mijnNaam = naam;
+  mijnCode = code;
+  isHost = false;
+
+  // Kamer al actief? Direct het spel in
+  const check = await apiGet(code);
+  if (check && !check.fout && (check.state === 'game' || check.state === 'aftellen')) {
+    beginSpel(check);
+    return;
+  }
+
+  toon('s-lobby');
+  $('toon-code').textContent = mijnCode;
+  $('knop-start').style.display = 'none';
+  $('wacht-msg').style.display = '';
+  startPolling();
+}
+
+// ── LOBBY: pollen ─────────────────────────────────────────
+function startPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(pollen, 1500);
+  pollen();
+}
+
+async function pollen() {
+  const data = await apiGet(mijnCode);
+  if (data.fout) return;
+  kamerData = data;
+
+  if (data.state === 'lobby') {
+    // Spelers-lijst updaten
+    const lijst = $('spelerslijst');
+    if (data.spelers.length === 0) {
+      lijst.innerHTML = '<div class="wacht">wachten op spelers...</div>';
+    } else {
+      lijst.innerHTML = data.spelers.map(sp =>
+        `<div class="speler-rij">
+           <div class="kleur-dot" style="background:${sp.kleur}"></div>
+           <span>${esc(sp.naam)}</span>
+           ${sp.naam === data.host ? ' <span style="opacity:.4;font-size:12px">👑 host</span>' : ''}
+         </div>`
+      ).join('');
+    }
+    if (isHost && data.spelers.length >= 2) {
+      $('knop-start').textContent = `🚀 START! (${data.spelers.length} spelers)`;
+    } else if (isHost) {
+      $('knop-start').textContent = 'Wacht op minstens 2 spelers...';
+      $('knop-start').disabled = data.spelers.length < 2;
+    }
+
+  } else if (data.state === 'aftellen' || data.state === 'game' || data.state === 'klaar') {
+    clearInterval(pollInterval);
+    beginSpel(data);
+  }
+}
+
+async function startSpel() {
+  if (kamerData && kamerData.spelers.length < 2) {
+    $('fout-lobby').textContent = 'Je hebt minstens 2 spelers nodig!';
+    return;
+  }
+  const res = await api({ actie: 'start', naam: mijnNaam, code: mijnCode });
+  if (res.fout) $('fout-lobby').textContent = res.fout;
+}
+
+// ── GAME BEGINNEN ─────────────────────────────────────────
+function beginSpel(data) {
+  kamerData = data;
+  toon('s-game');
+
+  // Maak canvas goed groot
+  const isMobiel = window.matchMedia('(pointer: coarse)').matches;
+  if (isMobiel) $('mobiel').style.display = 'block';
+
+  pasCanvasAan();
+  window.addEventListener('resize', pasCanvasAan);
+
+  // Mijn positie van server
+  const ikServer = data.spelers.find(s => s.naam === mijnNaam);
+  if (ikServer) {
+    mijn.x = ikServer.x; mijn.y = ikServer.y;
+    mijn.hoek = ikServer.hoek; mijn.hp = ikServer.hp;
+  }
+  spawnBescherming = data.startTijd + 1000; // 1 sec extra na starttijd
+
+  // Input
+  document.addEventListener('keydown', e => { toetsen[e.code] = true; e.preventDefault(); });
+  document.addEventListener('keyup',   e => { toetsen[e.code] = false; });
+
+  // Joystick
+  setupJoystick();
+
+  gameActief = true;
+  vorigeTijd = performance.now();
+
+  // Aftellen starten
+  if (data.state === 'aftellen') {
+    toonAftellen(data.startTijd);
+  } else if (data.state === 'game') {
+    $('aftellen').style.display = 'none';
+    startGameLoop();
+  } else if (data.state === 'klaar') {
+    toonWinnaar(data);
+  }
+
+  // Snel pollen voor server-updates
+  pollInterval = setInterval(snelPollen, 220);
+}
+
+let gameLoopGestart = false;
+function startGameLoop() {
+  if (gameLoopGestart) return;
+  gameLoopGestart = true;
+  requestAnimationFrame(gameFrame);
+}
+
+function toonAftellen(startTijd) {
+  $('aftellen').style.display = 'flex';
+  startGameLoop(); // render alvast de arena
+
+  attelInterval = setInterval(() => {
+    const over = Math.ceil((startTijd - Date.now()) / 1000);
+    if (over <= 0) {
+      $('aftellen').style.display = 'none';
+      clearInterval(attelInterval);
+      // Host triggert gamestart
+      if (isHost) api({ actie: 'gamestart', naam: mijnNaam, code: mijnCode });
+    } else {
+      $('aftellen-getal').textContent = over;
+    }
+  }, 200);
+}
+
+async function snelPollen() {
+  const data = await apiGet(mijnCode);
+  if (!data || data.fout) return;
+  kamerData = data;
+
+  if (data.state === 'klaar') {
+    clearInterval(pollInterval);
+    clearInterval(attelInterval);
+    toonWinnaar(data);
+  }
+
+  if (data.state === 'game' && $('aftellen').style.display !== 'none') {
+    $('aftellen').style.display = 'none';
+    clearInterval(attelInterval);
+  }
+}
+
+// ── GAME LOOP ─────────────────────────────────────────────
+function gameFrame(nu) {
+  requestAnimationFrame(gameFrame);
+  const dt = Math.min((nu - vorigeTijd) / 1000, 0.05); // max 50ms stap
+  vorigeTijd = nu;
+
+  if (kamerData?.state === 'game') {
+    updateSpeler(dt);
+    updateBullets(dt);
+    checkTreffers();
+    if (isHost && kamerData.modus === 'coop') updateBot(dt);
+    if (kamerData.modus === 'coop') checkBotBullets();
+  }
+  teken();
+  updateHUD();
+}
+
+function updateSpeler(dt) {
+  if (mijn.hp <= 0) return;
+
+  let roteer = 0, stuw = false;
+
+  // Toetsenbord
+  if (toetsen['ArrowLeft']  || toetsen['KeyA']) roteer -= 1;
+  if (toetsen['ArrowRight'] || toetsen['KeyD']) roteer += 1;
+  if (toetsen['ArrowUp']    || toetsen['KeyW']) stuw = true;
+  if (toetsen['Space']) schieten();
+
+  // Joystick (mobiel)
+  if (joystickActief) {
+    if (Math.abs(joystickX) > 0.15) roteer = joystickX;
+    if (joystickY < -0.3) stuw = true;
+  }
+
+  mijn.hoek += roteer * ROTATIE * dt;
+
+  if (stuw) {
+    mijn.vx += Math.cos(mijn.hoek) * SNELHEID * dt;
+    mijn.vy += Math.sin(mijn.hoek) * SNELHEID * dt;
+  }
+
+  // Drag + maximale snelheid
+  mijn.vx *= Math.pow(DRAG, dt * 60);
+  mijn.vy *= Math.pow(DRAG, dt * 60);
+  const v = Math.hypot(mijn.vx, mijn.vy);
+  if (v > MAX_V) { mijn.vx = mijn.vx / v * MAX_V; mijn.vy = mijn.vy / v * MAX_V; }
+
+  // Bewegen + wrapping
+  mijn.x = (mijn.x + mijn.vx * dt + W) % W;
+  mijn.y = (mijn.y + mijn.vy * dt + H) % H;
+
+  // Elke 200ms naar server sturen (throttle met timestamp)
+  if (!mijn._laatsGestuurd || nu - mijn._laatsGestuurd > 200) {
+    mijn._laatsGestuurd = performance.now();
+    api({ actie: 'beweeg', code: mijnCode, naam: mijnNaam,
+          x: mijn.x, y: mijn.y, hoek: mijn.hoek, vx: mijn.vx, vy: mijn.vy });
+  }
+}
+
+function schieten() {
+  if (mijn.hp <= 0) return;
+  const nu = performance.now();
+  if (nu - laatsSchot < SHOOT_COOLDOWN) return;
+  laatsSchot = nu;
+  bullets.push({
+    x: mijn.x + Math.cos(mijn.hoek) * 22,
+    y: mijn.y + Math.sin(mijn.hoek) * 22,
+    dx: Math.cos(mijn.hoek) * BULLET_SNELHEID + mijn.vx,
+    dy: Math.sin(mijn.hoek) * BULLET_SNELHEID + mijn.vy,
+    t: nu,
+  });
+}
+
+function updateBullets(dt) {
+  const nu = performance.now();
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x = (b.x + b.dx * dt + W) % W;
+    b.y = (b.y + b.dy * dt + H) % H;
+    if (nu - b.t > BULLET_LEVENSDUUR) bullets.splice(i, 1);
+  }
+}
+
+function checkTreffers() {
+  if (!kamerData) return;
+  const coop = kamerData.modus === 'coop';
+
+  // Co-op: mijn bullets raken de bot
+  if (coop && kamerData.bot?.alive) {
+    const bot = kamerData.bot;
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      const dx = b.x - bot.x, dy = b.y - bot.y;
+      if (dx * dx + dy * dy < 28 * 28) {
+        bullets.splice(i, 1);
+        api({ actie: 'schade', code: mijnCode, doelwit: '__bot__' });
+        break;
+      }
+    }
+    return; // in co-op geen friendly fire
+  }
+
+  // Battle: mijn bullets raken andere spelers
+  for (const sp of kamerData.spelers) {
+    if (sp.naam === mijnNaam || !sp.alive) continue;
+    if (sp.spawnTijd && Date.now() < sp.spawnTijd) continue;
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      const dx = b.x - sp.x, dy = b.y - sp.y;
+      if (dx * dx + dy * dy < 18 * 18) {
+        bullets.splice(i, 1);
+        api({ actie: 'schade', code: mijnCode, doelwit: sp.naam });
+        break;
+      }
+    }
+  }
+}
+
+// ── BOT AI (draait alleen op de host) ────────────────────
+const BOT_SNELHEID = 160, BOT_ROTATIE = 2.2, BOT_SHOOT_INTERVAL = 1400;
+let botLokaal = { x: 400, y: 300, hoek: 0, vx: 0, vy: 0, bullets: [], lastShot: 0, lastPush: 0 };
+
+function updateBot(dt) {
+  const bot = kamerData?.bot;
+  if (!bot || !bot.alive) return;
+
+  // Synchroniseer lokale bot-positie met server bij grote afwijking
+  const afst = Math.hypot(botLokaal.x - bot.x, botLokaal.y - bot.y);
+  if (afst > 120) { botLokaal.x = bot.x; botLokaal.y = bot.y; }
+
+  // Zoek dichtstbijzijnde levende speler
+  let doelwit = null, minDist = Infinity;
+  for (const sp of kamerData.spelers) {
+    if (!sp.alive) continue;
+    const d = Math.hypot(sp.x - botLokaal.x, sp.y - botLokaal.y);
+    if (d < minDist) { minDist = d; doelwit = sp; }
+  }
+
+  if (doelwit) {
+    // Roteren naar doelwit
+    const doel = Math.atan2(doelwit.y - botLokaal.y, doelwit.x - botLokaal.x);
+    let diff = doel - botLokaal.hoek;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    botLokaal.hoek += Math.sign(diff) * Math.min(Math.abs(diff), BOT_ROTATIE * dt);
+
+    // Bewegen: richting speler als ver weg, wegvluchten als te dichtbij
+    const rage = 1 + (1 - bot.hp / bot.maxHp) * 0.8; // sneller als bijna dood
+    if (minDist > 140) {
+      botLokaal.vx += Math.cos(botLokaal.hoek) * BOT_SNELHEID * rage * dt;
+      botLokaal.vy += Math.sin(botLokaal.hoek) * BOT_SNELHEID * rage * dt;
+    } else if (minDist < 70) {
+      botLokaal.vx -= Math.cos(botLokaal.hoek) * BOT_SNELHEID * 0.5 * dt;
+      botLokaal.vy -= Math.sin(botLokaal.hoek) * BOT_SNELHEID * 0.5 * dt;
+    }
+
+    // Schieten
+    const nu = performance.now();
+    const interval = Math.max(700, BOT_SHOOT_INTERVAL - (1 - bot.hp / bot.maxHp) * 600);
+    if (nu - botLokaal.lastShot > interval) {
+      botLokaal.lastShot = nu;
+      botLokaal.bullets.push({
+        x: botLokaal.x + Math.cos(botLokaal.hoek) * 30,
+        y: botLokaal.y + Math.sin(botLokaal.hoek) * 30,
+        dx: Math.cos(botLokaal.hoek) * BULLET_SNELHEID * 0.85,
+        dy: Math.sin(botLokaal.hoek) * BULLET_SNELHEID * 0.85,
+        t: nu,
+      });
+    }
+  }
+
+  // Drag + max speed
+  botLokaal.vx *= Math.pow(DRAG, dt * 60);
+  botLokaal.vy *= Math.pow(DRAG, dt * 60);
+  const v = Math.hypot(botLokaal.vx, botLokaal.vy);
+  if (v > MAX_V * 1.1) { botLokaal.vx = botLokaal.vx/v*MAX_V*1.1; botLokaal.vy = botLokaal.vy/v*MAX_V*1.1; }
+
+  botLokaal.x = (botLokaal.x + botLokaal.vx * dt + W) % W;
+  botLokaal.y = (botLokaal.y + botLokaal.vy * dt + H) % H;
+
+  // Bullets updaten + verlopen verwijderen
+  const nu2 = performance.now();
+  botLokaal.bullets = botLokaal.bullets.filter(b => nu2 - b.t < BULLET_LEVENSDUUR);
+  botLokaal.bullets.forEach(b => {
+    b.x = (b.x + b.dx * dt + W) % W;
+    b.y = (b.y + b.dy * dt + H) % H;
+  });
+
+  // Elke 200ms naar server pushen
+  if (nu2 - botLokaal.lastPush > 200) {
+    botLokaal.lastPush = nu2;
+    api({ actie: 'bot_beweeg', code: mijnCode, naam: mijnNaam,
+      x: botLokaal.x, y: botLokaal.y, hoek: botLokaal.hoek,
+      vx: botLokaal.vx, vy: botLokaal.vy,
+      bullets: botLokaal.bullets.map(b => ({ x:b.x, y:b.y, dx:b.dx, dy:b.dy, t:b.t }))
+    });
+  }
+}
+
+// ── BOT BULLETS: raken ze mij? ────────────────────────────
+const geraakt_ids = new Set();
+function checkBotBullets() {
+  if (mijn.hp <= 0 || Date.now() < spawnBescherming) return;
+  const botBullets = kamerData?.bot?.bullets;
+  if (!botBullets) return;
+  for (const b of botBullets) {
+    if (geraakt_ids.has(b.t)) continue;
+    const dx = b.x - mijn.x, dy = b.y - mijn.y;
+    if (dx * dx + dy * dy < 18 * 18) {
+      geraakt_ids.add(b.t);
+      api({ actie: 'schade', code: mijnCode, doelwit: mijnNaam });
+      break;
+    }
+  }
+  // Opruimen: verwijder oude ids
+  if (geraakt_ids.size > 50) geraakt_ids.clear();
+}
+
+// ── TEKENEN ───────────────────────────────────────────────
+function teken() {
+  ctx.save();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Achtergrond: ruimte
+  ctx.fillStyle = '#05070f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Sterren (statisch, op vaste posities)
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  STERREN.forEach(s => ctx.fillRect(s[0] * canvas.width, s[1] * canvas.height, s[2], s[2]));
+
+  // Schaal arena
+  ctx.save();
+  ctx.translate(offsetX, offsetY);
+  ctx.scale(schaal, schaal);
+
+  // Arena-rand
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(0, 0, W, H);
+
+  // Andere spelers
+  if (kamerData) {
+    for (const sp of kamerData.spelers) {
+      if (sp.naam === mijnNaam) continue;
+      tekenSchip(sp.x, sp.y, sp.hoek, sp.kleur, sp.alive, sp.naam, sp.hp, false, sp.spawnTijd);
+    }
+  }
+
+  // Mijn schip
+  const ikData = kamerData?.spelers.find(s => s.naam === mijnNaam);
+  const mijnKleur = ikData?.kleur || '#ffffff';
+  tekenSchip(mijn.x, mijn.y, mijn.hoek, mijnKleur, mijn.hp > 0, mijnNaam, mijn.hp, true, 0);
+
+  // Bot (co-op vijand)
+  if (kamerData?.modus === 'coop') {
+    const botSrc = isHost ? botLokaal : kamerData?.bot;
+    if (botSrc?.alive) {
+      tekenBot(botSrc.x, botSrc.y, botSrc.hoek, botSrc, kamerData.bot);
+    }
+    // Bot bullets tekenen
+    const botBullets = isHost ? botLokaal.bullets : (kamerData?.bot?.bullets || []);
+    ctx.fillStyle = '#ff4400';
+    botBullets.forEach(b => {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  // Bullets
+  ctx.fillStyle = '#fff';
+  bullets.forEach(b => {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.restore();
+  ctx.restore();
+}
+
+function tekenBot(x, y, hoek, lokaal, serverBot) {
+  const bot = serverBot || lokaal;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(hoek);
+
+  // Pulserende gloed
+  const puls = 0.7 + 0.3 * Math.sin(performance.now() / 300);
+  ctx.shadowColor = '#ff4400';
+  ctx.shadowBlur = 30 * puls;
+
+  // Groot kwaad schip (zeskhoek-achtig)
+  ctx.beginPath();
+  ctx.moveTo(34, 0);
+  ctx.lineTo(16, -18);
+  ctx.lineTo(-20, -14);
+  ctx.lineTo(-30, 0);
+  ctx.lineTo(-20, 14);
+  ctx.lineTo(16, 18);
+  ctx.closePath();
+  ctx.fillStyle = '#1a0000';
+  ctx.fill();
+  ctx.strokeStyle = '#ff4400';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  // Oog (midden)
+  ctx.beginPath();
+  ctx.arc(8, 0, 9, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255,68,0,${puls})`;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(8, 0, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+
+  ctx.restore();
+
+  // Naam + HP boven de bot
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 13px system-ui';
+  ctx.fillStyle = '#ff4400';
+  ctx.fillText('👾 BOT', 0, -38);
+  if (bot) {
+    const hpPct = bot.hp / bot.maxHp;
+    // HP-balk
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(-40, -32, 80, 7);
+    ctx.fillStyle = hpPct > 0.5 ? '#22c55e' : hpPct > 0.25 ? '#f59e0b' : '#ff3b3b';
+    ctx.fillRect(-40, -32, 80 * hpPct, 7);
+  }
+  ctx.restore();
+}
+
+function tekenSchip(x, y, hoek, kleur, alive, naam, hp, ikBen, spawnTijd) {
+  if (!alive) return;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(hoek);
+
+  const beschermd = spawnTijd && Date.now() < spawnTijd;
+
+  // Glow als beschermd
+  if (beschermd) {
+    ctx.shadowColor = kleur;
+    ctx.shadowBlur = 20;
+  }
+
+  // Schip (driehoek)
+  ctx.beginPath();
+  ctx.moveTo(20, 0);
+  ctx.lineTo(-12, -11);
+  ctx.lineTo(-8, 0);
+  ctx.lineTo(-12, 11);
+  ctx.closePath();
+  ctx.fillStyle = alive ? kleur : 'rgba(255,255,255,0.1)';
+  ctx.fill();
+
+  // Uitlaat (als beweegt)
+  if (ikBen && (toetsen['ArrowUp'] || toetsen['KeyW'] || joystickY < -0.3)) {
+    ctx.beginPath();
+    ctx.moveTo(-8, -5); ctx.lineTo(-22, 0); ctx.lineTo(-8, 5);
+    ctx.fillStyle = '#f97316';
+    ctx.fill();
+  }
+
+  ctx.restore();
+
+  // Naam + HP boven het schip
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 11px system-ui';
+  ctx.fillStyle = kleur;
+  ctx.fillText(naam, 0, -26);
+  // HP-hartjes
+  const hartjes = '❤'.repeat(Math.max(0, hp));
+  ctx.font = '10px system-ui';
+  ctx.fillText(hartjes, 0, -14);
+  ctx.restore();
+}
+
+// ── HUD ───────────────────────────────────────────────────
+function updateHUD() {
+  if (!kamerData) return;
+  const ikData = kamerData.spelers.find(s => s.naam === mijnNaam);
+  if (ikData) mijn.hp = ikData.hp;
+
+  $('hud-hp').innerHTML = '❤️'.repeat(Math.max(0, mijn.hp)) + '🖤'.repeat(Math.max(0, 3 - mijn.hp));
+  $('hud-naam').textContent = mijnNaam;
+  const levend = kamerData.spelers.filter(s => s.alive).length;
+  $('hud-teller').textContent = kamerData.modus === 'coop' ? (levend + ' spelers over') : (levend + ' over');
+
+  // Bot HP-balk bovenin (co-op)
+  let botBalk = $('bot-hpbalk');
+  if (kamerData.modus === 'coop' && kamerData.bot) {
+    if (!botBalk) {
+      botBalk = document.createElement('div');
+      botBalk.id = 'bot-hpbalk';
+      botBalk.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:15;display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none;min-width:160px';
+      document.body.appendChild(botBalk);
+    }
+    const bot = kamerData.bot;
+    const pct = Math.max(0, bot.hp / bot.maxHp);
+    const kleur = pct > 0.5 ? '#22c55e' : pct > 0.25 ? '#f59e0b' : '#ff3b3b';
+    botBalk.innerHTML = `<span style="font-size:11px;font-weight:700;color:#ff4400;letter-spacing:1px">👾 BOT ${bot.hp}/${bot.maxHp}</span>
+      <div style="width:160px;height:10px;background:rgba(0,0,0,0.6);border-radius:5px;overflow:hidden;border:1px solid rgba(255,68,0,0.4)">
+        <div style="height:100%;width:${(pct*100).toFixed(1)}%;background:${kleur};transition:width .15s;box-shadow:0 0 8px ${kleur}"></div>
+      </div>`;
+    botBalk.style.display = 'flex';
+  } else if (botBalk) {
+    botBalk.style.display = 'none';
+  }
+
+  // Spelersbord: gesorteerd op hp (hoogste bovenaan), dode spelers onderaan
+  const bord = $('spelersbord');
+  const gesorteerd = [...kamerData.spelers].sort((a, b) => {
+    if (a.alive !== b.alive) return b.alive - a.alive;
+    return b.hp - a.hp;
+  });
+  bord.innerHTML = gesorteerd.map(sp => {
+    const hartjes = '❤'.repeat(Math.max(0, sp.hp)) + '♡'.repeat(Math.max(0, 3 - sp.hp));
+    const ikBen = sp.naam === mijnNaam ? ' style="outline:1px solid rgba(255,255,255,.4)"' : '';
+    return `<div class="sb-rij${sp.alive ? '' : ' dood'}"${ikBen}>
+      <div class="sb-dot" style="background:${sp.kleur}"></div>
+      <span class="sb-naam" style="color:${sp.kleur}">${esc(sp.naam)}</span>
+      <span class="sb-hp">${hartjes}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── WINNAAR ───────────────────────────────────────────────
+function toonWinnaar(data) {
+  $('winnaar').style.display = 'flex';
+  if (data.winnaar === 'IEDEREEN') {
+    // Co-op overwinning — iedereen wint samen!
+    $('winnaar-emoji').textContent = '🎉';
+    $('winnaar-naam').textContent = 'JULLIE WINNEN SAMEN!';
+    $('winnaar-naam').style.color = '#22c55e';
+    $('winnaar-sub').textContent = 'De bot is verslagen! Geweldig teamwork!';
+    confettiBurst();
+  } else if (data.winnaar) {
+    const isIk = data.winnaar === mijnNaam;
+    $('winnaar-naam').textContent = isIk ? '🎉 JIJ WINT!' : data.winnaar + ' wint!';
+    $('winnaar-naam').style.color = isIk ? '#ffd93b' : '#fff';
+    $('winnaar-sub').textContent = isIk ? 'Jij bent de laatste die over is!' : 'Beter geluk volgende keer!';
+    $('winnaar-emoji').textContent = isIk ? '🏆' : '💀';
+    if (isIk) confettiBurst();
+  } else {
+    $('winnaar-emoji').textContent = '💀';
+    $('winnaar-naam').textContent = 'Gelijkspel!';
+    $('winnaar-sub').textContent = 'Iedereen is tegelijk gevallen';
+  }
+  if (isHost) $('knop-opnieuw').style.display = '';
+}
+
+async function opnieuw() {
+  const res = await api({ actie: 'reset', naam: mijnNaam, code: mijnCode });
+  if (res.fout) return;
+  mijn.hp = 3; bullets.length = 0;
+  $('winnaar').style.display = 'none';
+  gameLoopGestart = false;
+  pollInterval = setInterval(snelPollen, 220);
+  const data = await apiGet(mijnCode);
+  if (data && !data.fout) beginSpelVanaf(data);
+}
+
+function beginSpelVanaf(data) {
+  kamerData = data;
+  const ikServer = data.spelers.find(s => s.naam === mijnNaam);
+  if (ikServer) { mijn.x = ikServer.x; mijn.y = ikServer.y; mijn.hoek = ikServer.hoek; mijn.hp = ikServer.hp; }
+  spawnBescherming = data.startTijd + 1000;
+  if (data.state === 'aftellen') toonAftellen(data.startTijd);
+}
+
+// ── CANVAS SCHALEN ────────────────────────────────────────
+function pasCanvasAan() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const sx = canvas.width / W, sy = canvas.height / H;
+  schaal = Math.min(sx, sy);
+  offsetX = (canvas.width  - W * schaal) / 2;
+  offsetY = (canvas.height - H * schaal) / 2;
+}
+
+// ── JOYSTICK (MOBIEL) ────────────────────────────────────
+function setupJoystick() {
+  const zone = $('joystick-zone');
+  const knop = $('joystick-knop');
+  let startX = 0, startY = 0, touchId = null;
+
+  zone.addEventListener('touchstart', e => {
+    const t = e.changedTouches[0];
+    touchId = t.identifier;
+    const r = zone.getBoundingClientRect();
+    startX = r.left + r.width / 2;
+    startY = r.top  + r.height / 2;
+    joystickActief = true;
+    e.preventDefault();
+  }, { passive: false });
+
+  zone.addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== touchId) continue;
+      const dx = t.clientX - startX, dy = t.clientY - startY;
+      const len = Math.hypot(dx, dy);
+      const max = 45;
+      const cx = len > max ? dx / len * max : dx;
+      const cy = len > max ? dy / len * max : dy;
+      knop.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
+      joystickX = cx / max;
+      joystickY = cy / max;
+    }
+    e.preventDefault();
+  }, { passive: false });
+
+  const stopJoy = e => {
+    knop.style.transform = 'translate(-50%,-50%)';
+    joystickX = joystickY = 0;
+    joystickActief = false;
+    touchId = null;
+  };
+  zone.addEventListener('touchend', stopJoy);
+  zone.addEventListener('touchcancel', stopJoy);
+}
+
+// ── CONFETTI ──────────────────────────────────────────────
+function confettiBurst() {
+  const DEELTJES = 80;
+  const kleuren = ['#ff3b3b','#3b82ff','#ffd93b','#22c55e','#a855f7','#f97316'];
+  const lijst = [];
+  for (let i = 0; i < DEELTJES; i++) {
+    lijst.push({
+      x: Math.random() * window.innerWidth,
+      y: -20,
+      vx: (Math.random() - 0.5) * 6,
+      vy: Math.random() * 4 + 2,
+      kleur: kleuren[Math.floor(Math.random() * kleuren.length)],
+      r: Math.random() * 7 + 3,
+    });
+  }
+  const cv = document.createElement('canvas');
+  cv.className = 'confetti';
+  cv.width = window.innerWidth; cv.height = window.innerHeight;
+  document.body.appendChild(cv);
+  const c = cv.getContext('2d');
+  let teller = 0;
+  (function frame() {
+    c.clearRect(0, 0, cv.width, cv.height);
+    lijst.forEach(p => {
+      p.x += p.vx; p.y += p.vy; p.vy += 0.15;
+      c.fillStyle = p.kleur;
+      c.beginPath(); c.arc(p.x, p.y, p.r, 0, Math.PI * 2); c.fill();
+    });
+    teller++;
+    if (teller < 120) requestAnimationFrame(frame);
+    else cv.remove();
+  })();
+}
+
+// ── STERREN (eenmalig genereren) ─────────────────────────
+const STERREN = Array.from({ length: 80 }, () => [Math.random(), Math.random(), Math.random() * 2 + 0.5]);
+
+// ── HULPFUNCTIE ───────────────────────────────────────────
+function esc(s) { return String(s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+</script>
+</body>
+</html>

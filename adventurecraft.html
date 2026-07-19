@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Adventure Craft — DELUXE EDITION</title>
+  <link rel="icon" href="images/logo.jpg" />
+  <style>
+    /* ══════════════════════════════════════════════
+       ⛏️ ADVENTURE CRAFT — hak blokken, verzamel
+       grondstoffen, bouw je eigen wereld en graaf
+       naar diamanten! Je wereld wordt bewaard.
+       ══════════════════════════════════════════════ */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #060a18; color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+      padding: 10px; touch-action: manipulation;
+    }
+    header { display: flex; align-items: center; gap: 10px; width: min(560px, 96vw); margin-bottom: 8px; flex-wrap: wrap; }
+    header a { color: rgba(255,255,255,0.5); font-size: 13px; text-decoration: none; }
+    header a:hover { color: #fff; }
+    header h1 { font-size: 18px; letter-spacing: 1px; flex: 1; }
+    .chip { font-size: 13px; font-weight: 800; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2); border-radius: 999px; padding: 6px 12px; }
+    #verzilver { background: linear-gradient(135deg, #1f9d55, #2ecc71); border: none; color: #fff; cursor: pointer; }
+    #verzilver:hover { transform: scale(1.05); }
+    canvas { background: #7ec8ff; border-radius: 14px; border: 2px solid rgba(255,255,255,0.2); width: min(560px, 96vw); touch-action: none; }
+
+    /* hotbar: welk blok bouw je? */
+    #hotbar { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; justify-content: center; }
+    .slot {
+      width: 52px; height: 52px; border-radius: 10px; cursor: pointer;
+      border: 2px solid rgba(255,255,255,0.2); position: relative;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .slot.aan { border-color: #ffd700; box-shadow: 0 0 12px rgba(255,215,0,0.5); }
+    .slot .n { position: absolute; bottom: 2px; right: 5px; font-size: 11px; font-weight: 800; text-shadow: 0 1px 3px #000; }
+    .slot .b { width: 30px; height: 30px; border-radius: 4px; }
+
+    .uitleg { margin-top: 8px; color: rgba(255,255,255,0.45); font-size: 12px; text-align: center; line-height: 1.5; }
+    /* mobiele knoppen */
+    #mobiel { display: flex; gap: 8px; margin-top: 8px; }
+    #mobiel button {
+      width: 58px; height: 48px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.08); color: #fff; font-size: 20px; font-weight: 900; cursor: pointer;
+    }
+    #mobiel button:active { background: rgba(255,255,255,0.25); }
+    #modus { width: auto !important; padding: 0 16px; font-size: 14px !important; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a href="index.html">← home</a>
+    <h1>⛏️ ADVENTURE CRAFT</h1>
+    <div class="chip" id="schat">💎 0 🪙 0 ⚫ 0</div>
+    <button class="chip" id="verzilver" onclick="verzilver()">💰 VERZILVER → KEYS</button>
+    <button class="chip" id="muziek-knop" onclick="wisselMuziek()" style="cursor:pointer">🔊</button>
+  </header>
+
+  <!-- 🎵 DJ NovaX — "Diamant Droom": eigen grot-muziek, gemaakt met
+       obliterator-bouw/maak-muziek-adventure.mjs -->
+  <audio id="muziek" src="/audio/diamant-droom.wav" loop preload="auto"></audio>
+
+  <canvas id="veld" width="560" height="520"></canvas>
+
+  <div id="hotbar"></div>
+
+  <div id="mobiel">
+    <button id="m-links">◀</button>
+    <button id="m-spring">⤒</button>
+    <button id="m-rechts">▶</button>
+    <button id="modus" onclick="wisselModus()">⛏️ HAKKEN</button>
+  </div>
+
+  <div class="uitleg">
+    🎮 lopen: ← → of A/D · springen: spatie of ⤒ · <b>klik op een blok = hakken</b> · zet de knop op 🧱 BOUWEN en klik op een lege plek om te bouwen<br>
+    💎 diamant = 5 keys · 🪙 goud = 2 keys · ⚫ kolen = 1 key — druk op VERZILVER om je schatten om te ruilen! Je wereld wordt automatisch bewaard.
+  </div>
+
+  <script>
+    // ══ DE WERELD ════════════════════════════════════════
+    // blok-nummers: 0 lucht, 1 gras, 2 aarde, 3 steen, 4 hout,
+    // 5 blad, 6 kolen, 7 goud, 8 diamant, 9 bodem (onbreekbaar), 10 plank
+    const T = 28;                 // grootte van 1 blok (pixels)
+    const KOLS = 80, RIJEN = 24;  // wereld: 80 breed, 24 hoog
+    const ZICHT_K = 20, ZICHT_R = 18.5;
+    const NAMEN = { 1: "gras", 2: "aarde", 3: "steen", 4: "hout", 5: "blad", 6: "kolen", 7: "goud", 8: "diamant", 10: "plank" };
+    const KLEUR = { 1: "#4caf50", 2: "#8a5a2b", 3: "#7d7f85", 4: "#7b4a2a", 5: "#2e7d32", 6: "#7d7f85", 7: "#7d7f85", 8: "#7d7f85", 9: "#3a3a3f", 10: "#b07b3c" };
+    const STIP = { 6: "#15151c", 7: "#ffd700", 8: "#4de8ff" };
+
+    let wereld = [], inv = {}, schatten = { kolen: 0, goud: 0, diamant: 0 };
+    let sx = 6, sy = 4, vx = 0, vy = 0, opGrond = false; // speler (in blok-eenheden)
+    let modus = "hak", gekozenBlok = 2, camera = 0;
+
+    function nieuweWereld() {
+      wereld = [];
+      let hoogte = 13;
+      for (let x = 0; x < KOLS; x++) {
+        // heuvelig landschap
+        hoogte += Math.floor(Math.random() * 3) - 1;
+        hoogte = Math.max(9, Math.min(16, hoogte));
+        const kolom = [];
+        for (let y = 0; y < RIJEN; y++) {
+          if (y < hoogte) kolom.push(0);
+          else if (y === hoogte) kolom.push(1);
+          else if (y < hoogte + 4) kolom.push(2);
+          else if (y === RIJEN - 1) kolom.push(9);
+          else {
+            // steen met verstopte schatten (dieper = meer diamant!)
+            const kans = Math.random();
+            if (kans < 0.05 && y > RIJEN - 6) kolom.push(8);
+            else if (kans < 0.08) kolom.push(7);
+            else if (kans < 0.16) kolom.push(6);
+            else kolom.push(3);
+          }
+        }
+        wereld.push(kolom);
+        // af en toe een boom
+        if (Math.random() < 0.14 && x > 2 && x < KOLS - 2) {
+          for (let h = 1; h <= 3; h++) if (hoogte - h >= 0) wereld[x][hoogte - h] = 4;
+          for (let bx = -1; bx <= 1; bx++) for (let by = 4; by <= 5; by++) {
+            const wx = x + bx, wy = hoogte - by;
+            if (wx >= 0 && wx < wereld.length && wy >= 0 && !wereld[wx]) continue;
+          }
+        }
+      }
+      // bladeren aan de bomen (2e rondje, dan bestaan alle kolommen)
+      for (let x = 1; x < KOLS - 1; x++) for (let y = 2; y < RIJEN; y++) {
+        if (wereld[x][y] === 4 && wereld[x][y - 1] !== 4) {
+          for (let bx = -1; bx <= 1; bx++) for (let by = -2; by <= 0; by++) {
+            const c = wereld[x + bx][y + by];
+            if (c === 0) wereld[x + bx][y + by] = 5;
+          }
+        }
+      }
+      inv = { 2: 10 }; // startpakketje: 10 aarde
+      schatten = { kolen: 0, goud: 0, diamant: 0 };
+      sx = 6; sy = 4;
+    }
+
+    // ── bewaren & laden ──────────────────────────────────
+    function bewaar() {
+      try { localStorage.setItem("deluxe-adventurecraft", JSON.stringify({ wereld, inv, schatten, sx: Math.round(sx), sy: Math.round(sy) })); } catch {}
+    }
+    function laad() {
+      try {
+        const d = JSON.parse(localStorage.getItem("deluxe-adventurecraft") || "null");
+        if (d && d.wereld && d.wereld.length === KOLS) {
+          wereld = d.wereld; inv = d.inv || {}; schatten = d.schatten || { kolen: 0, goud: 0, diamant: 0 };
+          sx = d.sx || 6; sy = d.sy || 4;
+          return true;
+        }
+      } catch {}
+      return false;
+    }
+    if (!laad()) nieuweWereld();
+    setInterval(bewaar, 3000); // elke 3 tellen automatisch opslaan
+
+    // ── 🧑‍🎨 jouw avatar als speler ───────────────────────
+    let avatarImg = null;
+    (function () {
+      try {
+        let svg = localStorage.getItem("deluxe-avatar-svg");
+        if (!svg || !svg.startsWith("<svg")) return;
+        svg = svg.replace("<svg ", '<svg width="240" height="260" ');
+        const img = new Image();
+        img.onload = () => { avatarImg = img; };
+        img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+      } catch {}
+    })();
+
+    // ── canvas & tekenen ─────────────────────────────────
+    const canvas = document.getElementById("veld");
+    const ctx = canvas.getContext("2d");
+
+    function teken() {
+      // lucht + zon
+      ctx.fillStyle = "#7ec8ff"; ctx.fillRect(0, 0, 560, 520);
+      ctx.fillStyle = "#fff176"; ctx.beginPath(); ctx.arc(480 - camera * 2 % 560, 60, 26, 0, 7); ctx.fill();
+      // blokken
+      const vanX = Math.floor(camera);
+      for (let x = vanX; x < Math.min(KOLS, vanX + ZICHT_K + 1); x++) {
+        for (let y = 0; y < RIJEN; y++) {
+          const b = wereld[x][y];
+          if (!b) continue;
+          const px = (x - camera) * T, py = y * T - (RIJEN * T - 520);
+          ctx.fillStyle = KLEUR[b];
+          ctx.fillRect(px, py, T, T);
+          if (b === 1) { ctx.fillStyle = "#8a5a2b"; ctx.fillRect(px, py + 9, T, T - 9); ctx.fillStyle = "#4caf50"; ctx.fillRect(px, py, T, 9); }
+          if (STIP[b]) { ctx.fillStyle = STIP[b]; for (let i = 0; i < 4; i++) ctx.fillRect(px + 5 + (i % 2) * 12, py + 6 + Math.floor(i / 2) * 11, 5, 5); }
+          if (b === 9) { ctx.strokeStyle = "#15151c"; ctx.strokeRect(px + 4, py + 4, T - 8, T - 8); }
+          if (b === 10) { ctx.strokeStyle = "rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.moveTo(px, py + 9); ctx.lineTo(px + T, py + 9); ctx.moveTo(px, py + 19); ctx.lineTo(px + T, py + 19); ctx.stroke(); }
+          ctx.strokeStyle = "rgba(0,0,0,0.12)"; ctx.strokeRect(px, py, T, T);
+        }
+      }
+      // de speler (jouw avatar!)
+      const px = (sx - camera) * T, py = sy * T - (RIJEN * T - 520);
+      if (avatarImg) ctx.drawImage(avatarImg, px - 4, py - T, T + 8, T * 2);
+      else { ctx.font = "26px serif"; ctx.textAlign = "center"; ctx.fillText("🙂", px + T / 2, py + 4); ctx.fillStyle = "#3b82ff"; ctx.fillRect(px + 4, py + 6, T - 8, T - 8); }
+      toonSchat();
+    }
+
+    function toonSchat() {
+      document.getElementById("schat").textContent = "💎 " + schatten.diamant + " 🪙 " + schatten.goud + " ⚫ " + schatten.kolen;
+    }
+
+    // ── hotbar (bouwblokken) ─────────────────────────────
+    function bouwHotbar() {
+      const el = document.getElementById("hotbar");
+      el.innerHTML = "";
+      Object.keys(NAMEN).forEach(id => {
+        id = parseInt(id, 10);
+        const n = inv[id] || 0;
+        if (n <= 0 && id !== gekozenBlok) return;
+        const d = document.createElement("div");
+        d.className = "slot" + (gekozenBlok === id ? " aan" : "");
+        d.title = NAMEN[id];
+        d.innerHTML = '<div class="b" style="background:' + KLEUR[id] + '"></div><div class="n">' + n + "</div>";
+        d.onclick = () => { gekozenBlok = id; modus = "bouw"; zetModusKnop(); bouwHotbar(); };
+        el.appendChild(d);
+      });
+    }
+
+    // ── besturing ────────────────────────────────────────
+    const toets = {};
+    document.onkeydown = e => {
+      toets[e.key.toLowerCase()] = true;
+      if (e.code === "Space") { e.preventDefault(); toets[" "] = true; }
+    };
+    document.onkeyup = e => { toets[e.key.toLowerCase()] = false; if (e.code === "Space") toets[" "] = false; };
+    // mobiele knoppen
+    const houd = (id, k) => {
+      const b = document.getElementById(id);
+      b.onpointerdown = () => toets[k] = true;
+      b.onpointerup = b.onpointerleave = () => toets[k] = false;
+    };
+    houd("m-links", "a"); houd("m-rechts", "d"); houd("m-spring", " ");
+
+    function wisselModus() {
+      modus = modus === "hak" ? "bouw" : "hak";
+      zetModusKnop();
+    }
+    function zetModusKnop() {
+      document.getElementById("modus").textContent = modus === "hak" ? "⛏️ HAKKEN" : "🧱 BOUWEN";
+    }
+
+    // klikken = hakken of bouwen (moet dichtbij zijn!)
+    canvas.onpointerdown = e => {
+      const r = canvas.getBoundingClientRect();
+      const mx = (e.clientX - r.left) * (canvas.width / r.width);
+      const my = (e.clientY - r.top) * (canvas.height / r.height);
+      const bx = Math.floor(mx / T + camera);
+      const by = Math.floor((my + (RIJEN * T - 520)) / T);
+      if (bx < 0 || bx >= KOLS || by < 0 || by >= RIJEN) return;
+      const afstand = Math.hypot(bx - sx, by - sy);
+      if (afstand > 4) return; // te ver weg!
+      const blok = wereld[bx][by];
+      if (modus === "hak" && blok && blok !== 9) {
+        wereld[bx][by] = 0;
+        if (blok === 6) schatten.kolen++;
+        else if (blok === 7) schatten.goud++;
+        else if (blok === 8) schatten.diamant++;
+        else inv[blok === 1 ? 2 : blok] = (inv[blok === 1 ? 2 : blok] || 0) + 1; // gras wordt aarde
+        if (blok === 4) inv[10] = (inv[10] || 0) + 2; // hout geeft óók 2 planken!
+        bouwHotbar();
+      } else if (modus === "bouw" && !blok) {
+        if ((inv[gekozenBlok] || 0) <= 0) return;
+        if (Math.round(sx) === bx && (Math.round(sy) === by || Math.round(sy) - 1 === by)) return; // niet op jezelf bouwen
+        wereld[bx][by] = gekozenBlok;
+        inv[gekozenBlok]--;
+        bouwHotbar();
+      }
+    };
+    canvas.oncontextmenu = e => e.preventDefault();
+
+    // ── 💰 schatten verzilveren voor keys ────────────────
+    function verzilver() {
+      const keys = schatten.kolen * 1 + schatten.goud * 2 + schatten.diamant * 5;
+      if (keys <= 0) { alert("Nog geen schatten! Hak ⚫ kolen, 🪙 goud of 💎 diamant uit de steen — hoe dieper, hoe meer diamant."); return; }
+      try {
+        const nu = (parseInt(localStorage.getItem("deluxe-keys") || "0", 10) || 0) + keys;
+        localStorage.setItem("deluxe-keys", String(nu));
+        alert("💰 +" + keys + " keys! (je hebt er nu " + nu + ")");
+      } catch {}
+      schatten = { kolen: 0, goud: 0, diamant: 0 };
+      bewaar(); toonSchat();
+    }
+
+    // ── natuurkunde + spelloop ───────────────────────────
+    function isVast(x, y) {
+      if (x < 0 || x >= KOLS || y >= RIJEN) return true;
+      if (y < 0) return false;
+      const b = wereld[Math.floor(x)][Math.floor(y)];
+      return b !== 0 && b !== 5; // door bladeren kun je heen lopen
+    }
+
+    function stap() {
+      // lopen
+      vx = 0;
+      if (toets["arrowleft"] || toets["a"]) vx = -0.14;
+      if (toets["arrowright"] || toets["d"]) vx = 0.14;
+      // springen
+      if ((toets[" "] || toets["arrowup"] || toets["w"]) && opGrond) { vy = -0.42; opGrond = false; }
+      vy = Math.min(vy + 0.03, 0.5); // zwaartekracht
+
+      // opzij (botsen met muren)
+      let nx = sx + vx;
+      const vrij = !isVast(nx, sy) && !isVast(nx, sy - 1) && !isVast(nx + 0.9, sy) && !isVast(nx + 0.9, sy - 1);
+      if (vrij) sx = nx;
+      else if (vx !== 0 && opGrond) {
+        // 1 blokje hoog? Dan stap je er vanzelf op (lekker soepel lopen)
+        const bovenVrij = !isVast(nx, sy - 1) && !isVast(nx + 0.9, sy - 1) && !isVast(nx, sy - 2) && !isVast(nx + 0.9, sy - 2);
+        if (bovenVrij) { sy -= 1; sx = nx; }
+      }
+      // omhoog/omlaag
+      let ny = sy + vy;
+      if (vy > 0 && (isVast(sx, ny + 0.01) || isVast(sx + 0.9, ny + 0.01))) { sy = Math.floor(ny); vy = 0; opGrond = true; }
+      else if (vy < 0 && (isVast(sx, ny - 1) || isVast(sx + 0.9, ny - 1))) { vy = 0; }
+      else { sy = ny; opGrond = false; }
+      // in een gat gevallen? terug naar boven
+      if (sy > RIJEN + 2) { sy = 2; sx = Math.max(2, Math.min(KOLS - 3, sx)); vy = 0; }
+
+      // camera volgt je
+      camera = Math.max(0, Math.min(KOLS - ZICHT_K, sx - ZICHT_K / 2));
+      teken();
+      requestAnimationFrame(stap);
+    }
+
+    // ── 🎵 muziek: "Diamant Droom" van DJ NovaX ──────────
+    // Browsers mogen pas geluid spelen na je eerste klik of toets —
+    // daarom starten we de muziek bij de eerste actie.
+    const muziek = document.getElementById("muziek");
+    muziek.volume = 0.55;
+    let muziekAan = true;
+    try { muziekAan = localStorage.getItem("deluxe-ac-muziek") !== "uit"; } catch {}
+    function zetMuziekKnop() { document.getElementById("muziek-knop").textContent = muziekAan ? "🔊" : "🔇"; }
+    function wisselMuziek() {
+      muziekAan = !muziekAan;
+      try { localStorage.setItem("deluxe-ac-muziek", muziekAan ? "aan" : "uit"); } catch {}
+      if (muziekAan) muziek.play().catch(() => {}); else muziek.pause();
+      zetMuziekKnop();
+    }
+    function startMuziek() {
+      if (muziekAan && muziek.paused) muziek.play().catch(() => {});
+      document.removeEventListener("pointerdown", startMuziek);
+      document.removeEventListener("keydown", startMuziek);
+    }
+    document.addEventListener("pointerdown", startMuziek);
+    document.addEventListener("keydown", startMuziek);
+    zetMuziekKnop();
+
+    zetModusKnop(); bouwHotbar(); teken(); stap();
+  </script>
+  <script src="smiles-widget.js"></script>
+</body>
+</html>

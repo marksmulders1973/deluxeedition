@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Keys Winkel — DELUXE EDITION</title>
+  <link rel="icon" href="images/logo.jpg" />
+  <style>
+    /* ══════════════════════════════════════════════
+       DE KEYS-WINKEL 🗝️ — verdien keys door te spelen,
+       koop er skins mee in de avatar-maker.
+       Echte euro-bundels staan op BINNENKORT (papa-zaak!).
+       ══════════════════════════════════════════════ */
+    :root { --rood: #ff3b3b; --blauw: #3b82ff; --zwart: #060a18; --goud: #ffd700; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--zwart); color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px;
+    }
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(500px 350px at 15% 20%, rgba(255,215,0,0.08), transparent 70%),
+        radial-gradient(500px 350px at 85% 80%, rgba(40,110,255,0.12), transparent 70%);
+    }
+    header { display: flex; align-items: center; gap: 14px; margin: 4px 0 6px; position: relative; z-index: 1; width: min(760px, 96vw); }
+    header img { width: 54px; border-radius: 10px; }
+    header h1 { font-size: 22px; letter-spacing: 1px; flex: 1; }
+    header a { color: rgba(255,255,255,0.5); font-size: 13px; text-decoration: none; }
+    header a:hover { color: #fff; }
+    .saldo {
+      font-size: 16px; font-weight: 900; color: var(--goud);
+      background: rgba(255,215,0,0.1); border: 1.5px solid rgba(255,215,0,0.5);
+      border-radius: 999px; padding: 9px 18px;
+    }
+
+    .blok {
+      position: relative; z-index: 1; width: min(760px, 96vw);
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 20px; padding: 20px; margin-top: 16px;
+    }
+    .blok h2 { font-size: 17px; margin-bottom: 8px; }
+    .blok p { font-size: 14px; color: rgba(255,255,255,0.65); line-height: 1.55; }
+    .blok.gratis { border-color: rgba(46,204,113,0.45); }
+    .blok.gratis h2 { color: #2ecc71; }
+
+    #dagbonus {
+      margin-top: 12px; background: linear-gradient(135deg, #1f9d55, #2ecc71);
+      color: #fff; border: none; border-radius: 14px; padding: 13px 26px;
+      font-size: 15px; font-weight: 900; cursor: pointer; transition: transform 0.12s;
+    }
+    #dagbonus:hover { transform: scale(1.04); }
+    #dagbonus:disabled { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.4); cursor: default; transform: none; }
+
+    .bundels { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-top: 14px; }
+    .bundel {
+      background: rgba(255,255,255,0.05); border: 2px solid rgba(255,215,0,0.3);
+      border-radius: 18px; padding: 18px 14px; text-align: center;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .bundel:hover { transform: translateY(-5px); box-shadow: 0 10px 34px rgba(255,215,0,0.18); }
+    .bundel .aantal { font-size: 26px; font-weight: 900; color: var(--goud); }
+    .bundel .prijs { font-size: 15px; font-weight: 800; color: rgba(255,255,255,0.8); margin-top: 4px; }
+    .bundel .badge { display: inline-block; font-size: 10.5px; font-weight: 800; background: rgba(255,59,59,0.25); border: 1px solid rgba(255,59,59,0.6); color: #ff8080; border-radius: 999px; padding: 2px 9px; margin-top: 8px; }
+    .bundel.mega { border-color: var(--rood); background: linear-gradient(160deg, rgba(255,59,59,0.12), rgba(178,106,255,0.12)); }
+    .bundel.mega .aantal { font-size: 30px; background: linear-gradient(90deg, #ff5940, #ffd700, #b26aff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .bundel button {
+      margin-top: 10px; width: 100%; border: none; border-radius: 12px; padding: 11px;
+      font-size: 13px; font-weight: 900; cursor: pointer;
+      background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.55);
+      border: 1px dashed rgba(255,255,255,0.3);
+    }
+    footer { margin-top: 26px; font-size: 12px; color: rgba(255,255,255,0.35); position: relative; z-index: 1; padding-bottom: 20px; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <img src="images/logo.jpg" alt="logo" />
+    <div style="flex:1">
+      <h1>🗝️ KEYS WINKEL</h1>
+      <a href="index.html">← terug naar home</a>
+    </div>
+    <div class="saldo" id="saldo">🗝️ 0</div>
+  </header>
+
+  <div class="blok gratis">
+    <h2>🎮 GRATIS keys verdienen</h2>
+    <p>Elk punt dat je scoort in je eigen spellen = <b>1 key</b>! Dus: spelen, scoren, sparen — en dan vette skins kopen in de <a href="avatar.html" style="color:#2ecc71">avatar-maker</a>.</p>
+    <button id="dagbonus" onclick="pakBonus()">🎁 DAGBONUS: +5 KEYS</button>
+  </div>
+
+  <div class="blok">
+    <h2>💰 Keys kopen</h2>
+    <p>Deze bundels heeft de baas van Deluxe Edition (Brian) bedacht. Echte betalingen staan nog op <b>BINNENKORT</b> — daarvoor is een echte bank-koppeling nodig en dat mag alleen een volwassene regelen.</p>
+    <div class="bundels">
+      <div class="bundel">
+        <div class="aantal">🗝️ 10</div>
+        <div class="prijs">€ 2,00</div>
+        <button onclick="binnenkort()">🔒 BINNENKORT</button>
+      </div>
+      <div class="bundel">
+        <div class="aantal">🗝️ 50</div>
+        <div class="prijs">€ 10,00</div>
+        <button onclick="binnenkort()">🔒 BINNENKORT</button>
+      </div>
+      <div class="bundel">
+        <div class="aantal">🗝️ 100</div>
+        <div class="prijs">€ 20,00</div>
+        <button onclick="binnenkort()">🔒 BINNENKORT</button>
+      </div>
+      <div class="bundel mega">
+        <div class="aantal">🔥 MEGA 10.000</div>
+        <div class="prijs">€ 120,00</div>
+        <div class="badge">BESTE DEAL</div>
+        <button onclick="binnenkort()">🔒 BINNENKORT</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>deluxeedition.nl — gebouwd door Brian 🎮</footer>
+
+  <script>
+    // ── keys-spaarpot (zelfde sleutel als de spellen) ────
+    function leesKeys() { try { return parseInt(localStorage.getItem("deluxe-keys") || "0", 10) || 0; } catch { return 0; } }
+    function schrijfKeys(n) { try { localStorage.setItem("deluxe-keys", String(Math.max(0, n))); } catch {} }
+    function toonSaldo() { document.getElementById("saldo").textContent = "🗝️ " + leesKeys(); }
+
+    // 🎁 dagbonus: 1× per dag +5 keys
+    function vandaagTekst() { return new Date().toDateString(); }
+    function bonusAlGepakt() { try { return localStorage.getItem("deluxe-dagbonus") === vandaagTekst(); } catch { return false; } }
+    function pakBonus() {
+      if (bonusAlGepakt()) return;
+      schrijfKeys(leesKeys() + 5);
+      try { localStorage.setItem("deluxe-dagbonus", vandaagTekst()); } catch {}
+      toonSaldo(); zetBonusKnop();
+    }
+    function zetBonusKnop() {
+      const b = document.getElementById("dagbonus");
+      if (bonusAlGepakt()) { b.disabled = true; b.textContent = "✅ DAGBONUS GEPAKT — morgen weer!"; }
+    }
+
+    function binnenkort() {
+      alert("🔒 Echte betalingen staan nog uit!\n\nDat mag alleen een volwassene aanzetten (er is een bank-koppeling voor nodig).\n\nTot die tijd: verdien keys GRATIS door je spellen te spelen — elk punt is een key! 🎮");
+    }
+
+    toonSaldo(); zetBonusKnop();
+  </script>
+
+</body>
+</html>

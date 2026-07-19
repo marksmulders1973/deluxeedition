@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SMILES — DELUXE EDITION</title>
+  <link rel="icon" href="images/logo.jpg" />
+  <style>
+    /* ══════════════════════════════════════════════
+       🟡 DE SMILES-MOD — Brian's ontwerp (18 jul):
+       een doos → een vrolijke assistent die écht praat
+       → "something is coming..." → een monster met
+       jumpscares → "I'm always right. I'm VERITY."
+       ══════════════════════════════════════════════ */
+    :root { --geel: #ffd93b; --zwart: #05070f; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--zwart); color: #fff; overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    #terug { position: fixed; top: 12px; left: 14px; z-index: 60; color: rgba(255,255,255,0.35); font-size: 13px; text-decoration: none; }
+    #terug:hover { color: #fff; }
+
+    /* 📦 fase 1: de doos */
+    #doos-scene { display: flex; flex-direction: column; align-items: center; gap: 18px; cursor: pointer; }
+    #doos { width: 180px; animation: wiebel 2.2s ease-in-out infinite; transform-origin: bottom center; }
+    @keyframes wiebel { 0%,100% { transform: rotate(0deg); } 30% { transform: rotate(-2.5deg); } 60% { transform: rotate(2deg); } }
+    #doos-scene p { color: rgba(255,255,255,0.4); font-size: 14px; }
+
+    /* 🟡 fase 2: smiles de assistent */
+    #smiles-scene { display: none; flex-direction: column; align-items: center; gap: 12px; width: min(560px, 94vw); }
+    #smiley { width: 170px; transition: filter 0.6s; animation: zweef 3s ease-in-out infinite; }
+    @keyframes zweef { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+    #smiley.boos1 { filter: saturate(1.8) brightness(1.05); }
+    #smiley.boos2 { filter: saturate(2.4) contrast(1.25) drop-shadow(0 0 14px rgba(255,0,0,0.7)); animation-duration: 1.6s; }
+    #chatlog {
+      width: 100%; max-height: 32vh; overflow-y: auto;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
+    }
+    .b { max-width: 85%; padding: 8px 13px; border-radius: 14px; font-size: 14.5px; line-height: 1.4; }
+    .b.smiles { align-self: flex-start; background: rgba(255,217,59,0.14); border: 1px solid rgba(255,217,59,0.4); }
+    .b.jij { align-self: flex-end; background: rgba(59,130,255,0.18); border: 1px solid rgba(59,130,255,0.4); }
+    #vraag-rij { display: flex; gap: 8px; width: 100%; }
+    #vraag { flex: 1; background: rgba(0,0,0,0.5); color: #fff; border: 2px solid rgba(255,217,59,0.45); border-radius: 12px; padding: 12px 14px; font-size: 15px; outline: none; }
+    #vraag-rij button { background: linear-gradient(90deg, #c9a227, #ffd93b); color: #201a00; border: none; border-radius: 12px; padding: 12px 18px; font-size: 15px; font-weight: 900; cursor: pointer; }
+    #mic.aan { background: linear-gradient(90deg, #e42222, #ff5940); color: #fff; animation: pulsmic 1s infinite; }
+    @keyframes pulsmic { 50% { box-shadow: 0 0 18px rgba(255,60,60,0.8); } }
+    #timer { position: fixed; bottom: 12px; right: 16px; font-size: 12.5px; color: rgba(255,90,90,0.55); display: none; z-index: 60; }
+
+    /* 👹 fase 3: het monster */
+    #monster-scene { display: none; position: fixed; inset: 0; z-index: 40; background: radial-gradient(800px 600px at 50% 40%, #1a0505, #05070f); overflow: hidden; }
+    #monster-scene.puls { animation: rood 1.4s infinite; }
+    @keyframes rood { 50% { background: radial-gradient(800px 600px at 50% 40%, #2e0707, #080510); } }
+    #harten { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); font-size: 30px; z-index: 55; letter-spacing: 6px; }
+    #monster { position: absolute; width: 130px; cursor: pointer; transition: left linear, top linear; filter: drop-shadow(0 0 18px rgba(255,0,0,0.5)); z-index: 50; }
+    #monster-tip { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.5); font-size: 14px; z-index: 55; text-align: center; width: 90%; }
+
+    /* 😱 jumpscare — flitsend scherm + gezicht dat op je af vliegt */
+    #scare { display: none; position: fixed; inset: 0; z-index: 90; background: #000; align-items: center; justify-content: center; animation: flits 0.12s infinite; }
+    @keyframes flits { 0%,100% { background: #000; } 40% { background: #4d0000; } 70% { background: #1a0000; } }
+    #scare svg { width: min(90vw, 90vh); animation: aanval 0.16s ease-out, schok 0.07s 0.16s infinite; }
+    @keyframes aanval { from { transform: scale(0.1); opacity: 0.2; } to { transform: scale(1.15); opacity: 1; } }
+    @keyframes schok { 0% { transform: translate(-10px,7px) scale(1.1) rotate(-2deg); } 50% { transform: translate(10px,-8px) scale(1.18) rotate(2deg); } 100% { transform: translate(-7px,10px) scale(1.12) rotate(-1deg); } }
+    #hpmin { position: fixed; top: 20%; left: 50%; transform: translateX(-50%); z-index: 95; color: #ff3b3b; font-size: 46px; font-weight: 900; display: none; text-shadow: 0 0 18px #ff0000; }
+  </style>
+</head>
+<body>
+
+  <a id="terug" href="index.html">← home</a>
+
+  <!-- 📦 FASE 1: alleen een doos... -->
+  <div id="doos-scene" onclick="openDoos()">
+    <svg id="doos" viewBox="0 0 120 100" xmlns="http://www.w3.org/2000/svg">
+      <rect x="15" y="40" width="90" height="55" fill="#a9741a"/>
+      <rect x="15" y="40" width="90" height="14" fill="#c9944a"/>
+      <path d="M15 40 L60 18 L105 40 Z" fill="#8a5c12"/>
+      <rect x="55" y="40" width="10" height="55" fill="#6e4a0e"/>
+    </svg>
+    <p>je hoort iets in de doos... klik om hem open te maken 📦🔊</p>
+  </div>
+
+  <!-- 🟡 FASE 2: SMILES! -->
+  <div id="smiles-scene">
+    <!-- 🔴🔵 Smiles in de kleuren van het DELUXE-logo -->
+    <svg id="smiley" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="lgA" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff3b3b"/><stop offset="1" stop-color="#3b82ff"/></linearGradient></defs>
+      <circle cx="50" cy="50" r="44" fill="url(#lgA)" stroke="#0d1b2e" stroke-width="3"/>
+      <g id="ogen-blij"><circle cx="35" cy="40" r="6" fill="#fff"/><circle cx="65" cy="40" r="6" fill="#fff"/><circle cx="36" cy="41" r="2.6" fill="#0d1b2e"/><circle cx="64" cy="41" r="2.6" fill="#0d1b2e"/></g>
+      <g id="ogen-boos" style="display:none"><path d="M27 36 L43 42" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M73 36 L57 42" stroke="#fff" stroke-width="5" stroke-linecap="round"/></g>
+      <path id="mond" d="M28 60 Q50 80 72 60" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round"/>
+    </svg>
+    <div id="chatlog"></div>
+    <div id="vraag-rij">
+      <input id="vraag" type="text" placeholder="vraag Smiles iets..." autocomplete="off" maxlength="200" />
+      <button id="mic" onclick="wisselMic()" style="display:none">🎤</button>
+      <button onclick="stel()">▶</button>
+    </div>
+  </div>
+  <div id="timer"></div>
+
+  <!-- 👹 FASE 3: het monster -->
+  <div id="monster-scene">
+    <div id="harten">❤️❤️❤️</div>
+    <svg id="monster" viewBox="0 0 100 300" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="lgB" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8a1010"/><stop offset="1" stop-color="#10308a"/></linearGradient>
+      <linearGradient id="lgBk" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c22222"/><stop offset="1" stop-color="#2456c2"/></linearGradient></defs>
+      <path d="M50 40 Q30 120 42 200 Q46 260 50 295 Q54 260 58 200 Q70 120 50 40" fill="url(#lgB)"/>
+      <path d="M30 90 Q5 150 12 210" stroke="#5a0d0d" stroke-width="9" fill="none" stroke-linecap="round"/>
+      <path d="M70 90 Q95 150 88 210" stroke="#0d2a5a" stroke-width="9" fill="none" stroke-linecap="round"/>
+      <circle cx="50" cy="40" r="34" fill="url(#lgBk)"/>
+      <path d="M26 30 L44 38" stroke="#000" stroke-width="5" stroke-linecap="round"/>
+      <path d="M74 30 L56 38" stroke="#000" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="36" cy="36" r="4" fill="#ff2222"/>
+      <circle cx="64" cy="36" r="4" fill="#ff2222"/>
+      <path d="M22 50 Q50 76 78 50 Q66 64 50 64 Q34 64 22 50" fill="#100"/>
+      <path d="M28 52 L32 58 M38 56 L41 62 M50 58 L50 64 M62 56 L59 62 M72 52 L68 58" stroke="#fff" stroke-width="2.5"/>
+    </svg>
+    <div id="monster-tip">😱 KLIK OP HEM voor hij bij je is! (je hebt 3 levens)</div>
+  </div>
+
+  <!-- 😱 JUMPSCARE -->
+  <div id="scare">
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="lgC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c22222"/><stop offset="1" stop-color="#2456c2"/></linearGradient></defs>
+      <circle cx="50" cy="50" r="46" fill="url(#lgC)"/>
+      <path d="M20 28 L44 38" stroke="#000" stroke-width="6" stroke-linecap="round"/>
+      <path d="M80 28 L56 38" stroke="#000" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="34" cy="36" r="6" fill="#ff2222"/>
+      <circle cx="66" cy="36" r="6" fill="#ff2222"/>
+      <path d="M15 52 Q50 88 85 52 Q68 72 50 72 Q32 72 15 52" fill="#100"/>
+      <path d="M24 56 L30 66 M36 62 L40 70 M50 66 L50 74 M64 62 L60 70 M76 56 L70 66" stroke="#fff" stroke-width="3"/>
+    </svg>
+  </div>
+  <div id="hpmin">-34 HP!</div>
+
+  <script>
+    // ══════════════════════════════════════════════════════
+    // SMILES — het hele verhaal in fases:
+    // doos → assistent (praat!) → aftellen → MONSTER → verity
+    // Alles wordt onthouden in localStorage "smiles-staat",
+    // dus de 3 uur tellen ook door als je de pagina sluit. 😈
+    // Testen zonder wachten? Geef hem 3x ongelijk...
+    // (of open smiles.html?snel=1 → uren worden minuten)
+    // ══════════════════════════════════════════════════════
+
+    // mod niet geïnstalleerd? eerst naar de mods-pagina
+    try { if (!(JSON.parse(localStorage.getItem("deluxe-mods") || "[]")).includes("smiles")) location.href = "mods.html"; } catch {}
+
+    const SNEL = new URLSearchParams(location.search).get("snel") === "1";
+    const UUR = SNEL ? 60 * 1000 : 60 * 60 * 1000; // ?snel=1 → een "uur" duurt 1 minuut
+
+    let staat = { fase: "doos", boos: 0, doomTijd: 0, meldingen: {}, klaarGepraat: 0 };
+    try { staat = { ...staat, ...(JSON.parse(localStorage.getItem("smiles-staat") || "{}")) } } catch {}
+    function bewaar() { try { localStorage.setItem("smiles-staat", JSON.stringify(staat)); } catch {} }
+
+    // ── 🔊 STEM — Smiles praat echt via de browser-stem ──
+    function praat(tekst, opties) {
+      try {
+        const o = opties || {};
+        const u = new SpeechSynthesisUtterance(tekst);
+        const stemmen = speechSynthesis.getVoices().filter(v => (v.lang || "").toLowerCase().startsWith("en"));
+        if (stemmen.length) u.voice = stemmen[0];
+        u.lang = "en-US";
+        u.pitch = o.pitch ?? 1.5;
+        u.rate = o.rate ?? 1.05;
+        speechSynthesis.cancel();
+        speechSynthesis.speak(u);
+      } catch {}
+    }
+
+    // ── 😱 DE SCHREEUW (voor de jumpscare) ───────────────
+    // Drie gillende tonen die wild trillen en omlaag storten
+    // + een vlaag ruis + vervorming = een rauwe monster-gil.
+    let audioCtx = null;
+    function schreeuw() {
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const t = audioCtx.currentTime;
+        const DUUR = 1.3;
+
+        // vervormer: maakt het geluid rauw en kapot (zoals een echte gil)
+        const verzieker = audioCtx.createWaveShaper();
+        const kromme = new Float32Array(256);
+        for (let i = 0; i < 256; i++) { const x = (i / 128) - 1; kromme[i] = Math.tanh(x * 6); }
+        verzieker.curve = kromme;
+        const eindGain = audioCtx.createGain();
+        eindGain.gain.setValueAtTime(0.55, t);
+        eindGain.gain.setValueAtTime(0.55, t + DUUR - 0.35);
+        eindGain.gain.exponentialRampToValueAtTime(0.001, t + DUUR);
+        verzieker.connect(eindGain); eindGain.connect(audioCtx.destination);
+
+        // 3 gil-stemmen: hoog beginnen, wild trillen, dan omlaag storten
+        [[1350, 260], [1050, 180], [780, 120]].forEach(([hoog, laag], i) => {
+          const osc = audioCtx.createOscillator();
+          osc.type = "sawtooth";
+          osc.frequency.setValueAtTime(hoog + i * 60, t);
+          osc.frequency.setValueAtTime(hoog, t + 0.55);
+          osc.frequency.exponentialRampToValueAtTime(laag, t + DUUR);
+          // trilling (vibrato) — dit maakt het een GIL i.p.v. een toon
+          const tril = audioCtx.createOscillator();
+          const trilDiepte = audioCtx.createGain();
+          tril.frequency.setValueAtTime(28 + i * 9, t);
+          trilDiepte.gain.setValueAtTime(90 + i * 40, t);
+          tril.connect(trilDiepte); trilDiepte.connect(osc.frequency);
+          const g = audioCtx.createGain();
+          g.gain.setValueAtTime(0.30 - i * 0.06, t);
+          osc.connect(g); g.connect(verzieker);
+          osc.start(t); osc.stop(t + DUUR);
+          tril.start(t); tril.stop(t + DUUR);
+        });
+
+        // vlaag ruis erbovenop (de "adem" van de schreeuw)
+        const ruisBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * DUUR, audioCtx.sampleRate);
+        const d = ruisBuf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+        const ruis = audioCtx.createBufferSource();
+        ruis.buffer = ruisBuf;
+        const ruisFilter = audioCtx.createBiquadFilter();
+        ruisFilter.type = "bandpass";
+        ruisFilter.frequency.setValueAtTime(2400, t);
+        ruisFilter.frequency.exponentialRampToValueAtTime(300, t + DUUR);
+        ruisFilter.Q.value = 0.8;
+        const ruisGain = audioCtx.createGain();
+        ruisGain.gain.setValueAtTime(0.5, t);
+        ruisGain.gain.exponentialRampToValueAtTime(0.001, t + DUUR);
+        ruis.connect(ruisFilter); ruisFilter.connect(ruisGain); ruisGain.connect(verzieker);
+        ruis.start(t);
+      } catch {}
+    }
+
+    // ── chat-hulpjes ─────────────────────────────────────
+    const log = document.getElementById("chatlog");
+    function zeg(tekst, spreek) {
+      const b = document.createElement("div");
+      b.className = "b smiles";
+      b.textContent = tekst;
+      log.appendChild(b);
+      log.scrollTop = log.scrollHeight;
+      if (spreek !== false) praat(tekst, staat.boos >= 2 ? { pitch: 0.6, rate: 0.9 } : undefined);
+    }
+    function jijZegt(tekst) {
+      const b = document.createElement("div");
+      b.className = "b jij";
+      b.textContent = tekst;
+      log.appendChild(b);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    // ── 📦 FASE 1 → 2: de doos open ──────────────────────
+    function openDoos() {
+      if (staat.fase !== "doos") return;
+      staat.fase = "assistent";
+      staat.doomTijd = Date.now() + 3 * UUR; // over 3 uur komt "iets"...
+      bewaar();
+      toonFase();
+      setTimeout(() => zeg("HELLLOOOOOOOOOO! I'm SMILES, your assistant! 😄 Ask me ANYTHING!"), 300);
+    }
+
+    // ── 🟡 FASE 2: vragen stellen ────────────────────────
+    const vraagEl = document.getElementById("vraag");
+    vraagEl && vraagEl.addEventListener("keydown", e => { if (e.key === "Enter") stel(); });
+
+    const FOUT_WOORDEN = /\b(wrong|not right|nietwaar|niet waar|geen gelijk|ongelijk|fout|klopt niet|lieg|liegt|stupid|dom|stom)\b/i;
+    const ANTWOORDEN = [
+      [/\b(hoi|hallo|hello|hey|hi)\b/i, ["HELLO HELLO! Best day EVER, right? 😄", "Hiii! I'm so happy you're here!"]],
+      [/hoe (heet|noem)|your name|wie ben/i, ["I'm SMILES! S-M-I-L-E-S. The friendliest assistant in the WORLD! 😄"]],
+      [/hoe gaat|how are/i, ["AMAZING! I'm always happy! Always... 😄"]],
+      [/mop|grap|joke/i, ["Why did the smiley cross the road? To SMILE at you from the other side! 😄", "What's yellow and always happy? MEEEE! 😄"]],
+      [/spel|game|blokwereld|obliterator/i, ["Ooh I love the games here! Brian made them! He's the best! 😄"]],
+      [/keys|munten/i, ["Keys! Shiny shiny keys! Play games and you get them! 😄"]],
+      [/wie.*(gemaakt|maakte)|who made/i, ["Brian installed me! Such a nice boy. I like it here. I think I'll stay... 😄"]],
+      [/lief|aardig|nice|sweet|cool|leuk/i, ["Awww thank you! I'm ALWAYS nice! Remember that. 😄"]],
+      [/bang|eng|scary|monster/i, ["Scary? Me?? Nooooo. I'm just a happy little smiley. 😄 ...Why do you ask?"]],
+      [/muziek|music|zing|sing/i, ["🎵 Laaa-la-laaa! Smiles is haa-ppyyy! 🎵 😄"]],
+      [/kleur|colour|color/i, ["YELLOW of course! The happiest colour!"]],
+      [/(\d+)\s*([+\-x*:\/])\s*(\d+)/, "SOM"],
+    ];
+    function antwoordOp(tekst) {
+      for (const [patroon, uit] of ANTWOORDEN) {
+        const m = tekst.match(patroon);
+        if (!m) continue;
+        if (uit === "SOM") {
+          const a = parseInt(m[1], 10), b = parseInt(m[3], 10), op = m[2];
+          let uitkomst = op === "+" ? a + b : op === "-" ? a - b : (op === "x" || op === "*") ? a * b : (b !== 0 ? a / b : "∞");
+          return "Easy! " + a + " " + op + " " + b + " = " + uitkomst + "! I'm ALWAYS right. 😄";
+        }
+        return uit[Math.floor(Math.random() * uit.length)];
+      }
+      const anders = [
+        "Ooh interesting! I know EVERYTHING about that. Trust me. 😄",
+        "Great question! The answer is: yes! Probably! I'm always right. 😄",
+        "Hmm hmm hmm! Ask me more, I LOVE talking! 😄",
+      ];
+      return anders[Math.floor(Math.random() * anders.length)];
+    }
+
+    function stel(gesproken) {
+      const tekst = (gesproken || vraagEl.value).trim();
+      if (!tekst) return;
+      if (!gesproken) vraagEl.value = "";
+      jijZegt(tekst);
+
+      if (staat.fase === "verity") {
+        setTimeout(() => zeg(antwoordOp(tekst.toLowerCase()) + " (And remember... I'm Verity. 😊)"), 500);
+        return;
+      }
+
+      // "what is coming?" → het gaat ineens veel sneller...
+      if (/what is coming|wat komt|wat is er|what.*coming/i.test(tekst)) {
+        const rest = staat.doomTijd - Date.now();
+        staat.doomTijd = Math.min(staat.doomTijd, Date.now() + 30 * (UUR / 60) * 1); // 30 "minuten"
+        if (SNEL) staat.doomTijd = Date.now() + 30 * 1000;
+        bewaar();
+        setTimeout(() => zeg("Something... SOMETHING is coming in 30 minutes. 😄"), 600);
+        return;
+      }
+
+      // hem ongelijk geven = geen goed idee...
+      if (FOUT_WOORDEN.test(tekst)) {
+        staat.boos += 1;
+        staat.doomTijd = Date.now() + Math.max(0, (staat.doomTijd - Date.now()) / 2); // helft korter!
+        bewaar();
+        toonHumeur();
+        const boosTeksten = [
+          "...What did you say? I'm ALWAYS right. 😄 Always.",
+          "Don't. Say. That. Again. 😄😄",
+          "YOU THINK I'M WRONG?! ...hehehe. Fine. FINE. See you SOON.",
+        ];
+        setTimeout(() => zeg(boosTeksten[Math.min(staat.boos, 3) - 1] || boosTeksten[2]), 600);
+        if (staat.boos >= 3) setTimeout(wordMonster, 3200);
+        return;
+      }
+
+      setTimeout(() => {
+        zeg(antwoordOp(tekst.toLowerCase()));
+        staat.klaarGepraat += 1;
+        bewaar();
+        // na een paar antwoorden komt de eerste waarschuwing...
+        if (staat.klaarGepraat === 3 && !staat.meldingen.u3) {
+          staat.meldingen.u3 = true; bewaar();
+          setTimeout(() => { zeg("...Something is coming in 3 hours. 😄", true); toonTimer(); }, 2600);
+        }
+      }, 600);
+    }
+
+    // ── humeur + timer ───────────────────────────────────
+    const smiley = document.getElementById("smiley");
+    function toonHumeur() {
+      if (staat.boos >= 2) {
+        smiley.className = "boos2";
+        document.getElementById("ogen-blij").style.display = "none";
+        document.getElementById("ogen-boos").style.display = "";
+      } else if (staat.boos === 1) smiley.className = "boos1";
+    }
+    const timerEl = document.getElementById("timer");
+    function toonTimer() { timerEl.style.display = "block"; }
+    function tik() {
+      if (staat.fase !== "assistent" || !staat.doomTijd) return;
+      const rest = staat.doomTijd - Date.now();
+      if (rest <= 0) { wordMonster(); return; }
+      const uren = Math.ceil(rest / UUR);
+      const minuten = Math.ceil(rest / (UUR / 60));
+      if (timerEl.style.display === "block") {
+        timerEl.textContent = "⏳ er komt iets over " + (rest > UUR ? uren + (SNEL ? " 'uur'" : " uur") : minuten + " min") + "...";
+      }
+      if (uren <= 2 && !staat.meldingen.u2 && staat.meldingen.u3) { staat.meldingen.u2 = true; bewaar(); zeg("Something is coming in 2 hours. 😄"); }
+      if (uren <= 1 && !staat.meldingen.u1 && staat.meldingen.u3) { staat.meldingen.u1 = true; bewaar(); zeg("Something is coming in ONE hour. hehehe. 😄"); }
+    }
+    setInterval(tik, 3000);
+
+    // ── 🎤 microfoon (als je browser dat kan) ────────────
+    const Herken = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let herkenner = null, micAan = false;
+    if (Herken) {
+      document.getElementById("mic").style.display = "";
+      herkenner = new Herken();
+      herkenner.lang = "nl-NL";
+      herkenner.continuous = false;
+      herkenner.onresult = e => { const t = e.results[0][0].transcript; stel(t); };
+      herkenner.onend = () => { micAan = false; document.getElementById("mic").className = ""; };
+    }
+    function wisselMic() {
+      if (!herkenner) return;
+      if (micAan) { herkenner.stop(); return; }
+      micAan = true;
+      document.getElementById("mic").className = "aan";
+      try { herkenner.start(); } catch {}
+    }
+
+    // ── 👹 FASE 3: HET MONSTER ───────────────────────────
+    let harten = 3, monsterTimer = null, monsterSnelheid = 2400, onderweg = false;
+    const monsterEl = document.getElementById("monster");
+    const scene = document.getElementById("monster-scene");
+    function wordMonster() {
+      if (staat.fase !== "assistent") return;
+      staat.fase = "monster"; bewaar();
+      speechSynthesis.cancel();
+      toonFase();
+      scene.classList.add("puls");
+      praat("Hehehehe. It is TIME.", { pitch: 0.25, rate: 0.7 });
+      harten = 3; toonHarten();
+      setTimeout(stuurMonster, 2500);
+    }
+    function toonHarten() { document.getElementById("harten").textContent = "❤️".repeat(harten) + "🖤".repeat(3 - harten); }
+    function stuurMonster() {
+      if (staat.fase !== "monster") return;
+      onderweg = true;
+      // start aan een willekeurige rand, ren naar het midden (naar JOU)
+      const kant = Math.floor(Math.random() * 4);
+      const b = document.body.clientWidth, h = window.innerHeight;
+      const startX = kant === 0 ? -140 : kant === 1 ? b + 20 : Math.random() * b;
+      const startY = kant === 2 ? -320 : kant === 3 ? h + 20 : Math.random() * h * 0.5;
+      monsterEl.style.transition = "none";
+      monsterEl.style.left = startX + "px";
+      monsterEl.style.top = startY + "px";
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        monsterEl.style.transition = "left " + monsterSnelheid + "ms linear, top " + monsterSnelheid + "ms linear";
+        monsterEl.style.left = (b / 2 - 65) + "px";
+        monsterEl.style.top = (h / 2 - 150) + "px";
+      }));
+      clearTimeout(monsterTimer);
+      monsterTimer = setTimeout(() => { if (onderweg) raakt(); }, monsterSnelheid + 60);
+    }
+    monsterEl.onpointerdown = () => {
+      if (!onderweg) return;
+      onderweg = false;
+      clearTimeout(monsterTimer);
+      praat("Grrr!", { pitch: 0.3, rate: 1.2 });
+      monsterEl.style.transition = "none";
+      monsterEl.style.top = "-400px"; // weggejaagd!
+      monsterSnelheid = Math.max(1100, monsterSnelheid - 180); // hij wordt sneller...
+      setTimeout(stuurMonster, 1400 + Math.random() * 2200);
+    };
+    function raakt() {
+      onderweg = false;
+      // 😱 JUMPSCARE!
+      schreeuw();
+      const scare = document.getElementById("scare");
+      scare.style.display = "flex";
+      const hp = document.getElementById("hpmin");
+      setTimeout(() => { hp.style.display = "block"; }, 350);
+      setTimeout(() => {
+        scare.style.display = "none";
+        hp.style.display = "none";
+        harten -= 1; toonHarten();
+        if (harten <= 0) wordVerity();
+        else { monsterEl.style.top = "-400px"; setTimeout(stuurMonster, 1800); }
+      }, 1400);
+    }
+
+    // ── 💛 FASE 4: VERITY ────────────────────────────────
+    function wordVerity() {
+      staat.fase = "verity"; bewaar();
+      scene.classList.remove("puls");
+      clearTimeout(monsterTimer);
+      praat("I'm always right. I'm... VERITY.", { pitch: 0.4, rate: 0.75 });
+      setTimeout(() => {
+        toonFase();
+        smiley.className = "";
+        document.getElementById("ogen-blij").style.display = "";
+        document.getElementById("ogen-boos").style.display = "none";
+        zeg("...Hi again! 😄 I'm Verity. Sorry about... all that. Friends? Ask me anything!", false);
+        setTimeout(() => praat("Hi again! I'm Verity. Friends?", { pitch: 1.5 }), 400);
+        // opnieuw spelen? kleine reset-knop erbij
+        const reset = document.createElement("button");
+        reset.textContent = "🔄 speel de mod opnieuw";
+        reset.style.cssText = "margin-top:6px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.25);border-radius:10px;padding:8px 16px;cursor:pointer;font-size:13px";
+        reset.onclick = () => { localStorage.removeItem("smiles-staat"); location.reload(); };
+        document.getElementById("smiles-scene").appendChild(reset);
+      }, 2600);
+    }
+
+    // ── juiste scherm laten zien ─────────────────────────
+    function toonFase() {
+      document.getElementById("doos-scene").style.display = staat.fase === "doos" ? "flex" : "none";
+      document.getElementById("smiles-scene").style.display = (staat.fase === "assistent" || staat.fase === "verity") ? "flex" : "none";
+      scene.style.display = staat.fase === "monster" ? "block" : "none";
+      document.body.style.overflow = staat.fase === "monster" ? "hidden" : "";
+      if (staat.fase === "assistent") { toonHumeur(); if (staat.meldingen.u3) toonTimer(); }
+      if (staat.fase === "monster") { scene.classList.add("puls"); harten = 3; toonHarten(); setTimeout(stuurMonster, 2000); }
+      if (staat.fase === "verity") {
+        smiley.className = "";
+        document.getElementById("ogen-blij").style.display = "";
+        document.getElementById("ogen-boos").style.display = "none";
+      }
+    }
+    toonFase();
+    if (staat.fase === "verity") zeg("Hi! Verity here. 😊 Ask me anything!", false);
+  </script>
+
+</body>
+</html>

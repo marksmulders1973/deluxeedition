@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Maak een Avatar — DELUXE EDITION</title>
+  <link rel="icon" href="images/logo.jpg" />
+  <style>
+    /* ══════════════════════════════════════════════
+       DE AVATAR-MAKER — kies uit precies 1000 dingen!
+       Je avatar wordt bewaard op dit apparaat en komt
+       naast je naam op de homepagina.
+       ══════════════════════════════════════════════ */
+    :root { --rood: #ff3b3b; --blauw: #3b82ff; --zwart: #060a18; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--zwart); color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 16px;
+    }
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(500px 350px at 15% 20%, rgba(255,40,40,0.12), transparent 70%),
+        radial-gradient(500px 350px at 85% 80%, rgba(40,110,255,0.12), transparent 70%);
+    }
+    header { display: flex; align-items: center; gap: 14px; margin: 4px 0 12px; position: relative; z-index: 1; width: min(860px, 96vw); }
+    header img { width: 54px; border-radius: 10px; }
+    header h1 { font-size: 20px; letter-spacing: 1px; flex: 1; }
+    header a { color: rgba(255,255,255,0.5); font-size: 13px; text-decoration: none; }
+    header a:hover { color: #fff; }
+    .teller { font-size: 12px; font-weight: 800; color: #ffd700; background: rgba(255,215,0,0.12); border: 1px solid rgba(255,215,0,0.4); border-radius: 999px; padding: 5px 12px; }
+
+    .maker { position: relative; z-index: 1; display: flex; gap: 18px; width: min(860px, 96vw); flex-wrap: wrap; }
+    .links { flex: 1; min-width: 260px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    #podium {
+      width: 100%; max-width: 320px; border-radius: 20px;
+      border: 2px solid rgba(255,255,255,0.15);
+      box-shadow: 0 0 40px rgba(255,40,40,0.15), 0 0 80px rgba(40,110,255,0.12);
+      overflow: hidden;
+    }
+    #podium svg { display: block; width: 100%; height: auto; }
+    .actie-rij { display: flex; gap: 10px; width: 100%; max-width: 320px; }
+    .actie-rij button {
+      flex: 1; border: none; border-radius: 14px; padding: 13px;
+      font-size: 15px; font-weight: 900; cursor: pointer; color: #fff;
+      transition: transform 0.12s;
+    }
+    .actie-rij button:hover { transform: scale(1.04); }
+    #dobbel { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.25) !important; }
+    #bewaar { background: linear-gradient(90deg, #e42222, #ff5940 45%, #3b82ff 55%, #1f5fe0); }
+
+    .rechts { flex: 1.3; min-width: 300px; }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .tabs button {
+      background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.75);
+      border: 1px solid rgba(255,255,255,0.18); border-radius: 999px;
+      padding: 7px 13px; font-size: 12.5px; font-weight: 800; cursor: pointer;
+    }
+    .tabs button.aan { background: linear-gradient(90deg, rgba(255,59,59,0.35), rgba(59,130,255,0.35)); color: #fff; border-color: rgba(255,255,255,0.5); }
+
+    .opties { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
+    .optie {
+      aspect-ratio: 1; border-radius: 14px; cursor: pointer;
+      background: rgba(255,255,255,0.05); border: 2px solid rgba(255,255,255,0.12);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 800; text-align: center; padding: 4px;
+      transition: transform 0.1s, border-color 0.1s;
+      overflow: hidden;
+    }
+    .optie:hover { transform: scale(1.07); border-color: var(--blauw); }
+    .optie.aan { border-color: #ffd700; box-shadow: 0 0 14px rgba(255,215,0,0.4); }
+    .optie.slot { position: relative; opacity: 0.55; }
+    .optie.slot::after {
+      content: "🔒"; position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; background: rgba(6,10,24,0.45); border-radius: 12px;
+    }
+    .optie.novax { border-color: #b26aff !important; box-shadow: 0 0 14px rgba(178,106,255,0.5); }
+    .optie { position: relative; }
+    .optie .prijs {
+      position: absolute; top: 3px; right: 3px;
+      background: rgba(6,10,24,0.85); border: 1px solid rgba(255,215,0,0.6);
+      color: #ffd700; font-size: 10px; font-weight: 800;
+      border-radius: 999px; padding: 1px 6px; pointer-events: none;
+    }
+    #novax-knop {
+      display: none; width: 100%; max-width: 320px;
+      background: linear-gradient(135deg, #6a2fd0, #b26aff);
+      color: #fff; border: none; border-radius: 14px; padding: 13px;
+      font-size: 15px; font-weight: 900; letter-spacing: 1px; cursor: pointer;
+      box-shadow: 0 0 24px rgba(178,106,255,0.45);
+      transition: transform 0.12s;
+    }
+    #novax-knop:hover { transform: scale(1.04); }
+    .optie svg { width: 85%; height: 85%; }
+    .optie.emo { font-size: 28px; }
+
+    .kleuren { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+    .kleur {
+      width: 32px; height: 32px; border-radius: 999px; cursor: pointer;
+      border: 2px solid rgba(255,255,255,0.25); transition: transform 0.1s;
+    }
+    .kleur:hover { transform: scale(1.15); }
+    .kleur.aan { border-color: #ffd700; box-shadow: 0 0 12px rgba(255,215,0,0.5); }
+    .kleur-kop { margin: 14px 0 0; font-size: 12px; font-weight: 800; color: rgba(255,255,255,0.5); letter-spacing: 1px; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <img src="images/logo.jpg" alt="logo" />
+    <div style="flex:1">
+      <h1>🧑‍🎨 MAAK EEN AVATAR</h1>
+      <a href="index.html">← terug naar home</a>
+    </div>
+    <div class="teller" id="teller"></div>
+    <a class="teller" id="keys-chip" href="winkel.html" style="text-decoration:none" title="naar de keys-winkel">🗝️ 0</a>
+  </header>
+
+  <div class="maker">
+    <div class="links">
+      <div id="podium"></div>
+      <div class="actie-rij">
+        <button id="dobbel" onclick="dobbel()">🎲 VERRAS ME</button>
+        <button id="bewaar" onclick="bewaar()">💾 OPSLAAN</button>
+      </div>
+      <button id="novax-knop" onclick="novaxSkin()">⚡ NOVAX-SKIN AANDOEN 👑</button>
+    </div>
+    <div class="rechts">
+      <div class="tabs" id="tabs"></div>
+      <div class="opties" id="opties"></div>
+      <div id="kleurvak"></div>
+    </div>
+  </div>
+
+  <script>
+    // ══════════════════════════════════════════════════════
+    // ALLE SPULLEN. stijlen × kleuren = samen precies 1000!
+    // ══════════════════════════════════════════════════════
+    const HUID = ["#f9d5b3","#f3c39a","#eab184","#d99e6b","#c78550","#a96a3c","#8a512c","#6b3d20","#523018","#ffdfc4","#e6b8a2","#b07b5a","#b26aff"]; // laatste = NovaX-paars 👑
+    const K14 = ["#15151c","#4a2f1d","#7b4a2a","#e8c25a","#f5f0e6","#9aa0a8","#d43a2f","#ff8c1a","#ff6bd6","#b26aff","#3b82ff","#2ecc71","#22c8c8","#ffd700"];
+    const K10 = ["#15151c","#f5f0e6","#d43a2f","#ff8c1a","#ffd700","#2ecc71","#3b82ff","#b26aff","#ff6bd6","#9aa0a8"];
+    const K8  = ["#ffd700","#c0c0c0","#b0703c","#15151c","#f5f0e6","#d43a2f","#3b82ff","#ff6bd6"];
+    const K6  = ["#ffd700","#c0c0c0","#15151c","#d43a2f","#3b82ff","#ff6bd6"];
+    const BG18 = ["#0a1024","#1a0a24","#240a0a","#0a2416","#241c0a","#0a1f24","#2b2d42","#3a0ca3","#7209b7","#d90429","#ef476f","#ffd166","#06d6a0","#118ab2","#073b4c","#22223b","#4a4e69","#9a8c98"];
+
+    const HAAR = ["geen","stekels","kuif","krullen","lang","afro","mohawk","bloempot","paardenstaart","vleugels","slordig","emo"];
+    const OGEN = ["rond","blij","knipoog","ster","hartjes","boos","slaperig","cool","groot","dicht","verbaasd","spiraal"];
+    const MOND = ["lach","grijns","ooh","recht","tong","vampier","boos","klein","open","meh","fluit","kwijl"];
+    const BAARD = ["geen","snor","sikje","baardje","volle baard","krulsnor","stoppels","lange baard","snor+sikje"];
+    const BRIL = ["geen","rond","vierkant","zonnebril","hartjes","ster","monocle","sport","3D-bril"];
+    const HOED = ["geen","pet","kroon","tovenaar","cowboy","muts","hoge hoed","bandana","helm","feest","kattenoren","vikinghelm","piratenhoed","kerstmuts","halo","duivel","NovaX-helm"];
+    const SHIRT = ["t-shirt","hoodie","hemd","streep","stippen","bliksem","ster","hart","V-hals","overall","gamer","skelet","net pak","harnas","piraat","kersttrui","sport","labjas","NovaX-suit"];
+
+    // 🗝️ KEYS & PRIJZEN — skins kosten 5/10/50/100 keys (Brian's idee).
+    // Keys verdien je door te spelen (elk punt = 1 key) of via de winkel.
+    // De eerste paar spullen per categorie zijn gratis, daarna wordt
+    // het duurder. Gekochte spullen blijven voor altijd van jou.
+    const BETAALDE_VELDEN = ["haar","baard","bril","hoed","shirt","cape","ketting","armband","oorbel","hand"];
+    function prijsVoor(veld, i, naam) {
+      if (!BETAALDE_VELDEN.includes(veld)) return 0;
+      if (String(naam).includes("NovaX")) return 0; // NovaX-spullen: slot, geen prijs
+      if (i <= 2) return 0;
+      if (i <= 5) return 5;
+      if (i <= 8) return 10;
+      if (i <= 11) return 50;
+      return 100;
+    }
+    function leesKeys() { try { return parseInt(localStorage.getItem("deluxe-keys") || "0", 10) || 0; } catch { return 0; } }
+    function schrijfKeys(n) { try { localStorage.setItem("deluxe-keys", String(Math.max(0, n))); } catch {} }
+    function leesGekocht() { try { return JSON.parse(localStorage.getItem("deluxe-gekocht") || "[]"); } catch { return []; } }
+    function isGekocht(veld, i) { return leesGekocht().includes(veld + ":" + i); }
+    function zetGekocht(veld, i) {
+      const g = leesGekocht();
+      if (!g.includes(veld + ":" + i)) { g.push(veld + ":" + i); try { localStorage.setItem("deluxe-gekocht", JSON.stringify(g)); } catch {} }
+    }
+    function toonKeys() { document.getElementById("keys-chip").textContent = "🗝️ " + leesKeys(); }
+
+    // 👑 Alleen voor NovaX! (de speciale spullen hierboven met "NovaX" in
+    // de naam + de paarse huid). Iedereen ziet ze, maar alleen NovaX
+    // kan ze aandoen.
+    const NOVAX_PAARS = "#b26aff";
+    function ingelogdeNaam() {
+      try { return (localStorage.getItem("deluxe-speler") || "").trim(); } catch { return ""; }
+    }
+    function isNovaX() { return ingelogdeNaam() === "NovaX"; }
+    function isOpSlot(naam) { return String(naam).includes("NovaX") && !isNovaX(); }
+    const CAPE = ["geen","held","koning","vampier","gescheurd","sjaal"];
+    const KETTING = ["geen","hanger rond","hanger ster","hanger hart","bliksem","diamant","parels","dikke schakel","sleutel"];
+    const ARMBAND = ["geen","band","spikes","kralen","horloge","polsband","gevlochten","dubbel","glow"];
+    const OORBEL = ["geen","knopjes","ringen","hangers","ster","kruis","veer","diamant"];
+    const HAND = ["niets","⚔️","🛡️","🪄","🎮","⚽","🍕","🍦","🎸","📖","📱","🚩","🌹","💣","🏆","🔦"];
+    const PATROON = ["egaal","stippen","strepen","sterren","ruitjes","gloed"];
+
+    // teller: alle keuzes bij elkaar opgeteld
+    const TOTAAL = HUID.length + HAAR.length*K14.length + OGEN.length + MOND.length
+      + BAARD.length*K6.length + BRIL.length*K10.length + HOED.length*K14.length
+      + SHIRT.length*K14.length + CAPE.length*K14.length + KETTING.length*K8.length
+      + ARMBAND.length*K8.length + OORBEL.length*K6.length + HAND.length
+      + BG18.length + PATROON.length;
+    document.getElementById("teller").textContent = "✨ " + TOTAAL + " dingen!";
+
+    // ── de avatar zelf (wat je gekozen hebt) ─────────────
+    let av = {
+      huid: 3, haar: 1, haarK: 0, ogen: 0, mond: 0, baard: 0, baardK: 0,
+      bril: 0, brilK: 0, hoed: 0, hoedK: 13, shirt: 0, shirtK: 10,
+      cape: 0, capeK: 6, ketting: 0, kettingK: 0, armband: 0, armbandK: 0,
+      oorbel: 0, oorbelK: 0, hand: 0, bg: 0, patroon: 0
+    };
+    try { const b = JSON.parse(localStorage.getItem("deluxe-avatar") || "null"); if (b) av = { ...av, ...b }; } catch {}
+
+    // ══ SVG-TEKENAAR ═════════════════════════════════════
+    function tekenAvatar(a) {
+      const huid = HUID[a.huid], hk = K14[a.haarK], sk = K14[a.shirtK];
+      let s = "";
+
+      // achtergrond + patroon
+      s += `<rect width="240" height="260" fill="${BG18[a.bg]}"/>`;
+      const p = PATROON[a.patroon];
+      if (p === "stippen") for (let i = 0; i < 24; i++) s += `<circle cx="${(i * 53) % 240}" cy="${(i * 37) % 260}" r="5" fill="rgba(255,255,255,0.08)"/>`;
+      if (p === "strepen") for (let i = 0; i < 8; i++) s += `<rect x="${i * 34 - 20}" y="0" width="12" height="260" fill="rgba(255,255,255,0.06)" transform="skewX(-15)"/>`;
+      if (p === "sterren") for (let i = 0; i < 14; i++) s += `<text x="${(i * 67) % 230}" y="${(i * 43) % 250 + 12}" font-size="13" fill="rgba(255,255,255,0.14)">✦</text>`;
+      if (p === "ruitjes") { for (let i = 0; i < 9; i++) s += `<line x1="${i*30}" y1="0" x2="${i*30}" y2="260" stroke="rgba(255,255,255,0.06)"/><line x1="0" y1="${i*30}" x2="240" y2="${i*30}" stroke="rgba(255,255,255,0.06)"/>`; }
+      if (p === "gloed") s += `<circle cx="120" cy="120" r="100" fill="rgba(255,255,255,0.08)"/>`;
+
+      // cape (achter het lijf)
+      const ck = K14[a.capeK], cape = CAPE[a.cape];
+      if (cape === "held") s += `<path d="M60 165 Q120 150 180 165 L200 250 L40 250 Z" fill="${ck}"/>`;
+      if (cape === "koning") s += `<path d="M55 165 Q120 148 185 165 L195 250 L45 250 Z" fill="${ck}"/><path d="M55 165 Q120 148 185 165 L183 180 Q120 165 57 180 Z" fill="#f5f0e6"/>`;
+      if (cape === "vampier") s += `<path d="M55 160 L40 250 L80 220 L120 250 L160 220 L200 250 L185 160 Q120 145 55 160 Z" fill="${ck}"/>`;
+      if (cape === "gescheurd") s += `<path d="M60 165 L50 250 L70 235 L85 252 L100 236 L120 252 L140 236 L155 252 L170 235 L190 250 L180 165 Q120 150 60 165 Z" fill="${ck}"/>`;
+      if (cape === "sjaal") s += `<rect x="78" y="158" width="84" height="20" rx="9" fill="${ck}"/><rect x="140" y="165" width="18" height="55" rx="8" fill="${ck}"/>`;
+
+      // armen (huid) + lijf (shirt)
+      s += `<rect x="42" y="180" width="26" height="60" rx="13" fill="${huid}"/>`;
+      s += `<rect x="172" y="180" width="26" height="60" rx="13" fill="${huid}"/>`;
+      s += `<path d="M64 260 L64 195 Q64 168 96 165 L144 165 Q176 168 176 195 L176 260 Z" fill="${sk}"/>`;
+
+      // shirt-versiering
+      const sh = SHIRT[a.shirt];
+      if (sh === "hoodie") s += `<path d="M92 168 Q120 190 148 168 L148 180 Q120 202 92 180 Z" fill="rgba(0,0,0,0.25)"/><line x1="112" y1="192" x2="112" y2="215" stroke="rgba(255,255,255,0.6)" stroke-width="3"/><line x1="128" y1="192" x2="128" y2="215" stroke="rgba(255,255,255,0.6)" stroke-width="3"/>`;
+      if (sh === "hemd") s += `<path d="M120 168 L108 185 L120 202 L132 185 Z" fill="rgba(255,255,255,0.85)"/><circle cx="120" cy="210" r="3" fill="rgba(0,0,0,0.3)"/><circle cx="120" cy="228" r="3" fill="rgba(0,0,0,0.3)"/>`;
+      if (sh === "streep") for (let i = 0; i < 4; i++) s += `<rect x="64" y="${182 + i * 20}" width="112" height="9" fill="rgba(255,255,255,0.35)"/>`;
+      if (sh === "stippen") for (let i = 0; i < 9; i++) s += `<circle cx="${80 + (i % 3) * 40}" cy="${190 + Math.floor(i / 3) * 25}" r="6" fill="rgba(255,255,255,0.4)"/>`;
+      if (sh === "bliksem") s += `<path d="M126 178 L106 210 L118 210 L110 240 L136 202 L122 202 Z" fill="#ffd700"/>`;
+      if (sh === "ster") s += `<text x="120" y="225" font-size="40" text-anchor="middle">⭐</text>`;
+      if (sh === "hart") s += `<text x="120" y="225" font-size="40" text-anchor="middle">❤️</text>`;
+      if (sh === "V-hals") s += `<path d="M100 165 L120 195 L140 165 Z" fill="${huid}"/>`;
+      if (sh === "overall") s += `<rect x="88" y="185" width="64" height="75" rx="8" fill="rgba(0,0,0,0.3)"/><rect x="88" y="165" width="12" height="30" fill="rgba(0,0,0,0.3)"/><rect x="140" y="165" width="12" height="30" fill="rgba(0,0,0,0.3)"/>`;
+      if (sh === "gamer") s += `<text x="120" y="222" font-size="34" text-anchor="middle">🎮</text>`;
+      if (sh === "skelet") s += `<rect x="112" y="175" width="16" height="60" rx="8" fill="rgba(255,255,255,0.8)"/><rect x="86" y="185" width="68" height="8" rx="4" fill="rgba(255,255,255,0.8)"/><rect x="90" y="203" width="60" height="8" rx="4" fill="rgba(255,255,255,0.8)"/><rect x="94" y="221" width="52" height="8" rx="4" fill="rgba(255,255,255,0.8)"/>`;
+      if (sh === "net pak") s += `<path d="M104 165 L120 192 L136 165 Z" fill="#f5f0e6"/><path d="M120 178 L114 188 L118 214 L122 214 L126 188 Z" fill="#15151c"/><path d="M96 165 L120 196 L104 220 L88 180 Z" fill="rgba(0,0,0,0.3)"/><path d="M144 165 L120 196 L136 220 L152 180 Z" fill="rgba(0,0,0,0.3)"/><circle cx="112" cy="228" r="2.5" fill="#ffd700"/><circle cx="112" cy="242" r="2.5" fill="#ffd700"/>`;
+      if (sh === "harnas") s += `<rect x="70" y="172" width="100" height="10" rx="5" fill="rgba(255,255,255,0.4)"/><path d="M86 186 Q120 178 154 186 L150 226 Q120 236 90 226 Z" fill="rgba(255,255,255,0.22)" stroke="rgba(255,255,255,0.5)" stroke-width="2"/><line x1="120" y1="182" x2="120" y2="232" stroke="rgba(255,255,255,0.5)" stroke-width="2"/><circle cx="96" cy="192" r="2.5" fill="rgba(255,255,255,0.7)"/><circle cx="144" cy="192" r="2.5" fill="rgba(255,255,255,0.7)"/>`;
+      if (sh === "piraat") s += `<path d="M100 165 L120 195 L140 165 Z" fill="#f5f0e6"/><path d="M64 260 L64 200 L176 240 L176 260 Z" fill="rgba(0,0,0,0.35)"/><path d="M64 240 L176 200 L176 218 L64 258 Z" fill="rgba(0,0,0,0.35)"/><text x="120" y="232" font-size="17" text-anchor="middle">💀</text>`;
+      if (sh === "kersttrui") { s += `<path d="M64 200 l14 -9 l14 9 l14 -9 l14 9 l14 -9 l14 9 l14 -9 l14 9 l0 8 l-14 -9 l-14 9 l-14 -9 l-14 9 l-14 -9 l-14 9 l-14 -9 l-14 9 Z" fill="rgba(255,255,255,0.55)"/>`; for (let i = 0; i < 5; i++) s += `<text x="${78 + i * 22}" y="232" font-size="12" fill="rgba(255,255,255,0.75)">❄</text>`; }
+      if (sh === "sport") s += `<text x="120" y="228" font-size="34" font-weight="bold" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-family="Arial">10</text><rect x="64" y="170" width="14" height="30" fill="rgba(255,255,255,0.4)"/><rect x="162" y="170" width="14" height="30" fill="rgba(255,255,255,0.4)"/>`;
+      if (sh === "labjas") s += `<path d="M64 260 L64 195 Q64 170 94 166 L112 166 L112 260 Z" fill="#f5f0e6"/><path d="M176 260 L176 195 Q176 170 146 166 L128 166 L128 260 Z" fill="#f5f0e6"/><path d="M104 165 L120 190 L136 165 Z" fill="${sk}"/><circle cx="120" cy="205" r="2.5" fill="#8893a3"/><circle cx="120" cy="222" r="2.5" fill="#8893a3"/><rect x="86" y="220" width="18" height="16" rx="2" fill="rgba(0,0,0,0.1)"/>`;
+      if (sh === "NovaX-suit") { s += `<path d="M64 260 L64 195 Q64 168 96 165 L144 165 Q176 168 176 195 L176 260 Z" fill="#6a2fd0"/><path d="M104 165 L120 194 L136 165 Z" fill="#f5f0e6"/><path d="M96 165 L120 198 L102 224 L86 182 Z" fill="${NOVAX_PAARS}"/><path d="M144 165 L120 198 L138 224 L154 182 Z" fill="${NOVAX_PAARS}"/><path d="M112 176 L120 184 L128 176 L124 170 L116 170 Z" fill="#ffd700"/><circle cx="110" cy="230" r="2.5" fill="#ffd700"/><circle cx="110" cy="244" r="2.5" fill="#ffd700"/>`; for (let i = 0; i < 4; i++) s += `<text x="${74 + i * 30}" y="${196 + (i % 2) * 34}" font-size="11" fill="#e6d5ff">✦</text>`; }
+
+      // armbanden (op de pols)
+      const ak = K8[a.armbandK], ab = ARMBAND[a.armband];
+      const polsen = [[42, 226], [172, 226]];
+      if (ab !== "geen") polsen.forEach(([x, y]) => {
+        if (ab === "band") s += `<rect x="${x}" y="${y}" width="26" height="9" rx="4" fill="${ak}"/>`;
+        if (ab === "spikes") { s += `<rect x="${x}" y="${y}" width="26" height="9" rx="4" fill="${ak}"/>`; for (let i = 0; i < 3; i++) s += `<path d="M${x + 4 + i * 8} ${y} l4 -7 l4 7 Z" fill="${ak}"/>`; }
+        if (ab === "kralen") for (let i = 0; i < 4; i++) s += `<circle cx="${x + 4 + i * 6}" cy="${y + 4}" r="4" fill="${i % 2 ? ak : "rgba(255,255,255,0.7)"}"/>`;
+        if (ab === "horloge") s += `<rect x="${x}" y="${y}" width="26" height="9" rx="4" fill="${ak}"/><circle cx="${x + 13}" cy="${y + 4}" r="7" fill="#f5f0e6" stroke="${ak}" stroke-width="2"/>`;
+        if (ab === "polsband") s += `<rect x="${x}" y="${y - 2}" width="26" height="13" rx="5" fill="${ak}"/>`;
+        if (ab === "gevlochten") s += `<rect x="${x}" y="${y}" width="26" height="8" rx="4" fill="${ak}"/><path d="M${x} ${y + 4} q6 -5 13 0 q7 5 13 0" stroke="rgba(0,0,0,0.35)" fill="none" stroke-width="2"/>`;
+        if (ab === "dubbel") s += `<rect x="${x}" y="${y - 3}" width="26" height="6" rx="3" fill="${ak}"/><rect x="${x}" y="${y + 6}" width="26" height="6" rx="3" fill="${ak}"/>`;
+        if (ab === "glow") s += `<rect x="${x}" y="${y}" width="26" height="9" rx="4" fill="${ak}"/><rect x="${x - 2}" y="${y - 2}" width="30" height="13" rx="6" fill="none" stroke="${ak}" stroke-width="2" opacity="0.5"/>`;
+      });
+
+      // iets in je hand
+      if (HAND[a.hand] !== "niets") s += `<text x="196" y="252" font-size="30" text-anchor="middle">${HAND[a.hand]}</text>`;
+
+      // nek + hoofd + oren
+      s += `<rect x="106" y="140" width="28" height="30" fill="${huid}"/>`;
+      s += `<circle cx="120" cy="95" r="52" fill="${huid}"/>`;
+      s += `<circle cx="68" cy="95" r="10" fill="${huid}"/><circle cx="172" cy="95" r="10" fill="${huid}"/>`;
+
+      // oorbellen
+      const ok = K6[a.oorbelK], oe = OORBEL[a.oorbel];
+      if (oe === "knopjes") s += `<circle cx="67" cy="99" r="3.5" fill="${ok}"/><circle cx="173" cy="99" r="3.5" fill="${ok}"/>`;
+      if (oe === "ringen") s += `<circle cx="67" cy="106" r="5" fill="none" stroke="${ok}" stroke-width="2.5"/><circle cx="173" cy="106" r="5" fill="none" stroke="${ok}" stroke-width="2.5"/>`;
+      if (oe === "hangers") s += `<line x1="67" y1="100" x2="67" y2="112" stroke="${ok}" stroke-width="2.5"/><circle cx="67" cy="115" r="4" fill="${ok}"/><line x1="173" y1="100" x2="173" y2="112" stroke="${ok}" stroke-width="2.5"/><circle cx="173" cy="115" r="4" fill="${ok}"/>`;
+      if (oe === "ster") s += `<text x="67" y="112" font-size="12" text-anchor="middle" fill="${ok}">★</text><text x="173" y="112" font-size="12" text-anchor="middle" fill="${ok}">★</text>`;
+      if (oe === "kruis") s += `<text x="67" y="114" font-size="13" text-anchor="middle" fill="${ok}">✝</text><text x="173" y="114" font-size="13" text-anchor="middle" fill="${ok}">✝</text>`;
+      if (oe === "veer") s += `<path d="M67 100 q-4 12 0 18 q4 -6 0 -18" fill="${ok}"/><path d="M173 100 q-4 12 0 18 q4 -6 0 -18" fill="${ok}"/>`;
+      if (oe === "diamant") s += `<text x="67" y="113" font-size="11" text-anchor="middle">💎</text><text x="173" y="113" font-size="11" text-anchor="middle">💎</text>`;
+
+      // haar
+      const h = HAAR[a.haar];
+      if (h === "stekels") { for (let i = 0; i < 7; i++) s += `<path d="M${76 + i * 15} 62 l7 -22 l8 20 Z" fill="${hk}"/>`; s += `<path d="M70 75 Q120 30 170 75 Q120 55 70 75" fill="${hk}"/>`; }
+      if (h === "kuif") s += `<path d="M70 78 Q80 38 130 40 Q175 42 172 80 Q168 55 130 58 Q90 60 70 78" fill="${hk}"/><path d="M118 42 Q140 18 165 32 Q145 34 138 48 Z" fill="${hk}"/>`;
+      if (h === "krullen") for (let i = 0; i < 8; i++) s += `<circle cx="${78 + i * 12}" cy="${58 - Math.sin(i / 7 * Math.PI) * 12}" r="13" fill="${hk}"/>`;
+      if (h === "lang") s += `<path d="M66 90 Q64 34 120 34 Q176 34 174 90 L176 160 L156 150 L150 90 Q148 56 120 56 Q92 56 90 90 L84 150 L64 160 Z" fill="${hk}"/>`;
+      if (h === "afro") s += `<circle cx="120" cy="58" r="42" fill="${hk}"/><circle cx="85" cy="72" r="22" fill="${hk}"/><circle cx="155" cy="72" r="22" fill="${hk}"/>`;
+      if (h === "mohawk") s += `<path d="M112 62 L112 18 Q120 8 128 18 L128 62 Z" fill="${hk}"/><path d="M108 64 Q120 50 132 64 Z" fill="${hk}"/>`;
+      if (h === "bloempot") s += `<path d="M68 84 Q68 36 120 36 Q172 36 172 84 L166 84 Q164 52 120 52 Q76 52 74 84 Z" fill="${hk}"/>`;
+      if (h === "paardenstaart") s += `<path d="M70 76 Q120 32 170 76 Q120 54 70 76" fill="${hk}"/><path d="M162 60 Q186 66 182 110 Q176 140 166 148 Q174 110 158 74 Z" fill="${hk}"/><circle cx="163" cy="64" r="6" fill="${hk}"/>`;
+      if (h === "vleugels") s += `<path d="M72 80 Q116 34 168 80 Q120 58 72 80" fill="${hk}"/><path d="M74 78 Q52 84 46 104 Q66 96 78 88 Z" fill="${hk}"/><path d="M166 78 Q188 84 194 104 Q174 96 162 88 Z" fill="${hk}"/>`;
+      if (h === "slordig") { s += `<path d="M70 78 Q120 30 170 78 Q120 52 70 78" fill="${hk}"/>`; for (let i = 0; i < 5; i++) s += `<path d="M${82 + i * 18} 60 q${(i % 2 ? 8 : -8)} -16 ${(i % 2 ? 14 : -2)} -20 q-2 12 2 22 Z" fill="${hk}"/>`; }
+      if (h === "emo") s += `<path d="M68 82 Q78 34 130 38 Q174 42 172 84 Q168 60 140 56 L148 96 L120 62 Q88 60 68 82" fill="${hk}"/>`;
+
+      // ogen
+      const o = OGEN[a.ogen], oy = 88;
+      const oogL = 100, oogR = 140;
+      if (o === "rond") s += `<circle cx="${oogL}" cy="${oy}" r="7" fill="#15151c"/><circle cx="${oogR}" cy="${oy}" r="7" fill="#15151c"/><circle cx="${oogL + 2}" cy="${oy - 2}" r="2" fill="#fff"/><circle cx="${oogR + 2}" cy="${oy - 2}" r="2" fill="#fff"/>`;
+      if (o === "blij") s += `<path d="M${oogL - 8} ${oy + 2} Q${oogL} ${oy - 9} ${oogL + 8} ${oy + 2}" stroke="#15151c" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M${oogR - 8} ${oy + 2} Q${oogR} ${oy - 9} ${oogR + 8} ${oy + 2}" stroke="#15151c" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+      if (o === "knipoog") s += `<circle cx="${oogL}" cy="${oy}" r="7" fill="#15151c"/><path d="M${oogR - 8} ${oy} Q${oogR} ${oy - 8} ${oogR + 8} ${oy}" stroke="#15151c" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+      if (o === "ster") s += `<text x="${oogL}" y="${oy + 6}" font-size="17" text-anchor="middle">⭐</text><text x="${oogR}" y="${oy + 6}" font-size="17" text-anchor="middle">⭐</text>`;
+      if (o === "hartjes") s += `<text x="${oogL}" y="${oy + 6}" font-size="17" text-anchor="middle">❤️</text><text x="${oogR}" y="${oy + 6}" font-size="17" text-anchor="middle">❤️</text>`;
+      if (o === "boos") s += `<line x1="${oogL - 9}" y1="${oy - 9}" x2="${oogL + 6}" y2="${oy - 4}" stroke="#15151c" stroke-width="4" stroke-linecap="round"/><circle cx="${oogL}" cy="${oy + 2}" r="6" fill="#15151c"/><line x1="${oogR + 9}" y1="${oy - 9}" x2="${oogR - 6}" y2="${oy - 4}" stroke="#15151c" stroke-width="4" stroke-linecap="round"/><circle cx="${oogR}" cy="${oy + 2}" r="6" fill="#15151c"/>`;
+      if (o === "slaperig") s += `<path d="M${oogL - 8} ${oy - 2} Q${oogL} ${oy + 6} ${oogL + 8} ${oy - 2}" stroke="#15151c" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M${oogR - 8} ${oy - 2} Q${oogR} ${oy + 6} ${oogR + 8} ${oy - 2}" stroke="#15151c" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+      if (o === "cool") s += `<line x1="${oogL - 8}" y1="${oy}" x2="${oogL + 8}" y2="${oy}" stroke="#15151c" stroke-width="4" stroke-linecap="round"/><line x1="${oogR - 8}" y1="${oy}" x2="${oogR + 8}" y2="${oy}" stroke="#15151c" stroke-width="4" stroke-linecap="round"/>`;
+      if (o === "groot") s += `<circle cx="${oogL}" cy="${oy}" r="11" fill="#fff"/><circle cx="${oogL}" cy="${oy}" r="6" fill="#15151c"/><circle cx="${oogR}" cy="${oy}" r="11" fill="#fff"/><circle cx="${oogR}" cy="${oy}" r="6" fill="#15151c"/>`;
+      if (o === "dicht") s += `<line x1="${oogL - 8}" y1="${oy}" x2="${oogL + 8}" y2="${oy}" stroke="#15151c" stroke-width="3" stroke-linecap="round"/><line x1="${oogR - 8}" y1="${oy}" x2="${oogR + 8}" y2="${oy}" stroke="#15151c" stroke-width="3" stroke-linecap="round"/><line x1="${oogL - 6}" y1="${oy + 5}" x2="${oogL - 9}" y2="${oy + 9}" stroke="#15151c" stroke-width="2"/><line x1="${oogR + 6}" y1="${oy + 5}" x2="${oogR + 9}" y2="${oy + 9}" stroke="#15151c" stroke-width="2"/>`;
+      if (o === "verbaasd") s += `<circle cx="${oogL}" cy="${oy}" r="9" fill="none" stroke="#15151c" stroke-width="3"/><circle cx="${oogL}" cy="${oy}" r="3" fill="#15151c"/><circle cx="${oogR}" cy="${oy}" r="9" fill="none" stroke="#15151c" stroke-width="3"/><circle cx="${oogR}" cy="${oy}" r="3" fill="#15151c"/>`;
+      if (o === "spiraal") s += `<text x="${oogL}" y="${oy + 6}" font-size="16" text-anchor="middle">🌀</text><text x="${oogR}" y="${oy + 6}" font-size="16" text-anchor="middle">🌀</text>`;
+
+      // mond
+      const m = MOND[a.mond], my = 116;
+      if (m === "lach") s += `<path d="M100 ${my} Q120 ${my + 18} 140 ${my}" stroke="#15151c" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+      if (m === "grijns") s += `<path d="M98 ${my} Q120 ${my + 20} 142 ${my} Z" fill="#fff" stroke="#15151c" stroke-width="3"/><line x1="106" y1="${my + 3}" x2="106" y2="${my + 8}" stroke="#ccc" stroke-width="2"/><line x1="120" y1="${my + 5}" x2="120" y2="${my + 12}" stroke="#ccc" stroke-width="2"/><line x1="134" y1="${my + 3}" x2="134" y2="${my + 8}" stroke="#ccc" stroke-width="2"/>`;
+      if (m === "ooh") s += `<ellipse cx="120" cy="${my + 6}" rx="9" ry="12" fill="#15151c"/>`;
+      if (m === "recht") s += `<line x1="104" y1="${my + 4}" x2="136" y2="${my + 4}" stroke="#15151c" stroke-width="4" stroke-linecap="round"/>`;
+      if (m === "tong") s += `<path d="M100 ${my} Q120 ${my + 16} 140 ${my}" stroke="#15151c" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M116 ${my + 8} Q120 ${my + 22} 130 ${my + 9} Q124 ${my + 8} 116 ${my + 8}" fill="#ff6b8a"/>`;
+      if (m === "vampier") s += `<path d="M100 ${my} Q120 ${my + 14} 140 ${my}" stroke="#15151c" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M106 ${my + 2} l4 10 l4 -8 Z" fill="#fff"/><path d="M126 ${my + 4} l4 8 l4 -10 Z" fill="#fff"/>`;
+      if (m === "boos") s += `<path d="M100 ${my + 10} Q120 ${my - 6} 140 ${my + 10}" stroke="#15151c" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+      if (m === "klein") s += `<path d="M112 ${my + 2} Q120 ${my + 9} 128 ${my + 2}" stroke="#15151c" stroke-width="3.5" fill="none" stroke-linecap="round"/>`;
+      if (m === "open") s += `<path d="M100 ${my} Q120 ${my + 26} 140 ${my} Z" fill="#5c1a1a"/><path d="M108 ${my + 12} Q120 ${my + 20} 132 ${my + 12} L132 ${my + 15} Q120 ${my + 22} 108 ${my + 15} Z" fill="#ff6b8a"/>`;
+      if (m === "meh") s += `<path d="M104 ${my + 6} L124 ${my + 2} L136 ${my + 7}" stroke="#15151c" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+      if (m === "fluit") s += `<circle cx="122" cy="${my + 5}" r="5" fill="#15151c"/><text x="145" y="${my}" font-size="13">🎵</text>`;
+      if (m === "kwijl") s += `<path d="M100 ${my} Q120 ${my + 16} 140 ${my}" stroke="#15151c" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M132 ${my + 8} q3 8 -1 12 q-4 -4 1 -12" fill="#7fd4ff"/>`;
+
+      // baard/snor
+      const bd = BAARD[a.baard], bk = K6[a.baardK];
+      if (bd === "snor") s += `<path d="M98 108 Q120 118 142 108 Q120 124 98 108" fill="${bk}"/>`;
+      if (bd === "sikje") s += `<path d="M112 128 Q120 142 128 128 Q120 134 112 128" fill="${bk}"/>`;
+      if (bd === "baardje") s += `<path d="M96 112 Q120 150 144 112 Q140 138 120 140 Q100 138 96 112" fill="${bk}"/>`;
+      if (bd === "volle baard") s += `<path d="M76 96 Q80 152 120 152 Q160 152 164 96 Q160 140 120 142 Q80 140 76 96" fill="${bk}"/><path d="M98 108 Q120 118 142 108 Q120 126 98 108" fill="${bk}"/>`;
+      if (bd === "krulsnor") s += `<path d="M100 110 Q118 118 120 112 Q122 118 140 110" stroke="${bk}" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="97" cy="108" r="4" fill="${bk}"/><circle cx="143" cy="108" r="4" fill="${bk}"/>`;
+      if (bd === "stoppels") for (let i = 0; i < 12; i++) s += `<circle cx="${100 + (i % 4) * 13}" cy="${118 + Math.floor(i / 4) * 8}" r="1.4" fill="${bk}"/>`;
+      if (bd === "lange baard") s += `<path d="M84 100 Q86 170 120 178 Q154 170 156 100 Q150 150 120 154 Q90 150 84 100" fill="${bk}"/>`;
+      if (bd === "snor+sikje") s += `<path d="M98 108 Q120 118 142 108 Q120 124 98 108" fill="${bk}"/><path d="M112 128 Q120 142 128 128 Q120 134 112 128" fill="${bk}"/>`;
+
+      // bril
+      const br = BRIL[a.bril], brk = K10[a.brilK];
+      if (br === "rond") s += `<circle cx="${oogL}" cy="${oy}" r="13" fill="none" stroke="${brk}" stroke-width="3.5"/><circle cx="${oogR}" cy="${oy}" r="13" fill="none" stroke="${brk}" stroke-width="3.5"/><line x1="113" y1="${oy}" x2="127" y2="${oy}" stroke="${brk}" stroke-width="3.5"/>`;
+      if (br === "vierkant") s += `<rect x="${oogL - 13}" y="${oy - 11}" width="26" height="22" rx="4" fill="none" stroke="${brk}" stroke-width="3.5"/><rect x="${oogR - 13}" y="${oy - 11}" width="26" height="22" rx="4" fill="none" stroke="${brk}" stroke-width="3.5"/><line x1="113" y1="${oy}" x2="127" y2="${oy}" stroke="${brk}" stroke-width="3.5"/>`;
+      if (br === "zonnebril") s += `<rect x="${oogL - 14}" y="${oy - 10}" width="28" height="20" rx="7" fill="${brk}"/><rect x="${oogR - 14}" y="${oy - 10}" width="28" height="20" rx="7" fill="${brk}"/><line x1="113" y1="${oy - 4}" x2="127" y2="${oy - 4}" stroke="${brk}" stroke-width="4"/>`;
+      if (br === "hartjes") s += `<text x="${oogL}" y="${oy + 8}" font-size="26" text-anchor="middle" fill="${brk}">♥</text><text x="${oogR}" y="${oy + 8}" font-size="26" text-anchor="middle" fill="${brk}">♥</text>`;
+      if (br === "ster") s += `<text x="${oogL}" y="${oy + 8}" font-size="26" text-anchor="middle" fill="${brk}">★</text><text x="${oogR}" y="${oy + 8}" font-size="26" text-anchor="middle" fill="${brk}">★</text>`;
+      if (br === "monocle") s += `<circle cx="${oogR}" cy="${oy}" r="13" fill="none" stroke="${brk}" stroke-width="3.5"/><line x1="${oogR + 10}" y1="${oy + 9}" x2="${oogR + 14}" y2="${oy + 26}" stroke="${brk}" stroke-width="2.5"/>`;
+      if (br === "sport") s += `<path d="M84 ${oy - 10} L156 ${oy - 10} L152 ${oy + 10} L88 ${oy + 10} Z" fill="${brk}" opacity="0.85"/>`;
+      if (br === "3D-bril") s += `<rect x="${oogL - 13}" y="${oy - 10}" width="26" height="20" rx="3" fill="#d43a2f" opacity="0.8"/><rect x="${oogR - 13}" y="${oy - 10}" width="26" height="20" rx="3" fill="#3b82ff" opacity="0.8"/><rect x="85" y="${oy - 12}" width="70" height="5" fill="#f5f0e6"/>`;
+
+      // ketting (op de borst)
+      const kt = KETTING[a.ketting], kk = K8[a.kettingK];
+      if (kt !== "geen") {
+        s += `<path d="M100 168 Q120 186 140 168" stroke="${kk}" stroke-width="3.5" fill="none"/>`;
+        if (kt === "hanger rond") s += `<circle cx="120" cy="190" r="7" fill="${kk}"/>`;
+        if (kt === "hanger ster") s += `<text x="120" y="197" font-size="15" text-anchor="middle" fill="${kk}">★</text>`;
+        if (kt === "hanger hart") s += `<text x="120" y="197" font-size="15" text-anchor="middle" fill="${kk}">♥</text>`;
+        if (kt === "bliksem") s += `<path d="M123 182 L114 196 L120 196 L117 208 L127 193 L121 193 Z" fill="${kk}"/>`;
+        if (kt === "diamant") s += `<text x="120" y="198" font-size="15" text-anchor="middle">💎</text>`;
+        if (kt === "parels") for (let i = 0; i < 7; i++) { const t = i / 6; const x = 100 + t * 40; const y = 168 + Math.sin(t * Math.PI) * 17; s += `<circle cx="${x}" cy="${y}" r="4" fill="${kk}"/>`; }
+        if (kt === "dikke schakel") s += `<path d="M98 166 Q120 190 142 166" stroke="${kk}" stroke-width="8" fill="none" stroke-linecap="round"/>`;
+        if (kt === "sleutel") s += `<text x="120" y="200" font-size="16" text-anchor="middle">🗝️</text>`;
+      }
+
+      // hoed (bovenop!)
+      const hd = HOED[a.hoed], hdk = K14[a.hoedK];
+      if (hd === "pet") s += `<path d="M72 62 Q76 26 120 26 Q164 26 168 62 Z" fill="${hdk}"/><path d="M118 58 L190 58 Q196 64 188 68 L118 66 Z" fill="${hdk}"/><circle cx="120" cy="28" r="5" fill="${hdk}"/>`;
+      if (hd === "kroon") s += `<path d="M78 58 L78 30 L96 46 L120 20 L144 46 L162 30 L162 58 Z" fill="${hdk}"/><circle cx="78" cy="28" r="5" fill="${hdk}"/><circle cx="120" cy="18" r="5" fill="${hdk}"/><circle cx="162" cy="28" r="5" fill="${hdk}"/><circle cx="100" cy="50" r="4" fill="#d43a2f"/><circle cx="120" cy="46" r="4" fill="#3b82ff"/><circle cx="140" cy="50" r="4" fill="#2ecc71"/>`;
+      if (hd === "tovenaar") s += `<path d="M74 60 L166 60 L172 68 L68 68 Z" fill="${hdk}"/><path d="M88 62 Q112 -14 134 8 Q120 8 116 24 Q140 20 152 62 Z" fill="${hdk}"/><text x="122" y="48" font-size="14" fill="#ffd700">★</text>`;
+      if (hd === "cowboy") s += `<path d="M62 62 Q60 74 78 72 L162 72 Q180 74 178 62 Q160 58 156 56 L152 34 Q150 22 138 24 L102 24 Q90 22 88 34 L84 56 Q80 58 62 62 Z" fill="${hdk}"/><rect x="86" y="50" width="68" height="8" fill="rgba(0,0,0,0.25)"/>`;
+      if (hd === "muts") s += `<path d="M74 66 Q74 24 120 24 Q166 24 166 66 L166 74 L74 74 Z" fill="${hdk}"/><rect x="72" y="62" width="96" height="14" rx="7" fill="rgba(255,255,255,0.85)"/><circle cx="120" cy="18" r="9" fill="rgba(255,255,255,0.9)"/>`;
+      if (hd === "hoge hoed") s += `<rect x="88" y="8" width="64" height="52" rx="4" fill="${hdk}"/><rect x="70" y="56" width="100" height="10" rx="5" fill="${hdk}"/><rect x="88" y="44" width="64" height="8" fill="rgba(255,255,255,0.25)"/>`;
+      if (hd === "bandana") s += `<path d="M70 74 Q74 40 120 40 Q166 40 170 74 Q120 56 70 74" fill="${hdk}"/><path d="M162 62 l20 -8 l-6 14 l12 2 l-20 8 Z" fill="${hdk}"/>`;
+      if (hd === "helm") s += `<path d="M72 76 Q72 22 120 22 Q168 22 168 76 L156 76 L156 60 L84 60 L84 76 Z" fill="${hdk}"/><rect x="112" y="22" width="16" height="40" fill="rgba(255,255,255,0.3)"/>`;
+      if (hd === "feest") s += `<path d="M96 60 L120 4 L144 60 Z" fill="${hdk}"/><circle cx="120" cy="6" r="6" fill="#ffd700"/><circle cx="112" cy="34" r="3.5" fill="#fff"/><circle cx="126" cy="46" r="3.5" fill="#fff"/><circle cx="118" cy="22" r="3.5" fill="#fff"/>`;
+      if (hd === "kattenoren") s += `<path d="M80 62 L72 26 L108 46 Z" fill="${hdk}"/><path d="M160 62 L168 26 L132 46 Z" fill="${hdk}"/><path d="M84 54 L80 36 L100 46 Z" fill="#ff9ab8"/><path d="M156 54 L160 36 L140 46 Z" fill="#ff9ab8"/>`;
+      if (hd === "vikinghelm") s += `<path d="M76 70 Q76 30 120 30 Q164 30 164 70 Z" fill="${hdk}"/><path d="M78 52 Q60 40 58 18 Q76 24 84 40 Z" fill="#f5f0e6"/><path d="M162 52 Q180 40 182 18 Q164 24 156 40 Z" fill="#f5f0e6"/><rect x="76" y="62" width="88" height="8" fill="rgba(0,0,0,0.25)"/>`;
+      if (hd === "piratenhoed") s += `<path d="M62 60 Q70 26 120 26 Q170 26 178 60 Q150 46 120 46 Q90 46 62 60 Z" fill="${hdk}"/><path d="M62 60 Q90 70 120 70 Q150 70 178 60 Q150 52 120 52 Q90 52 62 60" fill="rgba(0,0,0,0.25)"/><text x="120" y="44" font-size="16" text-anchor="middle">💀</text>`;
+      if (hd === "kerstmuts") s += `<path d="M76 62 Q80 26 124 24 Q168 24 172 44 Q178 56 168 54 Q160 34 124 38 Q90 42 88 62 Z" fill="${hdk}"/><path d="M74 58 Q120 44 168 52 L166 68 Q120 56 76 70 Z" fill="#f5f0e6"/><circle cx="174" cy="50" r="8" fill="#f5f0e6"/>`;
+      if (hd === "halo") s += `<ellipse cx="120" cy="22" rx="34" ry="9" fill="none" stroke="#ffd700" stroke-width="6"/><ellipse cx="120" cy="22" rx="34" ry="9" fill="none" stroke="#fff3b0" stroke-width="2"/>`;
+      if (hd === "duivel") s += `<path d="M84 58 Q70 40 74 20 Q90 32 94 50 Z" fill="${hdk}"/><path d="M156 58 Q170 40 166 20 Q150 32 146 50 Z" fill="${hdk}"/>`;
+      if (hd === "NovaX-helm") s += `<path d="M70 78 Q70 20 120 20 Q170 20 170 78 L158 78 L158 66 L82 66 L82 78 Z" fill="#6a2fd0"/><path d="M78 60 Q80 30 120 30 Q160 30 162 60 Z" fill="${NOVAX_PAARS}"/><rect x="84" y="62" width="72" height="12" rx="6" fill="#e6d5ff" opacity="0.9"/><line x1="120" y1="20" x2="120" y2="6" stroke="${NOVAX_PAARS}" stroke-width="4"/><circle cx="120" cy="4" r="5" fill="#e6d5ff"/><text x="120" y="52" font-size="16" font-weight="bold" text-anchor="middle" fill="#ffd700" font-family="Arial">N</text><path d="M66 78 Q70 84 78 82 L162 82 Q170 84 174 78" stroke="${NOVAX_PAARS}" stroke-width="3" fill="none" opacity="0.6"/>`;
+
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 260">${s}</svg>`;
+    }
+
+    // ══ MENU'S ═══════════════════════════════════════════
+    // per tabblad: welke stijl-lijst + welke kleuren + welke velden
+    const TABS = [
+      { naam: "🖐️ Huid", lijst: HUID.map((k, i) => ({ swatch: k })), veld: "huid" },
+      { naam: "💇 Haar", lijst: HAAR, veld: "haar", kleuren: K14, kleurVeld: "haarK" },
+      { naam: "👀 Ogen", lijst: OGEN, veld: "ogen" },
+      { naam: "👄 Mond", lijst: MOND, veld: "mond" },
+      { naam: "🧔 Baard", lijst: BAARD, veld: "baard", kleuren: K6, kleurVeld: "baardK" },
+      { naam: "👓 Bril", lijst: BRIL, veld: "bril", kleuren: K10, kleurVeld: "brilK" },
+      { naam: "🎩 Hoed", lijst: HOED, veld: "hoed", kleuren: K14, kleurVeld: "hoedK" },
+      { naam: "👕 Shirt", lijst: SHIRT, veld: "shirt", kleuren: K14, kleurVeld: "shirtK" },
+      { naam: "🦸 Cape", lijst: CAPE, veld: "cape", kleuren: K14, kleurVeld: "capeK" },
+      { naam: "📿 Ketting", lijst: KETTING, veld: "ketting", kleuren: K8, kleurVeld: "kettingK" },
+      { naam: "⌚ Armband", lijst: ARMBAND, veld: "armband", kleuren: K8, kleurVeld: "armbandK" },
+      { naam: "💎 Oorbel", lijst: OORBEL, veld: "oorbel", kleuren: K6, kleurVeld: "oorbelK" },
+      { naam: "✋ In je hand", lijst: HAND, veld: "hand", emo: true },
+      { naam: "🌈 Achtergrond", lijst: BG18.map(k => ({ swatch: k })), veld: "bg", extraLijst: PATROON, extraVeld: "patroon" }
+    ];
+    let actieveTab = 0;
+
+    function teken() {
+      document.getElementById("podium").innerHTML = tekenAvatar(av);
+    }
+
+    function bouwTabs() {
+      const el = document.getElementById("tabs");
+      el.innerHTML = "";
+      TABS.forEach((t, i) => {
+        const b = document.createElement("button");
+        b.textContent = t.naam;
+        b.className = i === actieveTab ? "aan" : "";
+        b.onclick = () => { actieveTab = i; bouwTabs(); bouwOpties(); };
+        el.appendChild(b);
+      });
+    }
+
+    function bouwOpties() {
+      const t = TABS[actieveTab];
+      const el = document.getElementById("opties");
+      el.innerHTML = "";
+      t.lijst.forEach((item, i) => {
+        const d = document.createElement("div");
+        // 👑 NovaX-spullen zitten op slot voor anderen (ook de paarse huid)
+        const slot = (typeof item === "string" && isOpSlot(item))
+          || (t.veld === "huid" && i === HUID.length - 1 && !isNovaX());
+        const isNovaXDing = (typeof item === "string" && String(item).includes("NovaX"))
+          || (t.veld === "huid" && i === HUID.length - 1);
+        // 🗝️ kost dit spulletje keys, en heb je het al gekocht?
+        const prijs = prijsVoor(t.veld, i, item);
+        const teKoop = prijs > 0 && !isGekocht(t.veld, i);
+        d.className = "optie" + (av[t.veld] === i ? " aan" : "") + (t.emo ? " emo" : "")
+          + (slot ? " slot" : "") + (isNovaXDing && !slot ? " novax" : "");
+        if (item.swatch) { d.style.background = item.swatch; d.textContent = ""; }
+        else if (t.emo) d.textContent = item === "niets" ? "🚫" : item;
+        else {
+          // mini-voorbeeldje: teken de avatar met deze keuze
+          const test = { ...av, [t.veld]: i };
+          d.innerHTML = tekenAvatar(test);
+        }
+        if (teKoop && !slot) {
+          const badge = document.createElement("div");
+          badge.className = "prijs";
+          badge.textContent = "🗝️" + prijs;
+          d.appendChild(badge);
+        }
+        d.title = typeof item === "string" ? item : "";
+        d.onclick = () => {
+          if (slot) { alert("🔒 Dit is de geheime NovaX-skin — alleen NovaX zelf kan hem dragen!"); return; }
+          if (teKoop) {
+            const saldo = leesKeys();
+            if (saldo < prijs) {
+              alert("🗝️ Deze skin kost " + prijs + " keys en jij hebt er " + saldo + ".\n\nVerdien keys door je spellen te spelen (elk punt = 1 key) of pak de gratis dagbonus in de winkel!");
+              return;
+            }
+            if (!confirm("\"" + item + "\" kopen voor 🗝️ " + prijs + " keys?\n(Je hebt er " + saldo + ")")) return;
+            schrijfKeys(saldo - prijs);
+            zetGekocht(t.veld, i);
+            toonKeys();
+          }
+          av[t.veld] = i; teken(); bouwOpties();
+        };
+        el.appendChild(d);
+      });
+      // kleurenbalk (als dit tabblad kleuren heeft)
+      const kv = document.getElementById("kleurvak");
+      kv.innerHTML = "";
+      if (t.kleuren) {
+        kv.innerHTML = '<div class="kleur-kop">Kleur</div>';
+        const rij = document.createElement("div"); rij.className = "kleuren";
+        t.kleuren.forEach((k, i) => {
+          const c = document.createElement("div");
+          c.className = "kleur" + (av[t.kleurVeld] === i ? " aan" : "");
+          c.style.background = k;
+          c.onclick = () => { av[t.kleurVeld] = i; teken(); bouwOpties(); };
+          rij.appendChild(c);
+        });
+        kv.appendChild(rij);
+      }
+      if (t.extraLijst) {
+        kv.innerHTML += '<div class="kleur-kop">Patroon</div>';
+        const rij = document.createElement("div"); rij.className = "kleuren";
+        t.extraLijst.forEach((p, i) => {
+          const c = document.createElement("div");
+          c.className = "kleur" + (av[t.extraVeld] === i ? " aan" : "");
+          c.style.background = "rgba(255,255,255,0.1)";
+          c.style.width = "auto"; c.style.borderRadius = "999px"; c.style.padding = "5px 12px";
+          c.style.height = "auto"; c.style.fontSize = "12px"; c.style.fontWeight = "800";
+          c.textContent = p;
+          c.onclick = () => { av[t.extraVeld] = i; teken(); bouwOpties(); };
+          rij.appendChild(c);
+        });
+        kv.appendChild(rij);
+      }
+    }
+
+    // ⚡ de geheime NovaX-skin in één klik (alleen zichtbaar voor NovaX)
+    function novaxSkin() {
+      av = { ...av,
+        huid: HUID.length - 1,               // paarse huid
+        hoed: HOED.indexOf("NovaX-helm"),    // paarse helm
+        hoedK: 9,                            // paars
+        shirt: SHIRT.indexOf("NovaX-suit"),  // paars fancy pak
+        shirtK: 9,
+        cape: 1, capeK: 9,                   // paarse heldencape erbij 😎
+        ogen: 7                              // coole ogen
+      };
+      teken(); bouwOpties();
+    }
+    if (isNovaX()) document.getElementById("novax-knop").style.display = "block";
+
+    // 🎲 alles willekeurig! Maar wel eerlijk: alleen spullen die gratis
+    // zijn of die je al gekocht hebt (en NovaX-spullen alleen voor NovaX).
+    function dobbel() {
+      const r = n => Math.floor(Math.random() * n);
+      const eerlijk = (veld, lijst) => {
+        const mag = [];
+        lijst.forEach((item, i) => {
+          if (typeof item === "string" && isOpSlot(item)) return;
+          if (veld === "huid" && i === HUID.length - 1 && !isNovaX()) return;
+          if (prijsVoor(veld, i, item) > 0 && !isGekocht(veld, i)) return;
+          mag.push(i);
+        });
+        return mag[r(mag.length)];
+      };
+      av = {
+        huid: eerlijk("huid", HUID), haar: eerlijk("haar", HAAR), haarK: r(K14.length),
+        ogen: r(OGEN.length), mond: r(MOND.length), baard: eerlijk("baard", BAARD), baardK: r(K6.length),
+        bril: eerlijk("bril", BRIL), brilK: r(K10.length), hoed: eerlijk("hoed", HOED), hoedK: r(K14.length),
+        shirt: eerlijk("shirt", SHIRT), shirtK: r(K14.length), cape: eerlijk("cape", CAPE), capeK: r(K14.length),
+        ketting: eerlijk("ketting", KETTING), kettingK: r(K8.length), armband: eerlijk("armband", ARMBAND), armbandK: r(K8.length),
+        oorbel: eerlijk("oorbel", OORBEL), oorbelK: r(K6.length), hand: eerlijk("hand", HAND), bg: r(BG18.length), patroon: r(PATROON.length)
+      };
+      teken(); bouwOpties();
+    }
+
+    // 💾 opslaan → homepagina toont je avatar naast je naam
+    function bewaar() {
+      try {
+        localStorage.setItem("deluxe-avatar", JSON.stringify(av));
+        localStorage.setItem("deluxe-avatar-svg", tekenAvatar(av));
+      } catch {}
+      location.href = "index.html";
+    }
+
+    // wat je nu al draagt is van jou (anders zou je oude avatar ineens
+    // "gekocht" moeten worden — niet eerlijk!)
+    BETAALDE_VELDEN.forEach(veld => { if (av[veld] > 0) zetGekocht(veld, av[veld]); });
+
+    teken(); bouwTabs(); bouwOpties(); toonKeys();
+  </script>
+
+</body>
+</html>

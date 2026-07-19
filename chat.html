@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat — DELUXE EDITION</title>
+  <link rel="icon" href="images/logo.jpg" />
+  <style>
+    /* ══════════════════════════════════════════════
+       DE DELUXE CHAT 💬 — praat met iedereen op de
+       site! Echte berichten gaan via api/chat.js;
+       de bots antwoorden direct in je browser en
+       hebben allemaal hun EIGEN skin.
+       ══════════════════════════════════════════════ */
+    :root { --rood: #ff3b3b; --blauw: #3b82ff; --zwart: #060a18; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--zwart); color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+      padding: 20px;
+    }
+    body::before {
+      content: ""; position: fixed; inset: 0;
+      background:
+        radial-gradient(500px 350px at 15% 20%, rgba(255,40,40,0.12), transparent 70%),
+        radial-gradient(500px 350px at 85% 80%, rgba(40,110,255,0.12), transparent 70%);
+      pointer-events: none;
+    }
+    header { display: flex; align-items: center; gap: 14px; margin: 6px 0 14px; position: relative; z-index: 1; }
+    header img { width: 64px; border-radius: 12px; box-shadow: 0 0 20px rgba(255,40,40,0.3), 0 0 40px rgba(40,110,255,0.25); }
+    header h1 { font-size: 22px; letter-spacing: 1px; }
+    header a { color: rgba(255,255,255,0.5); font-size: 13px; text-decoration: none; }
+    header a:hover { color: #fff; }
+
+    #wie-doen-mee {
+      position: relative; z-index: 1;
+      display: flex; gap: 10px; align-items: center; margin-bottom: 12px;
+      font-size: 13px; color: rgba(255,255,255,0.6);
+    }
+    #wie-doen-mee .kop { width: 34px; height: 34px; border-radius: 999px; overflow: hidden; border: 2px solid rgba(255,255,255,0.3); }
+    #wie-doen-mee .kop svg { width: 100%; height: 100%; display: block; }
+
+    #chat {
+      position: relative; z-index: 1;
+      width: min(560px, 94vw); flex: 1;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 20px; padding: 18px;
+      display: flex; flex-direction: column; gap: 10px;
+      overflow-y: auto; max-height: 62vh; min-height: 340px;
+    }
+    .regel { display: flex; gap: 10px; align-items: flex-end; animation: pop 0.25s ease; }
+    .regel.ik-zelf { flex-direction: row-reverse; }
+    @keyframes pop { from { transform: scale(0.94); opacity: 0; } }
+    .kop {
+      width: 34px; height: 34px; border-radius: 999px; overflow: hidden; flex-shrink: 0;
+      border: 2px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.08);
+      display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 15px;
+    }
+    .kop svg { width: 100%; height: 100%; display: block; }
+    .bubbel { max-width: 78%; padding: 9px 14px; border-radius: 16px; font-size: 15px; line-height: 1.45; }
+    .regel .bubbel { background: linear-gradient(135deg, rgba(59,130,255,0.22), rgba(59,130,255,0.08)); border: 1px solid rgba(59,130,255,0.4); border-bottom-left-radius: 4px; }
+    .regel.ik-zelf .bubbel { background: linear-gradient(135deg, rgba(255,59,59,0.28), rgba(255,59,59,0.1)); border: 1px solid rgba(255,59,59,0.45); border-bottom-left-radius: 16px; border-bottom-right-radius: 4px; }
+    .bubbel .van { font-size: 11.5px; font-weight: 900; letter-spacing: 0.5px; color: rgba(255,255,255,0.65); margin-bottom: 2px; }
+    .bubbel .van .bot-tag { background: rgba(59,130,255,0.35); border-radius: 6px; padding: 1px 6px; margin-left: 5px; font-size: 10px; }
+
+    #invoer-rij { position: relative; z-index: 1; width: min(560px, 94vw); display: flex; gap: 10px; margin-top: 14px; }
+    #invoer {
+      flex: 1; background: rgba(0,0,0,0.5); color: #fff;
+      border: 2px solid rgba(59,130,255,0.5); border-radius: 14px;
+      padding: 13px 16px; font-size: 16px; outline: none;
+    }
+    #invoer:focus { border-color: var(--blauw); box-shadow: 0 0 16px rgba(59,130,255,0.3); }
+    #stuur {
+      background: linear-gradient(90deg, #e42222, #ff5940 45%, #3b82ff 55%, #1f5fe0);
+      color: #fff; border: none; border-radius: 14px; padding: 13px 22px;
+      font-size: 16px; font-weight: 900; cursor: pointer; transition: transform 0.12s;
+    }
+    #stuur:hover { transform: scale(1.05); }
+    #melding-klein { position: relative; z-index: 1; font-size: 12.5px; color: rgba(255,255,255,0.45); margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <img src="images/logo.jpg" alt="logo" />
+    <div>
+      <h1>💬 DELUXE CHAT</h1>
+      <a href="index.html">← terug naar home</a>
+    </div>
+  </header>
+
+  <div id="wie-doen-mee"></div>
+  <div id="chat"></div>
+
+  <div id="invoer-rij">
+    <input id="invoer" type="text" placeholder="typ hier je bericht..." autocomplete="off" maxlength="200" />
+    <button id="stuur" onclick="verstuur()">▶</button>
+  </div>
+  <div id="melding-klein">Iedereen op deluxeedition.nl kan meelezen — wees aardig! De bots 🤖 praten alleen met jou.</div>
+
+  <script>
+    // ══════════════════════════════════════════════════════
+    // DE CHAT. Echte berichten: elke 4 seconden halen we de
+    // gedeelde lijst op (api/chat) en jouw bericht gaat er
+    // met je naam + avatar naartoe. De BOTS wonen in je
+    // eigen browser: ze antwoorden op JOUW berichten, elk
+    // met een eigen karakter en een eigen skin.
+    // ══════════════════════════════════════════════════════
+
+    const chatEl = document.getElementById("chat");
+    const invoer = document.getElementById("invoer");
+
+    // ── wie ben jij? ─────────────────────────────────────
+    let mijnNaam = localStorage.getItem("deluxe-speler") || "";
+    if (!mijnNaam) {
+      mijnNaam = (prompt("Hoe heet je? (dan weet iedereen van wie je berichten zijn)") || "").trim().slice(0, 20);
+      if (mijnNaam) try { localStorage.setItem("deluxe-speler", mijnNaam); } catch {}
+    }
+    if (!mijnNaam) mijnNaam = "gast";
+    let mijnAvatar = "";
+    try {
+      const svg = localStorage.getItem("deluxe-avatar-svg") || "";
+      if (svg.startsWith("<svg") && svg.length <= 6000) mijnAvatar = svg;
+    } catch {}
+
+    // ── DE BOTS — elk met hun EIGEN skin (eigen SVG-kop) ──
+    const BOTS = [
+      {
+        naam: "ROBO-RIK",
+        skin: '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" fill="#1c2f52"/><rect x="8" y="10" width="24" height="20" rx="4" fill="#9fb6d8"/><rect x="12" y="16" width="6" height="6" rx="1" fill="#3b82ff"/><rect x="22" y="16" width="6" height="6" rx="1" fill="#3b82ff"/><rect x="14" y="25" width="12" height="2.5" rx="1" fill="#1c2f52"/><rect x="18" y="4" width="4" height="6" fill="#9fb6d8"/><circle cx="20" cy="4" r="2.5" fill="#ff3b3b"/></svg>',
+        groet: "BEEP BOOP! Ik ben ROBO-RIK 🤖 Praat met mij!",
+        antwoorden: {
+          "hoi|hallo|hey|hi": ["BEEP! Hallo mens! Leuk je te zien in de chat! 🤖", "Hoi hoi! Mijn circuits worden er blij van dat je er bent!"],
+          "spel|game|spelen": ["Heb je BLOKWERELD ∞ al geprobeerd? Daar is een RUIMTEMAN-eindbaas! 🌌", "Maak je eigen spel met CREATE A GAME — dan speel ik hem! Nou ja... ik kijk toe. BEEP."],
+          "tip": ["TIP: in Adventure Craft zit diamant heel diep. Graven, graven, graven! ⛏️", "TIP: met de ⚡-knop kan NovaX een geheime outfit aan. Sst!"],
+          "mop|grap": ["Waarom kan een robot niet voetballen? ...Kortsluiting bij de sliding! HAHA-BEEP.", "Wat zegt een robot bij het eten? Smakelijk BYTES! 🤖"],
+          "keys|munten|geld": ["Keys verdien je met spelen: 1 punt = 1 key! En elke dag +5 bonus in de winkel. 💰"],
+          "wie ben|wat ben": ["Ik ben ROBO-RIK, de behulpzame robot van Deluxe Edition! Gemaakt van 100% praatijzer."],
+          "doei|dag|later": ["Tot ziens mens! BEEP BOOP! 👋"]
+        },
+        anders: ["Interessant! Mijn robotbrein knettert ervan. 🤖", "BEEP... dat moet ik even verwerken. Vertel meer!", "Kan je dat in robottaal zeggen? Grapje! 😄 Ga door!"]
+      },
+      {
+        naam: "DRAKO",
+        skin: '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" fill="#0f3d22"/><ellipse cx="20" cy="23" rx="13" ry="11" fill="#2ecc71"/><path d="M9 14 L13 6 L16 13 Z" fill="#2ecc71"/><path d="M31 14 L27 6 L24 13 Z" fill="#2ecc71"/><circle cx="15" cy="21" r="3" fill="#fff"/><circle cx="25" cy="21" r="3" fill="#fff"/><circle cx="15.7" cy="21.7" r="1.4" fill="#0f3d22"/><circle cx="24.3" cy="21.7" r="1.4" fill="#0f3d22"/><ellipse cx="20" cy="29" rx="5" ry="3" fill="#1f9d4b"/><circle cx="18" cy="28.6" r="0.9" fill="#0f3d22"/><circle cx="22" cy="28.6" r="0.9" fill="#0f3d22"/><path d="M12 32 Q14 34 16 32" stroke="#ff9430" stroke-width="1.5" fill="none"/></svg>',
+        groet: "RAWR! 🐉 Ik ben DRAKO de draak. Niet bang zijn — ik spuug alleen vuur naar vervelende mensen.",
+        antwoorden: {
+          "hoi|hallo|hey|hi": ["RAWR! Dat betekent hallo in drakentaal! 🐉", "Hoi! Je mag me aaien hoor. Maar pas op mijn stekels."],
+          "spel|game|spelen": ["In Blokwereld zitten drakenmannen... dat zijn mijn neefjes! Val ze maar aan, ze doen flauw. 🐉", "Ik speel het liefst spellen waar vuur in zit. Of snoep. 🍬"],
+          "tip": ["TIP: 's nachts in Blokwereld komen de monsters. Bouw voor het donker een huisje!", "TIP: de schaduwman is eng maar dropt DIAMANT. Durf jij het?"],
+          "mop|grap": ["Wat eet een draak het liefst? ...Gebakken lucht! RAWR-haha! 🔥", "Waarom mag een draak nooit verstoppertje doen? Zijn rook verraadt hem altijd!"],
+          "vuur|vlam": ["🔥🔥🔥 RAWR! Sorry, ik werd even enthousiast."],
+          "wie ben|wat ben": ["Ik ben DRAKO, de vriendelijkste draak van heel deluxeedition.nl! Meestal dan."],
+          "doei|dag|later": ["RAWR! Vlieg veilig! 🐉👋"]
+        },
+        anders: ["RAWR? Vertel eens meer! 🐉", "Mijn drakenoren horen het graag nog een keer — anders gezegd!", "Daar moet ik als draak eens diep over nadenken... 🔥"]
+      },
+      {
+        naam: "PIXELLA",
+        skin: '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" fill="#2a1052"/><rect x="10" y="8" width="20" height="4" fill="#b26aff"/><rect x="6" y="12" width="28" height="16" fill="#b26aff"/><rect x="10" y="28" width="4" height="4" fill="#b26aff"/><rect x="18" y="28" width="4" height="4" fill="#b26aff"/><rect x="26" y="28" width="4" height="4" fill="#b26aff"/><rect x="12" y="17" width="5" height="5" fill="#2a1052"/><rect x="23" y="17" width="5" height="5" fill="#2a1052"/><rect x="13.5" y="18.5" width="2" height="2" fill="#ffd93b"/><rect x="24.5" y="18.5" width="2" height="2" fill="#ffd93b"/></svg>',
+        groet: "👾 Piep! Ik ben PIXELLA, recht uit een arcade-kast ontsnapt!",
+        antwoorden: {
+          "hoi|hallo|hey|hi": ["Piep piep! 👾 Welkom in de chat, speler 1!", "Hoi! +100 punten omdat je gedag zegt!"],
+          "spel|game|spelen": ["OBLITERATOR is mijn lievelingsspel — die muziek van DJ NovaX! 🎵", "Wist je dat je in speel.html met je EIGEN avatar speelt? Zo cool! 👾"],
+          "tip": ["TIP: bij het klik-spel tellen snelle vingers dubbel. Nou ja, gewoon sneller klikken dus!", "TIP: verdien keys en koop skins in de winkel — de eerste 3 per categorie zijn GRATIS."],
+          "mop|grap": ["Waarom verloor de computer het spel? Hij had geen muis-cle! 👾 Piep-haha!", "Hoe noem je een spook in een game? Een BOO-t! 😄"],
+          "avatar|skin": ["Er zijn meer dan 1100 avatar-combinaties! Ik draag zelf paars, dat zie je. 💜"],
+          "wie ben|wat ben": ["Ik ben PIXELLA! Ik woon in de arcade-kast van Deluxe Edition. Het is daar knus."],
+          "doei|dag|later": ["GAME OVER... nee grapje! Tot snel! 👾"]
+        },
+        anders: ["Piep! Mijn pixels trillen van nieuwsgierigheid — vertel! 👾", "+10 punten voor dat bericht! En toen?", "Dat level ken ik nog niet. Leg eens uit!"]
+      }
+    ];
+
+    // bovenaan laten zien wie er "wonen" in de chat
+    const wieEl = document.getElementById("wie-doen-mee");
+    wieEl.innerHTML = "In de chat: " + BOTS.map(b => '<span class="kop" title="' + b.naam + '">' + b.skin + "</span>").join("") + " <span>+ iedereen op de site!</span>";
+
+    // ── berichten tonen ──────────────────────────────────
+    let serverBerichten = [];
+    let botBerichten = []; // alleen op dit apparaat
+    function veiligSvg(s) {
+      return (typeof s === "string" && s.startsWith("<svg") && s.length <= 6000 && !/script|onerror|onload|javascript:/i.test(s)) ? s : "";
+    }
+    function teken() {
+      const alles = [...serverBerichten, ...botBerichten].sort((a, b) => (a.tijd || 0) - (b.tijd || 0));
+      const onderaan = chatEl.scrollTop + chatEl.clientHeight >= chatEl.scrollHeight - 60;
+      chatEl.innerHTML = "";
+      alles.slice(-80).forEach(m => {
+        const regel = document.createElement("div");
+        regel.className = "regel" + (m.naam === mijnNaam && !m.bot ? " ik-zelf" : "");
+        const kop = document.createElement("div");
+        kop.className = "kop";
+        const svg = veiligSvg(m.avatar);
+        if (svg) kop.innerHTML = svg;
+        else kop.textContent = (m.naam || "?").slice(0, 1).toUpperCase();
+        const bubbel = document.createElement("div");
+        bubbel.className = "bubbel";
+        const van = document.createElement("div");
+        van.className = "van";
+        van.textContent = m.naam || "?";
+        if (m.bot) van.innerHTML += '<span class="bot-tag">🤖 bot</span>';
+        const tekst = document.createElement("div");
+        tekst.textContent = m.tekst || "";
+        bubbel.appendChild(van);
+        bubbel.appendChild(tekst);
+        regel.appendChild(kop);
+        regel.appendChild(bubbel);
+        chatEl.appendChild(regel);
+      });
+      if (onderaan) chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    // ── echte berichten ophalen (elke 4 sec) ─────────────
+    function haalOp() {
+      fetch("/api/chat").then(r => r.json()).then(lijst => {
+        if (Array.isArray(lijst)) { serverBerichten = lijst; teken(); }
+      }).catch(() => {});
+    }
+    haalOp();
+    setInterval(haalOp, 4000);
+
+    // ── zelf iets sturen ─────────────────────────────────
+    let laatstGestuurd = 0;
+    function verstuur() {
+      const tekst = invoer.value.trim();
+      if (!tekst) return;
+      if (Date.now() - laatstGestuurd < 1500) return; // niet spammen 😄
+      laatstGestuurd = Date.now();
+      invoer.value = "";
+      // meteen laten zien (voelt snel), server bevestigt daarna
+      serverBerichten.push({ naam: mijnNaam, tekst, avatar: mijnAvatar, tijd: Date.now() });
+      teken();
+      fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ naam: mijnNaam, tekst, avatar: mijnAvatar }),
+      }).then(r => r.json()).then(uit => {
+        if (uit && uit.fout) {
+          botBerichten.push({ naam: "ROBO-RIK", tekst: "BEEP! " + uit.fout, avatar: BOTS[0].skin, tijd: Date.now(), bot: true });
+          teken();
+        }
+      }).catch(() => {});
+      laatBotAntwoorden(tekst);
+    }
+    invoer.addEventListener("keydown", e => { if (e.key === "Enter") verstuur(); });
+
+    // ── de bot kiest een antwoord op JOUW bericht ────────
+    function laatBotAntwoorden(tekst) {
+      const lager = tekst.toLowerCase();
+      // welke bot? als je een naam noemt die bot, anders een willekeurige
+      let bot = BOTS.find(b => lager.includes(b.naam.toLowerCase().split("-")[0]));
+      if (!bot) bot = BOTS[Math.floor(Math.random() * BOTS.length)];
+      let antwoord = null;
+      for (const patroon of Object.keys(bot.antwoorden)) {
+        if (new RegExp("\\b(" + patroon + ")", "i").test(lager)) {
+          const opties = bot.antwoorden[patroon];
+          antwoord = opties[Math.floor(Math.random() * opties.length)];
+          break;
+        }
+      }
+      if (!antwoord) antwoord = bot.anders[Math.floor(Math.random() * bot.anders.length)];
+      setTimeout(() => {
+        botBerichten.push({ naam: bot.naam, tekst: antwoord, avatar: bot.skin, tijd: Date.now(), bot: true });
+        teken();
+      }, 1200 + Math.random() * 1600);
+    }
+
+    // ── welkom: één bot zegt hallo (alleen bij jou) ──────
+    const welkomBot = BOTS[Math.floor(Math.random() * BOTS.length)];
+    botBerichten.push({ naam: welkomBot.naam, tekst: welkomBot.groet, avatar: welkomBot.skin, tijd: Date.now(), bot: true });
+    teken();
+    invoer.focus();
+  </script>
+
+</body>
+</html>

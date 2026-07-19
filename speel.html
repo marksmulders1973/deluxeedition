@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spelen — DELUXE EDITION</title>
+  <link rel="icon" href="images/logo.jpg" />
+  <style>
+    /* ══════════════════════════════════════════════
+       DE SPEL-MOTOR — speelt de spellen af die je met
+       de bouwer-bot hebt gemaakt (vangen/springen/klikken).
+       ══════════════════════════════════════════════ */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #060a18; color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+      padding: 14px; touch-action: manipulation;
+    }
+    header { display: flex; align-items: center; gap: 12px; width: min(520px, 96vw); margin-bottom: 10px; }
+    header a { color: rgba(255,255,255,0.5); font-size: 13px; text-decoration: none; }
+    header a:hover { color: #fff; }
+    header h1 { font-size: 20px; letter-spacing: 1px; flex: 1; text-align: center; }
+    #scorebord { font-size: 15px; font-weight: 800; }
+    canvas {
+      background: linear-gradient(180deg, #0a1024, #060a18);
+      border-radius: 16px; border: 2px solid rgba(255,255,255,0.15);
+      width: min(520px, 96vw); touch-action: none;
+    }
+    #melding {
+      position: fixed; inset: 0; display: none; z-index: 10;
+      background: rgba(6,10,24,0.88);
+      flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center;
+    }
+    #melding h2 { font-size: 34px; }
+    #melding p { color: rgba(255,255,255,0.65); font-size: 16px; }
+    #melding button {
+      background: linear-gradient(90deg, #e42222, #ff5940 45%, #3b82ff 55%, #1f5fe0);
+      color: #fff; border: none; border-radius: 14px; padding: 14px 30px;
+      font-size: 17px; font-weight: 900; cursor: pointer;
+    }
+    .uitleg { margin-top: 8px; color: rgba(255,255,255,0.45); font-size: 13px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a href="index.html">← home</a>
+    <h1 id="titel">SPEL</h1>
+    <div id="scorebord">⭐ 0</div>
+  </header>
+
+  <canvas id="veld" width="520" height="640"></canvas>
+  <div class="uitleg" id="uitleg"></div>
+
+  <!-- 🎮 keuze vóór de start: alleen of tegen een bot racen -->
+  <div id="keuze" style="position:fixed;inset:0;display:flex;z-index:11;background:rgba(6,10,24,0.92);flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center">
+    <h2 id="keuze-kop" style="font-size:30px">HOE WIL JE SPELEN?</h2>
+    <button style="background:linear-gradient(90deg,#e42222,#ff5940 45%,#3b82ff 55%,#1f5fe0);color:#fff;border:none;border-radius:14px;padding:14px 30px;font-size:17px;font-weight:900;cursor:pointer" onclick="kies('alleen')">👤 ALLEEN</button>
+    <button style="background:linear-gradient(90deg,#7a1fe0,#b26aff);color:#fff;border:none;border-radius:14px;padding:14px 30px;font-size:17px;font-weight:900;cursor:pointer" onclick="kies('bot')">🤖 RACE TEGEN EEN BOT</button>
+    <button style="background:linear-gradient(90deg,#1f9d4b,#2ecc71);color:#fff;border:none;border-radius:14px;padding:14px 30px;font-size:17px;font-weight:900;cursor:pointer" onclick="kies('live')">🌍 MET ECHTE MENSEN</button>
+    <p style="color:rgba(255,255,255,0.5);font-size:13px;max-width:340px">Bot-race: een bot speelt mee. Echte mensen: iedereen die dit spel nú speelt, ziet elkaars punten live — wie wint?</p>
+  </div>
+
+  <!-- 🌍 live-scorebord van de echte-mensen-race -->
+  <div id="race-bord" style="display:none;position:fixed;top:70px;right:14px;z-index:9;background:rgba(6,10,24,0.88);border:1px solid rgba(46,204,113,0.55);border-radius:12px;padding:10px 14px;font-size:13px;min-width:140px;max-width:200px">
+    <div style="font-weight:900;color:#2ecc71;margin-bottom:6px">🌍 LIVE RACE</div>
+    <div id="race-lijst" style="display:flex;flex-direction:column;gap:4px;color:rgba(255,255,255,0.85)">verbinden...</div>
+  </div>
+
+  <div id="melding">
+    <h2 id="melding-kop">GAME OVER</h2>
+    <p id="melding-tekst"></p>
+    <button onclick="start()">🔄 NOG EEN KEER</button>
+    <button id="zet-op-site" style="display:none;background:linear-gradient(90deg,#1f9d4b,#2ecc71)" onclick="zetOpSite()">✅ ZET OP MIJN SITE!</button>
+    <button style="background:rgba(255,255,255,0.1)" onclick="location.href='index.html'">🏠 NAAR HOME</button>
+  </div>
+
+  <script>
+    // ── spel ophalen: eerst je eigen spellen, anders de
+    //    online lijst (spellen van papa en anderen! 🌍) ────
+    const id = new URLSearchParams(location.search).get("id");
+    let games = [];
+    try { games = JSON.parse(localStorage.getItem("deluxe-games") || "[]"); } catch {}
+    let spel = games.find(g => g.id === id);
+    if (!spel) {
+      try {
+        const online = JSON.parse(localStorage.getItem("deluxe-online-games") || "[]");
+        spel = online.find(g => g.id === id);
+      } catch {}
+    }
+    if (!spel) { location.href = "maak.html"; }
+
+    // ── ✅ na het TESTEN meteen op je site (en online) zetten ──
+    // Kwam je hier via "eerst even testen"? Dan zie je na afloop
+    // een groene knop: die zet het spel op je homepagina ÉN in de
+    // online lijst, zodat iedereen hem kan zien en spelen.
+    const isTest = new URLSearchParams(location.search).get("test") === "1";
+    if (isTest && spel && !spel.af) {
+      document.getElementById("zet-op-site").style.display = "";
+    }
+    function zetOpSite() {
+      spel.af = true;
+      const idx = games.findIndex(g => g.id === spel.id);
+      if (idx >= 0) games[idx] = { ...spel };
+      try { localStorage.setItem("deluxe-games", JSON.stringify(games)); } catch {}
+      const maker = spel.maker || localStorage.getItem("deluxe-speler") || "onbekend";
+      fetch("/api/spellen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...spel, maker, gemaakt: spel.gemaakt || new Date().toISOString().slice(0, 10) }),
+      }).finally(() => location.href = "index.html");
+    }
+
+    document.getElementById("titel").textContent = spel.naam;
+    document.title = spel.naam + " — DELUXE EDITION";
+
+    const canvas = document.getElementById("veld");
+    const ctx = canvas.getContext("2d");
+    const scorebord = document.getElementById("scorebord");
+    const melding = document.getElementById("melding");
+    const UITLEG = {
+      vangen: "🖱️ beweeg je muis (of vinger) om te vangen — 3 levens!",
+      springen: "⌨️ druk op SPATIE (of tik) om te springen!",
+      klikken: "👆 klik zo vaak je kunt op de " + spel.emoji + " — 30 seconden!"
+    };
+    document.getElementById("uitleg").textContent = UITLEG[spel.type];
+
+    let score = 0, bezig = false, frame = 0, loopId = null;
+
+    // ── 🧑‍🎨 jouw avatar laden (gemaakt met avatar.html) ──
+    // Zo speel je als jezelf! Geen avatar? Dan werkt alles
+    // gewoon zoals eerst.
+    let avatarImg = null;
+    (function laadAvatar() {
+      try {
+        let svg = localStorage.getItem("deluxe-avatar-svg");
+        if (!svg || !svg.startsWith("<svg")) return;
+        svg = svg.replace("<svg ", '<svg width="240" height="260" ');
+        const img = new Image();
+        img.onload = () => { avatarImg = img; };
+        img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+      } catch {}
+    })();
+
+    // ── 🤖 RACE TEGEN EEN BOT ────────────────────────────
+    // De bot scoort in zijn eigen tempo mee. Wie aan het
+    // eind de meeste punten heeft, wint de race!
+    const RACE_BOTS = [
+      { naam: "ROBO-RIK", emoji: "🤖" },
+      { naam: "DRAKO", emoji: "🐉" },
+      { naam: "PIXELLA", emoji: "👾" },
+    ];
+    let botRace = false, botScore = 0, botTimer = null, bot = null;
+    function startBot() {
+      botScore = 0;
+      bot = RACE_BOTS[Math.floor(Math.random() * RACE_BOTS.length)];
+      clearInterval(botTimer);
+      const tempo = spel.type === "klikken" ? 850 : 1700; // klik-spellen gaan sneller
+      botTimer = setInterval(() => {
+        if (!bezig) return;
+        botScore += 1;
+        toonScore();
+      }, tempo + Math.random() * 500);
+    }
+
+    // ── 🌍 ECHTE MULTIPLAYER — live racen met échte mensen! ──
+    // Iedereen die dit spel nu in de live-stand speelt, stuurt
+    // elke 2,5 sec zijn score naar api/race en krijgt die van
+    // de anderen terug. Je ziet ze in het groene bord rechts.
+    let liveRace = false, liveTimer = null, liveAnderen = [];
+    const mijnNaam = (localStorage.getItem("deluxe-speler") || "gast").slice(0, 20);
+    // eigen sessie-code: zo kunnen twee "gast"-spelers elkaar niet overschrijven
+    const mijnSessie = (mijnNaam.replace(/[^a-zA-Z0-9_-]/g, "") || "gast") + "-" + Math.random().toString(36).slice(2, 7);
+    const raceBord = document.getElementById("race-bord");
+    const raceLijst = document.getElementById("race-lijst");
+    function startLive() {
+      raceBord.style.display = "";
+      raceLijst.textContent = "verbinden...";
+      clearInterval(liveTimer);
+      livePing();
+      liveTimer = setInterval(livePing, 2500);
+    }
+    function livePing() {
+      fetch("/api/race", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spel: spel.id, sessie: mijnSessie, naam: mijnNaam, score, klaar: !bezig }),
+      }).catch(() => {});
+      fetch("/api/race?spel=" + spel.id).then(r => r.json()).then(lijst => {
+        if (!Array.isArray(lijst)) return;
+        liveAnderen = lijst.filter(p => p.sessie !== mijnSessie);
+        tekenRace();
+      }).catch(() => {});
+    }
+    function tekenRace() {
+      if (!liveAnderen.length) {
+        raceLijst.textContent = "nog niemand anders... vraag iemand om mee te doen!";
+        return;
+      }
+      raceLijst.innerHTML = "";
+      [...liveAnderen].sort((a, b) => b.score - a.score).forEach(p => {
+        const rij = document.createElement("div");
+        rij.textContent = (p.klaar ? "🏁 " : "▶ ") + p.naam + ": " + p.score;
+        if (p.score > score) rij.style.color = "#ff9a9a"; // die staat vóór!
+        raceLijst.appendChild(rij);
+      });
+    }
+
+    function kies(modus) {
+      botRace = modus === "bot";
+      liveRace = modus === "live";
+      document.getElementById("keuze").style.display = "none";
+      start();
+    }
+
+    function toonScore() {
+      scorebord.textContent = "⭐ " + score + (botRace && bot ? "  ·  " + bot.emoji + " " + botScore : "");
+    }
+
+    function gameOver(tekst) {
+      bezig = false;
+      cancelAnimationFrame(loopId);
+      clearInterval(botTimer);
+      if (botRace && bot) {
+        tekst += " · " + bot.emoji + " " + bot.naam + " had " + botScore + " punten"
+          + (score > botScore ? " — JIJ WINT DE RACE! 🏆" : score === botScore ? " — GELIJKSPEL! 😮" : " — de bot wint, revanche? 😅");
+      }
+      if (liveRace) {
+        clearInterval(liveTimer);
+        // laatste score + "klaar"-vlag doorsturen en de eindstand ophalen
+        fetch("/api/race", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ spel: spel.id, sessie: mijnSessie, naam: mijnNaam, score, klaar: true }),
+        }).then(() => fetch("/api/race?spel=" + spel.id)).then(r => r.json()).then(lijst => {
+          if (!Array.isArray(lijst)) return;
+          const stand = lijst.filter(p => p.sessie !== mijnSessie);
+          stand.push({ naam: mijnNaam + " (jij)", score, klaar: true, sessie: mijnSessie });
+          stand.sort((a, b) => b.score - a.score);
+          const plek = stand.findIndex(p => p.sessie === mijnSessie) + 1;
+          const top = stand.slice(0, 5).map((p, i) => (i + 1) + ". " + p.naam + " " + p.score).join(" · ");
+          const el = document.getElementById("melding-tekst");
+          el.textContent += " · 🌍 Jij werd " + plek + "e! Stand: " + top;
+        }).catch(() => {});
+      }
+      // high-score bewaren per spel
+      const hsKey = "deluxe-hs-" + spel.id;
+      const oud = parseInt(localStorage.getItem(hsKey) || "0", 10);
+      const record = score > oud;
+      if (record) { try { localStorage.setItem(hsKey, String(score)); } catch {} }
+      // 🗝️ keys verdienen: elk punt = 1 key! (voor skins in de avatar-maker)
+      let keysTekst = "";
+      if (score > 0) {
+        try {
+          const keys = (parseInt(localStorage.getItem("deluxe-keys") || "0", 10) || 0) + score;
+          localStorage.setItem("deluxe-keys", String(keys));
+          keysTekst = " · +" + score + " 🗝️ (je hebt er nu " + keys + ")";
+        } catch {}
+      }
+      document.getElementById("melding-kop").textContent = record ? "🏆 NIEUW RECORD!" : "GAME OVER";
+      document.getElementById("melding-tekst").textContent = tekst + " — score: " + score + (record ? "" : " (record: " + Math.max(oud, score) + ")")
+        + keysTekst
+        + (avatarImg ? "" : " · Tip: maak een avatar, dan speel je als jezelf!");
+      melding.style.display = "flex";
+    }
+
+    // ══ SPEL 1: VANGEN ══════════════════════════════════
+    // Dingen vallen naar beneden, vang ze met je bakje.
+    let bakX = 260, vallers = [], levens = 3;
+    function startVangen() {
+      vallers = []; levens = 3;
+      canvas.onpointermove = e => {
+        const r = canvas.getBoundingClientRect();
+        // niet buiten beeld lopen!
+        bakX = Math.max(42, Math.min(478, (e.clientX - r.left) * (canvas.width / r.width)));
+      };
+      loopVangen();
+    }
+    function loopVangen() {
+      if (!bezig) return;
+      frame++;
+      ctx.clearRect(0, 0, 520, 640);
+      // elke ~50 frames een nieuwe valler (sneller naarmate score stijgt)
+      if (frame % Math.max(18, 50 - score) === 0) {
+        vallers.push({ x: 40 + Math.random() * 440, y: -30, snelheid: 2.5 + Math.random() * 2 + score * 0.06 });
+      }
+      ctx.font = "34px serif"; ctx.textAlign = "center";
+      vallers.forEach(v => { v.y += v.snelheid; ctx.fillText(spel.emoji, v.x, v.y); });
+      // de vanger: jouw avatar met het bakje boven zijn hoofd!
+      if (avatarImg) {
+        ctx.drawImage(avatarImg, bakX - 38, 558, 76, 82);
+        ctx.font = "30px serif"; ctx.fillText("🧺", bakX, 566);
+      } else {
+        ctx.fillStyle = spel.kleur;
+        ctx.beginPath(); ctx.roundRect(bakX - 45, 590, 90, 18, 9); ctx.fill();
+        ctx.font = "26px serif"; ctx.fillText("🧺", bakX, 585);
+      }
+      // raak of mis?
+      vallers = vallers.filter(v => {
+        if (v.y > 545 && v.y < 620 && Math.abs(v.x - bakX) < 55) { score++; toonScore(); return false; }
+        if (v.y > 650) { levens--; if (levens <= 0) gameOver("Je bakje zat vol pech!"); return false; }
+        return true;
+      });
+      // levens tonen
+      ctx.textAlign = "left"; ctx.font = "22px serif";
+      ctx.fillText("❤️".repeat(Math.max(0, levens)), 14, 32);
+      loopId = requestAnimationFrame(loopVangen);
+    }
+
+    // ══ SPEL 2: SPRINGEN ════════════════════════════════
+    // Ren en spring over blokken heen (dino-stijl).
+    let spelerY = 0, sprongV = 0, blokken = [];
+    function startSpringen() {
+      spelerY = 0; sprongV = 0; blokken = [];
+      const spring = () => { if (spelerY === 0) sprongV = -15; };
+      canvas.onpointerdown = spring;
+      document.onkeydown = e => { if (e.code === "Space") { e.preventDefault(); spring(); } };
+      loopSpringen();
+    }
+    function loopSpringen() {
+      if (!bezig) return;
+      frame++;
+      ctx.clearRect(0, 0, 520, 640);
+      const grond = 500;
+      // zwaartekracht
+      spelerY += sprongV; sprongV += 0.8;
+      if (spelerY > 0) { spelerY = 0; sprongV = 0; }
+      // grond
+      ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, grond + 44); ctx.lineTo(520, grond + 44); ctx.stroke();
+      // nieuwe blokken
+      if (frame % Math.max(45, 90 - score * 2) === 0) {
+        blokken.push({ x: 540, b: 26 + Math.random() * 22 });
+      }
+      const snelheid = 5 + score * 0.15;
+      if (avatarImg) {
+        // met avatar: je springt zelf over de figuurtjes heen!
+        ctx.font = "34px serif"; ctx.textAlign = "center";
+        blokken.forEach(b => { b.x -= snelheid; ctx.fillText(spel.emoji, b.x + b.b / 2, grond + 40); });
+        ctx.drawImage(avatarImg, 60, grond + 44 - 66 + spelerY, 60, 66);
+      } else {
+        ctx.fillStyle = spel.kleur;
+        blokken.forEach(b => { b.x -= snelheid; ctx.beginPath(); ctx.roundRect(b.x, grond + 10, b.b, 34, 6); ctx.fill(); });
+        ctx.font = "44px serif"; ctx.textAlign = "center";
+        ctx.fillText(spel.emoji, 90, grond + 36 + spelerY);
+      }
+      // botsing of gehaald?
+      blokken = blokken.filter(b => {
+        if (b.x + b.b < 60) { score++; toonScore(); return false; }
+        const raak = b.x < 112 && b.x + b.b > 68 && spelerY > -40;
+        if (raak) gameOver("Au, tegen een blok!");
+        return b.x > -60;
+      });
+      loopId = requestAnimationFrame(loopSpringen);
+    }
+
+    // ══ SPEL 3: KLIKKEN ═════════════════════════════════
+    // Klik de emoji zo vaak mogelijk in 30 seconden.
+    let doelX = 260, doelY = 320, tijdOver = 30, klokje = null, juichMoment = 0;
+    function startKlikken() {
+      tijdOver = 30; verplaatsDoel();
+      canvas.onpointerdown = e => {
+        const r = canvas.getBoundingClientRect();
+        const x = (e.clientX - r.left) * (canvas.width / r.width);
+        const y = (e.clientY - r.top) * (canvas.height / r.height);
+        if (Math.hypot(x - doelX, y - doelY) < 42) { score++; toonScore(); verplaatsDoel(); juichMoment = Date.now(); }
+      };
+      clearInterval(klokje);
+      klokje = setInterval(() => {
+        tijdOver--;
+        if (tijdOver <= 0) { clearInterval(klokje); gameOver("De tijd is om!"); }
+      }, 1000);
+      loopKlikken();
+    }
+    function verplaatsDoel() { doelX = 60 + Math.random() * 400; doelY = 80 + Math.random() * 500; }
+    function loopKlikken() {
+      if (!bezig) return;
+      ctx.clearRect(0, 0, 520, 640);
+      // de emoji wiebelt een beetje — moeilijker raken!
+      const wiebel = Math.sin(Date.now() / 150) * 6;
+      ctx.font = "56px serif"; ctx.textAlign = "center";
+      ctx.fillText(spel.emoji, doelX + wiebel, doelY);
+      // tijdbalk in jouw kleur
+      ctx.fillStyle = spel.kleur;
+      ctx.beginPath(); ctx.roundRect(14, 14, (tijdOver / 30) * 492, 12, 6); ctx.fill();
+      // jouw avatar juicht mee in de hoek (en stuitert bij elk punt!)
+      if (avatarImg) {
+        const juich = Math.max(0, 1 - (Date.now() - juichMoment) / 300);
+        const maat = 1 + juich * 0.3;
+        ctx.drawImage(avatarImg, 12, 640 - 10 - 62 * maat, 56 * maat, 62 * maat);
+      }
+      loopId = requestAnimationFrame(loopKlikken);
+    }
+
+    // ── start het juiste spel ────────────────────────────
+    function start() {
+      melding.style.display = "none";
+      score = 0; frame = 0; bezig = true;
+      if (botRace) startBot();
+      if (liveRace) startLive();
+      toonScore();
+      if (spel.type === "vangen") startVangen();
+      else if (spel.type === "springen") startSpringen();
+      else startKlikken();
+    }
+    // niet meteen starten — eerst kiezen: alleen of tegen een bot
+    document.getElementById("keuze-kop").textContent = spel.naam + " — HOE WIL JE SPELEN?";
+  </script>
+  <script src="smiles-widget.js"></script>
+</body>
+</html>

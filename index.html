@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DELUXE EDITION — kies je spel</title>
+  <link rel="icon" href="images/logo.jpg" />
+  <style>
+    /* ══════════════════════════════════════════════════
+       BRIAN'S GAME-SITE — met het echte DELUXE EDITION-logo!
+       Kleuren passen bij het logo: rood + blauw.
+       Kleuren veranderen? Doe dat hieronder bij :root!
+       ══════════════════════════════════════════════════ */
+    :root {
+      --rood: #ff3b3b;
+      --blauw: #3b82ff;
+      --lichtblauw: #7db4ff;
+      --zwart: #060a18;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--zwart);
+      color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px 60px;
+      overflow-x: hidden;
+    }
+
+    /* 🌌 bewegend raster op de achtergrond (stoer effect) */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(59, 130, 255, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 59, 59, 0.05) 1px, transparent 1px);
+      background-size: 44px 44px;
+      animation: raster 18s linear infinite;
+      pointer-events: none;
+    }
+    @keyframes raster { to { background-position: 44px 44px; } }
+
+    /* 🔴🔵 zachte rode + blauwe gloed, net als in het logo */
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(500px 350px at 15% 25%, rgba(255, 40, 40, 0.13), transparent 70%),
+        radial-gradient(500px 350px at 85% 75%, rgba(40, 110, 255, 0.13), transparent 70%);
+      pointer-events: none;
+    }
+
+    /* ⭐ HET LOGO — zweeft zachtjes op en neer */
+    .logo-groot {
+      width: min(380px, 78vw);
+      border-radius: 22px;
+      box-shadow: 0 0 50px rgba(255, 40, 40, 0.35), 0 0 100px rgba(40, 110, 255, 0.3);
+      animation: zweef 4s ease-in-out infinite alternate;
+      position: relative;
+      z-index: 1;
+    }
+    @keyframes zweef { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+
+    .onder-titel {
+      margin-top: 20px;
+      font-size: clamp(14px, 3vw, 20px);
+      color: rgba(255, 255, 255, 0.6);
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* 🎮 het spellen-raster: 10 blokken */
+    .spellen {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 18px;
+      margin-top: 44px;
+      width: 100%;
+      max-width: 1050px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .spel {
+      position: relative;
+      aspect-ratio: 1 / 0.8;
+      border-radius: 18px;
+      border: 2px solid rgba(59, 130, 255, 0.25);
+      background: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(59, 130, 255, 0.03));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+      overflow: hidden;
+    }
+    /* om en om rood en blauw, net als het logo */
+    .spel:nth-child(odd) { border-color: rgba(255, 59, 59, 0.28); }
+
+    .spel:hover {
+      transform: translateY(-8px) scale(1.04) rotate(-1deg);
+      border-color: var(--blauw);
+      box-shadow: 0 14px 44px rgba(59, 130, 255, 0.3);
+    }
+    .spel:nth-child(odd):hover {
+      border-color: var(--rood);
+      box-shadow: 0 14px 44px rgba(255, 59, 59, 0.3);
+    }
+    .spel:active { transform: scale(0.96); }
+
+    .spel .nummer {
+      font-size: 44px;
+      font-weight: 900;
+      background: linear-gradient(180deg, #fff, rgba(255, 255, 255, 0.35));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .spel .naam {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--lichtblauw);
+    }
+    .spel:nth-child(odd) .naam { color: var(--rood); }
+
+    .spel .status {
+      font-size: 11px;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.45);
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      padding: 3px 10px;
+      margin-top: 4px;
+    }
+
+    /* ▶ een spel dat al speelbaar is: gloed + pulserende badge */
+    .spel.speelbaar {
+      border-color: var(--rood);
+      box-shadow: 0 0 24px rgba(255, 59, 59, 0.18);
+    }
+    .spel.speelbaar.blauw {
+      border-color: var(--blauw);
+      box-shadow: 0 0 24px rgba(59, 130, 255, 0.18);
+    }
+    .status-live {
+      color: #fff !important;
+      background: linear-gradient(135deg, #e42222, #ff5940) !important;
+      animation: pulseren 1.6s ease-in-out infinite;
+    }
+    .spel.blauw .status-live {
+      background: linear-gradient(135deg, #1f5fe0, #3b82ff) !important;
+    }
+    @keyframes pulseren {
+      50% { box-shadow: 0 0 18px rgba(255, 80, 80, 0.8); }
+    }
+
+    footer {
+      margin-top: 56px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.35);
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+    /* 🧩 MODS-knop onderin het menu */
+    #mods-knop {
+      display: inline-block;
+      margin-bottom: 12px;
+      background: rgba(255, 255, 255, 0.06);
+      color: #ffd93b;
+      border: 1px solid rgba(255, 217, 59, 0.45);
+      border-radius: 999px;
+      padding: 10px 26px;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      text-decoration: none;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    #mods-knop:hover { transform: scale(1.06); box-shadow: 0 4px 24px rgba(255, 217, 59, 0.35); }
+
+    /* 🔐 LOGIN-SCHERM — dit zie je éérst, daarna pas het menu */
+    #login-scherm {
+      position: fixed;
+      inset: 0;
+      background: var(--zwart);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      padding: 24px;
+    }
+    #login-scherm::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(59, 130, 255, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 59, 59, 0.05) 1px, transparent 1px);
+      background-size: 44px 44px;
+      animation: raster 18s linear infinite;
+      pointer-events: none;
+    }
+    #login-scherm .login-kaart {
+      position: relative;
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid rgba(255, 59, 59, 0.4);
+      border-radius: 24px;
+      padding: 30px 34px 38px;
+      width: min(400px, 92vw);
+      text-align: center;
+      box-shadow: 0 0 40px rgba(255, 59, 59, 0.14), 0 0 80px rgba(59, 130, 255, 0.12);
+    }
+    #login-scherm .login-logo {
+      width: 150px;
+      border-radius: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 0 30px rgba(255, 40, 40, 0.35), 0 0 60px rgba(40, 110, 255, 0.3);
+    }
+    #login-scherm p {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.55);
+      margin-bottom: 22px;
+    }
+    #login-naam {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.45);
+      border: 2px solid rgba(59, 130, 255, 0.5);
+      border-radius: 14px;
+      padding: 14px 16px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      text-align: center;
+      outline: none;
+    }
+    #login-naam:focus { border-color: var(--blauw); box-shadow: 0 0 18px rgba(59, 130, 255, 0.35); }
+    #login-knop {
+      width: 100%;
+      margin-top: 14px;
+      background: linear-gradient(90deg, #e42222, #ff5940 45%, #3b82ff 55%, #1f5fe0);
+      color: #fff;
+      border: none;
+      border-radius: 14px;
+      padding: 14px;
+      font-size: 17px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+    #login-knop:hover { transform: scale(1.03); }
+
+    /* 🧑‍🎨 MAAK EEN AVATAR-knop (linksboven) */
+    #avatar-knop {
+      position: fixed;
+      top: 14px;
+      left: 16px;
+      z-index: 50;
+      background: rgba(255, 255, 255, 0.07);
+      color: #fff;
+      border: 1px solid rgba(59, 130, 255, 0.5);
+      border-radius: 999px;
+      padding: 11px 20px;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+    }
+    #avatar-knop:hover { transform: scale(1.06); border-color: var(--blauw); box-shadow: 0 4px 24px rgba(59, 130, 255, 0.4); }
+
+    /* 💬 CHAT-knop (linksboven, onder de avatar-knop) */
+    #chat-knop {
+      position: fixed;
+      top: 64px;
+      left: 16px;
+      z-index: 50;
+      background: rgba(255, 255, 255, 0.07);
+      color: #fff;
+      border: 1px solid rgba(255, 59, 59, 0.5);
+      border-radius: 999px;
+      padding: 11px 20px;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+    }
+    #chat-knop:hover { transform: scale(1.06); border-color: var(--rood); box-shadow: 0 4px 24px rgba(255, 59, 59, 0.4); }
+    #avatar-knop .mini, #speler-balk .mini {
+      width: 30px; height: 30px; border-radius: 999px; overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.3); flex-shrink: 0;
+    }
+    #avatar-knop .mini svg, #speler-balk .mini svg { width: 100%; height: 100%; display: block; }
+
+    /* ✨ CREATE A GAME-knop (rechtsboven) */
+    #maak-knop {
+      position: fixed;
+      top: 14px;
+      right: 16px;
+      z-index: 50;
+      background: linear-gradient(90deg, #e42222, #ff5940 45%, #3b82ff 55%, #1f5fe0);
+      color: #fff;
+      border: none;
+      border-radius: 999px;
+      padding: 11px 20px;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(255, 60, 40, 0.35), 0 4px 20px rgba(40, 110, 255, 0.25);
+      transition: transform 0.15s, box-shadow 0.15s;
+      text-decoration: none;
+      display: inline-block;
+    }
+    #maak-knop:hover { transform: scale(1.06); box-shadow: 0 6px 30px rgba(255, 60, 40, 0.5), 0 6px 30px rgba(40, 110, 255, 0.4); }
+
+    /* ➕ maak-tegel in het raster */
+    .maak-tegel { border-style: dashed !important; }
+    .maak-tegel .nummer { font-size: 38px; }
+
+    /* ✕ verwijder-knopje op je eigen spellen */
+    .spel .weg {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: rgba(255, 255, 255, 0.6);
+      border-radius: 999px;
+      width: 26px;
+      height: 26px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .spel .weg:hover { color: #fff; border-color: var(--rood); background: rgba(255, 59, 59, 0.3); }
+    /* ✏️ aanpas-knopje (naast de ✕, alleen op je eigen spellen) */
+    .spel .bewerk { right: 42px; }
+    .spel .bewerk:hover { color: #fff; border-color: var(--blauw); background: rgba(59, 130, 255, 0.3); }
+    .spel .figuurtje { font-size: 44px; }
+
+    /* 👤 wie is ingelogd (rechtsboven, onder de maak-knop) */
+    #speler-balk {
+      position: fixed;
+      top: 64px;
+      right: 16px;
+      z-index: 50;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(59, 130, 255, 0.4);
+      border-radius: 999px;
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    #speler-balk .naam { color: var(--lichtblauw); }
+    #speler-balk button {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.45);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    #speler-balk button:hover { color: #fff; }
+
+    /* 🎁 VIBE POPUP — verschijnt op scherm van de ontvanger */
+    #vibe-popup {
+      position: fixed;
+      inset: 0;
+      background: rgba(6,10,24,0.94);
+      z-index: 9000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    #vibe-popup-kaart {
+      text-align: center;
+      background: rgba(168,85,247,0.12);
+      border: 3px solid #a855f7;
+      border-radius: 28px;
+      padding: 40px 46px;
+      max-width: min(360px, 90vw);
+      box-shadow: 0 0 80px rgba(168,85,247,0.55), 0 0 160px rgba(168,85,247,0.25);
+      animation: vibeIn 0.55s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    @keyframes vibeIn {
+      from { transform: scale(0.25) rotate(-12deg); opacity:0; }
+      to   { transform: scale(1)    rotate(0deg);   opacity:1; }
+    }
+    #vibe-popup-sluit {
+      background: linear-gradient(90deg,#7c3aed,#a855f7);
+      color: #fff; border: none; border-radius: 14px;
+      padding: 14px 36px; font-size: 18px; font-weight: 900;
+      cursor: pointer; letter-spacing: 1px; margin-top: 24px;
+    }
+
+    /* 🟢 AP TOAST — bevestiging op scherm */
+    #ap-toast {
+      position: fixed;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-80px);
+      z-index: 9999;
+      background: #1a1a2e;
+      border: 2px solid #3bff6e;
+      border-radius: 14px;
+      padding: 14px 26px;
+      font-size: 16px;
+      font-weight: 900;
+      color: #fff;
+      letter-spacing: 1px;
+      box-shadow: 0 0 30px rgba(59,255,110,0.35);
+      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #ap-toast.zichtbaar { transform: translateX(-50%) translateY(0); }
+    #ap-toast.fout { border-color: #ff3b3b; box-shadow: 0 0 30px rgba(255,59,59,0.35); }
+
+    /* 🏷️ versie-label linksboven */
+    #versie-label {
+      position: fixed;
+      top: 5px;
+      left: 8px;
+      z-index: 50;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: rgba(255,255,255,0.22);
+      pointer-events: none;
+    }
+
+    /* 🟢 online teller onder de subtitel */
+    #online-badge {
+      margin-top: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.55);
+      letter-spacing: 1px;
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    #online-dot {
+      width: 9px; height: 9px;
+      background: #3bff6e;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #3bff6e;
+      flex-shrink: 0;
+      animation: pulsDot 2s ease-in-out infinite;
+    }
+    @keyframes pulsDot { 50% { opacity: 0.35; box-shadow: none; } }
+
+    /* 🔒 AP — regenboog admin-knop rechtsonder */
+    #ap-knop {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      z-index: 200;
+      background: transparent;
+      border: none;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 3px;
+      cursor: pointer;
+      padding: 10px;
+      display: none;
+      background: linear-gradient(90deg, #ff3b3b, #ff9f3b, #ffd93b, #3bff6e, #3b82ff, #a855f7);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: regenboog 2s linear infinite;
+      background-size: 200% auto;
+    }
+    @keyframes regenboog { to { background-position: 200% center; } }
+
+    /* 🔒 AP PANEEL — fullscreen overlay */
+    #ap-paneel {
+      position: fixed;
+      inset: 0;
+      background: rgba(6,10,24,0.97);
+      z-index: 999;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      overflow-y: auto;
+    }
+    #ap-inhoud {
+      width: 100%;
+      max-width: 480px;
+      padding: 16px 16px 80px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 🔐 login: eerst je naam, dan pas het menu -->
+  <div id="login-scherm">
+    <div class="login-kaart">
+      <img class="login-logo" src="images/logo.jpg" alt="Deluxe Edition logo" />
+      <p>Kies een bijnaam om binnen te komen.<br><span style="font-size:12px;opacity:0.55">Geen email of wachtwoord nodig!</span></p>
+      <input id="login-naam" type="text" maxlength="16" placeholder="jouw bijnaam..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+      <button id="login-knop" onclick="inloggen()">▶ INLOGGEN</button>
+    </div>
+  </div>
+
+  <div id="versie-label">v1</div>
+
+  <a id="maak-knop" href="maak.html">✨ CREATE A GAME</a>
+  <a id="avatar-knop" href="avatar.html"><span id="avatar-mini-knop">🧑‍🎨</span> MAAK EEN AVATAR</a>
+  <a id="chat-knop" href="chat.html">💬 CHAT</a>
+
+  <div id="speler-balk">
+    <span id="avatar-mini-balk">👤</span> <span class="naam" id="speler-naam"></span>
+    <button onclick="uitloggen()">uitloggen</button>
+  </div>
+
+  <img class="logo-groot" src="images/logo.jpg" alt="DELUXE EDITION" />
+  <p class="onder-titel">🎮 Kies je spel — by Brian</p>
+  <div id="online-badge"><span id="online-dot"></span><span id="online-tel">...</span></div>
+
+  <div class="spellen">
+    <!-- 10 spel-blokken. Later koppel je hier echte spellen aan:
+         verander "Spel 3" in de naam van je spel en zet er een
+         link of spel-pagina achter. -->
+    <div class="spel speelbaar" onclick="spelKlik('OBLITERATOR',()=>location.href='obliterator/')"><div class="nummer">1</div><div class="naam">OBLITERATOR</div><div class="status status-live">▶ SPEELBAAR</div></div>
+    <div class="spel speelbaar blauw" onclick="spelKlik('MOFFEL',()=>window.open('https://www.roblox.com/games/108511673657928','_blank'))"><div class="nummer">2</div><div class="naam">MOFFEL</div><div class="status status-live">▶ OP ROBLOX</div></div>
+    <div class="spel speelbaar" style="border-color:#2ecc71;box-shadow:0 0 24px rgba(46,204,113,0.2)" onclick="spelKlik('ADVENTURE CRAFT',()=>location.href='adventurecraft.html')"><div class="nummer">⛏️</div><div class="naam" style="color:#2ecc71">ADVENTURE CRAFT</div><div class="status status-live" style="background:linear-gradient(135deg,#1f9d55,#2ecc71) !important">▶ SPEELBAAR</div></div>
+    <div class="spel speelbaar blauw" style="border-color:#6fc24f;box-shadow:0 0 24px rgba(111,194,79,0.25)" onclick="spelKlik('BLOKWERELD',()=>location.href='blokwereld.html')"><div class="nummer">🌍</div><div class="naam" style="color:#6fc24f">BLOKWERELD ∞</div><div class="status status-live" style="background:linear-gradient(135deg,#173404,#3b6d11) !important">▶ EINDELOOS 3D</div></div>
+    <div class="spel speelbaar" style="border-color:#ff3b3b;box-shadow:0 0 24px rgba(255,59,59,0.25)" onclick="spelKlik('DELUXE BATTLE',()=>location.href='arena.html')"><div class="nummer">🚀</div><div class="naam" style="background:linear-gradient(90deg,#ff3b3b,#3b82ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent">DELUXE BATTLE</div><div class="status status-live" style="background:linear-gradient(135deg,#8b0000,#ff3b3b) !important">▶ 10 SPELERS</div></div>
+    <!-- 🤖 hier komen de spellen die je met de bouwer-bot maakt (zie script onderaan) -->
+    <div class="spel maak-tegel" onclick="location.href='maak.html'"><div class="nummer">➕</div><div class="naam">MAAK EEN SPEL</div><div class="status">praat met de bot</div></div>
+    <div class="spel maak-tegel" onclick="location.href='winkel.html'" style="border-color:rgba(255,215,0,0.45)"><div class="nummer">🗝️</div><div class="naam" style="color:#ffd700">KEYS WINKEL</div><div class="status" id="keys-stand">skins kopen</div></div>
+  </div>
+
+  <footer>
+    <a id="mods-knop" href="mods.html">🧩 MODS</a><br>
+    deluxeedition.nl — gebouwd door Brian 🎮
+  </footer>
+
+  <!-- 🟢 toast melding -->
+  <div id="ap-toast"></div>
+
+  <!-- 🎁 VIBE POPUP -->
+  <div id="vibe-popup">
+    <div id="vibe-popup-kaart">
+      <div style="font-size:11px;font-weight:700;letter-spacing:3px;color:#c084fc;margin-bottom:14px">🎁 JE HEBT EEN VIBE GEKREGEN!</div>
+      <div id="vibe-popup-emoji" style="font-size:78px;line-height:1;margin-bottom:12px">✨</div>
+      <div id="vibe-popup-naam" style="font-size:26px;font-weight:900;color:#fff;letter-spacing:2px;margin-bottom:8px">Vibe</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.5)">van NovaX 🎁</div>
+      <button id="vibe-popup-sluit" onclick="vibePopupSluit()">🔥 SICK!</button>
+    </div>
+  </div>
+
+  <!-- 🔒 AP-knop (regenboog — alleen voor NovaX) -->
+  <button id="ap-knop" onclick="apOpen()">AP</button>
+
+  <!-- 🔒 AP PANEEL -->
+  <div id="ap-paneel">
+    <div id="ap-inhoud"></div>
+  </div>
+
+  <script>
+    // ── 🔐 LOGIN ─────────────────────────────────────────
+    // Je naam wordt bewaard op je eigen apparaat (localStorage,
+    // sleutel "deluxe-speler"). OBLITERATOR gebruikt dezelfde naam
+    // voor je high-scores — en wie "NovaX" heet krijgt het admin-paneel.
+    const NAAM_SLEUTEL = "deluxe-speler";
+
+    function ingelogdeNaam() {
+      try { return (localStorage.getItem(NAAM_SLEUTEL) || "").trim(); } catch { return ""; }
+    }
+
+    function toonJuisteScherm() {
+      const naam = ingelogdeNaam();
+      const login = document.getElementById("login-scherm");
+      const balk = document.getElementById("speler-balk");
+      const apKnop = document.getElementById("ap-knop");
+      if (naam) {
+        login.style.display = "none";
+        balk.style.display = "flex";
+        document.getElementById("speler-naam").textContent = naam;
+        if (apKnop) apKnop.style.display = naam === "NovaX" ? "block" : "none";
+      } else {
+        login.style.display = "flex";
+        balk.style.display = "none";
+        if (apKnop) apKnop.style.display = "none";
+        setTimeout(() => document.getElementById("login-naam").focus(), 100);
+      }
+    }
+
+    function inloggen() {
+      const naam = document.getElementById("login-naam").value.trim();
+      if (!naam) {
+        document.getElementById("login-naam").placeholder = "kies een bijnaam 😄";
+        return;
+      }
+      // Direct inloggen — bans worden afgehandeld via de polling (elke 8 sec)
+      try { localStorage.setItem(NAAM_SLEUTEL, naam.slice(0, 16)); } catch {}
+      toonJuisteScherm();
+    }
+
+    function uitloggen() {
+      try { localStorage.removeItem(NAAM_SLEUTEL); } catch {}
+      document.getElementById("login-naam").value = "";
+      toonJuisteScherm();
+    }
+
+    // Enter in het naamveld = inloggen
+    document.getElementById("login-naam").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") inloggen();
+    });
+
+    toonJuisteScherm();
+
+    // ── 🤖 JOUW EIGEN SPELLEN ────────────────────────────
+    // Alles wat je met de bouwer-bot (maak.html) maakt, staat in
+    // localStorage "deluxe-games" en verschijnt hier in het raster,
+    // vlak vóór de ➕-tegel.
+    function toonEigenSpellen() {
+      let games = [];
+      try { games = JSON.parse(localStorage.getItem("deluxe-games") || "[]"); } catch {}
+      const raster = document.querySelector(".spellen");
+      const maakTegel = document.querySelector(".maak-tegel");
+      games.filter(g => g.af).forEach((g, i) => {
+        const blok = document.createElement("div");
+        blok.className = "spel speelbaar" + (i % 2 ? " blauw" : "");
+        blok.style.borderColor = g.kleur;
+        blok.style.boxShadow = "0 0 24px " + g.kleur + "44";
+        blok.innerHTML =
+          '<button class="weg" title="verwijderen">✕</button>' +
+          '<button class="weg bewerk" title="aanpassen">✏️</button>' +
+          '<div class="figuurtje">' + g.emoji + '</div>' +
+          '<div class="naam" style="color:' + g.kleur + '">' + g.naam + '</div>' +
+          '<div class="status status-live" style="background:' + g.kleur + ' !important">▶ SPEELBAAR</div>';
+        blok.onclick = () => spelKlik(g.naam, () => location.href = "speel.html?id=" + g.id);
+        blok.querySelector(".weg").onclick = (e) => {
+          e.stopPropagation();
+          if (!confirm("Weet je zeker dat je " + g.naam + " wilt verwijderen?")) return;
+          const rest = games.filter(x => x.id !== g.id);
+          try { localStorage.setItem("deluxe-games", JSON.stringify(rest)); } catch {}
+          blok.remove();
+        };
+        blok.querySelector(".bewerk").onclick = (e) => {
+          e.stopPropagation();
+          location.href = "maak.html?edit=" + g.id;
+        };
+        raster.insertBefore(blok, maakTegel);
+      });
+    }
+    toonEigenSpellen();
+
+    // ── 🌍 ONLINE SPELLEN VAN IEDEREEN ───────────────────
+    // Haalt de gedeelde spellenlijst op (api/spellen). Zo zie
+    // jij ook de spellen die papa (of iemand anders) maakte —
+    // en zij die van jou! Eigen spellen staan er al (hierboven),
+    // die slaan we over. Bij andermans spel staat "van <naam>".
+    // maakt tekst van een ander veilig om te tonen (geen codes/hacks)
+    function veilig(t) {
+      const d = document.createElement("div");
+      d.textContent = String(t || "");
+      return d.innerHTML;
+    }
+    function toonOnlineSpellen() {
+      fetch("/api/spellen").then(r => r.json()).then(online => {
+        if (!Array.isArray(online)) return;
+        // bewaar de lijst zodat speel.html andermans spel kan laden
+        try { localStorage.setItem("deluxe-online-games", JSON.stringify(online)); } catch {}
+        let lokaal = [];
+        try { lokaal = JSON.parse(localStorage.getItem("deluxe-games") || "[]"); } catch {}
+        const lokaleIds = new Set(lokaal.map(g => g.id));
+        const ik = localStorage.getItem("deluxe-speler") || "";
+        const raster = document.querySelector(".spellen");
+        const maakTegel = document.querySelector(".maak-tegel");
+        online.filter(g => !lokaleIds.has(g.id)).forEach((g, i) => {
+          const blok = document.createElement("div");
+          blok.className = "spel speelbaar" + (i % 2 ? " blauw" : "");
+          blok.style.borderColor = g.kleur;
+          blok.style.boxShadow = "0 0 24px " + g.kleur + "44";
+          const magWeg = ik && (ik === g.maker || ik === "NovaX");
+          const magBewerken = ik && ik === g.maker;
+          blok.innerHTML =
+            (magWeg ? '<button class="weg" title="verwijderen">✕</button>' : '') +
+            (magBewerken ? '<button class="weg bewerk" title="aanpassen">✏️</button>' : '') +
+            '<div class="figuurtje">' + veilig(g.emoji) + '</div>' +
+            '<div class="naam" style="color:' + veilig(g.kleur) + '">' + veilig(g.naam) + '</div>' +
+            '<div class="status status-live" style="background:' + veilig(g.kleur) + ' !important">▶ SPEELBAAR</div>' +
+            '<div style="margin-top:6px;font-size:12px;color:rgba(255,255,255,0.55)">🌍 van ' + veilig(g.maker) + '</div>';
+          blok.onclick = () => spelKlik(g.naam, () => location.href = "speel.html?id=" + g.id);
+          const wegKnop = blok.querySelector(".weg:not(.bewerk)");
+          if (wegKnop) wegKnop.onclick = (e) => {
+            e.stopPropagation();
+            if (!confirm("Weet je zeker dat je " + g.naam + " voor iedereen wilt verwijderen?")) return;
+            fetch("/api/spellen?id=" + g.id + "&maker=" + encodeURIComponent(ik), { method: "DELETE" })
+              .then(r => { if (r.ok) blok.remove(); else alert("Verwijderen lukte niet 🙈"); });
+          };
+          const bewerkKnop = blok.querySelector(".bewerk");
+          if (bewerkKnop) bewerkKnop.onclick = (e) => {
+            e.stopPropagation();
+            location.href = "maak.html?edit=" + g.id;
+          };
+          raster.insertBefore(blok, maakTegel);
+        });
+      }).catch(() => { /* geen internet? dan alleen je eigen spellen */ });
+    }
+    toonOnlineSpellen();
+
+    // ── 🧑‍🎨 JOUW AVATAR ─────────────────────────────────
+    // Gemaakt met avatar.html (opgeslagen als kant-en-klaar
+    // SVG-plaatje in localStorage "deluxe-avatar-svg").
+    // We tonen hem op de knop linksboven én naast je naam.
+    function toonAvatar() {
+      let svg = null;
+      try { svg = localStorage.getItem("deluxe-avatar-svg"); } catch {}
+      if (!svg || !svg.startsWith("<svg")) return;
+      const knop = document.getElementById("avatar-mini-knop");
+      const balk = document.getElementById("avatar-mini-balk");
+      knop.className = "mini"; knop.innerHTML = svg;
+      balk.className = "mini"; balk.innerHTML = svg;
+    }
+    toonAvatar();
+
+    // ── 🗝️ jouw keys-spaarpot op de winkel-tegel ─────────
+    try {
+      const keys = parseInt(localStorage.getItem("deluxe-keys") || "0", 10) || 0;
+      document.getElementById("keys-stand").textContent = "je hebt er " + keys;
+    } catch {}
+
+    // ── 📊 BEZOEK TELLEN (NovaX telt niet mee) ──────────
+    function stuurBezoek() {
+      const naam = ingelogdeNaam();
+      if (!naam || naam === "NovaX") return;
+      fetch("/api/stats",   { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({type:"bezoek", naam}) }).catch(()=>{});
+      fetch("/api/spelers", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({naam}) }).catch(()=>{});
+    }
+    stuurBezoek();
+
+    // ── 🟢 ONLINE TELLER ─────────────────────────────────────
+    function updateOnline() {
+      fetch("/api/online").then(r => r.json()).then(data => {
+        const n = data.aantal || 0;
+        const el = document.getElementById("online-tel");
+        if (el) el.textContent = n + (n === 1 ? " speler online" : " spelers online");
+        // AP-paneel live bijwerken als het open is
+        const apEl = document.getElementById("ap-online-namen");
+        if (apEl && Array.isArray(data.namen)) {
+          apEl.textContent = data.namen.length ? data.namen.join(", ") : "niemand";
+        }
+      }).catch(() => {
+        const el = document.getElementById("online-tel");
+        if (el) el.textContent = "? online";
+      });
+    }
+    updateOnline();
+
+    // ── 🔄 REALTIME POLLING — ban + vibe check (elke 8 sec) ──
+    function vibePopupToon(vibe) {
+      document.getElementById("vibe-popup-emoji").textContent = vibe.emoji || "✨";
+      document.getElementById("vibe-popup-naam").textContent  = vibe.naam  || "Vibe";
+      document.getElementById("vibe-popup").style.display = "flex";
+    }
+    function vibePopupSluit() {
+      document.getElementById("vibe-popup").style.display = "none";
+    }
+    function vibeAanVibekast(vibe) {
+      try {
+        const kast = JSON.parse(localStorage.getItem("deluxe-mijn-vibes") || "[]");
+        kast.unshift({ emoji: vibe.emoji, naam: vibe.naam, wanneer: new Date().toLocaleString("nl") });
+        localStorage.setItem("deluxe-mijn-vibes", JSON.stringify(kast.slice(0, 50)));
+      } catch {}
+    }
+
+    async function pollingCheck() {
+      updateOnline(); // altijd updaten, ook voor NovaX en als je uitgelogd bent
+      const naam = ingelogdeNaam();
+      if (!naam || naam === "NovaX") return;
+      // Ban check — als je verbannen bent, direct uitloggen
+      try {
+        const bans = await fetch("/api/admin").then(r => r.json());
+        if (Array.isArray(bans) && bans.includes(naam)) {
+          uitloggen();
+          const inp = document.getElementById("login-naam");
+          inp.placeholder = "🚫 Je account is verbannen.";
+          inp.style.borderColor = "var(--rood)";
+          return;
+        }
+      } catch {}
+      // Vibe check — op home page gaat de vibe naar de vibekast (collectie)
+      try {
+        const vibe = await fetch("/api/vibes?naam=" + encodeURIComponent(naam)).then(r => r.json());
+        if (vibe && vibe.naam) {
+          vibeAanVibekast(vibe);
+          fetch("/api/vibes?naam=" + encodeURIComponent(naam), { method:"DELETE" }).catch(()=>{});
+          apToast("🎁 Nieuwe vibe in je kast: " + vibe.emoji + " " + vibe.naam + "!");
+        }
+      } catch {}
+      // Heartbeat — server weet dat je nog online bent
+      try {
+        await fetch("/api/online", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({naam}) });
+      } catch {}
+    }
+    pollingCheck();
+    setInterval(pollingCheck, 8000);
+
+    // ── 📊 GAME-KLIK TELLEN ──────────────────────────────
+    function spelKlik(spelNaam, actie) {
+      const naam = ingelogdeNaam();
+      if (naam && naam !== "NovaX") {
+        fetch("/api/stats", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({type:"klik", spel:spelNaam, naam}) }).catch(()=>{});
+      }
+      actie();
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 🔒 ADMIN PANEEL (AP) — exclusief voor NovaX
+    // ══════════════════════════════════════════════════════
+    const AP_VIBES = [
+      { id:"speed",   emoji:"⚡", naam:"Speed Boost",  info:"2× zo snel voor 60 sec" },
+      { id:"shield",  emoji:"🛡️", naam:"Schild",        info:"Overleef 1 extra klap" },
+      { id:"double",  emoji:"💎", naam:"Double Score",  info:"2× meer punten" },
+      { id:"rainbow", emoji:"🌈", naam:"Rainbow",       info:"Regenboogkleurig schip" },
+      { id:"ghost",   emoji:"👻", naam:"Ghost",         info:"Ga door obstakels heen" },
+      { id:"fire",    emoji:"🔥", naam:"Fire Mode",     info:"Alles staat in brand" },
+      { id:"tiny",    emoji:"🐜", naam:"Micro",         info:"Je schip wordt super mini" },
+      { id:"big",     emoji:"🐘", naam:"Mega",          info:"Je schip wordt GIGANTISCH" },
+    ];
+
+    let apScherm = "menu";
+    let apGekozenVibe = null;
+    let apGekozenSpeler = null;
+
+    function apLees(k, s) { try { return JSON.parse(localStorage.getItem(k) || s); } catch { return JSON.parse(s); } }
+    function apSla(k, v)   { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+
+    let apToastTimer = null;
+    function apToast(tekst, isError) {
+      const el = document.getElementById("ap-toast");
+      el.textContent = tekst;
+      el.className = "zichtbaar" + (isError ? " fout" : "");
+      clearTimeout(apToastTimer);
+      apToastTimer = setTimeout(() => { el.className = ""; }, 2500);
+    }
+
+    function apOpen()  { document.getElementById("ap-paneel").style.display = "flex"; apScherm = "menu"; apGekozenVibe = null; apTeken(); }
+    function apSluit() { document.getElementById("ap-paneel").style.display = "none"; }
+    function apGaNaar(s) { apScherm = s; apGekozenVibe = null; apGekozenSpeler = null; apTeken(); }
+
+    function apTeken() {
+      const el = document.getElementById("ap-inhoud");
+      el.innerHTML = "";
+
+      // header
+      const hdr = document.createElement("div");
+      hdr.style.cssText = "display:flex;align-items:center;gap:12px;padding:18px 0 22px";
+      if (apScherm !== "menu") {
+        const t = document.createElement("button");
+        t.textContent = "← Terug";
+        t.style.cssText = "background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:999px;padding:8px 16px;font-size:13px;cursor:pointer;";
+        t.onclick = () => apGaNaar("menu");
+        hdr.appendChild(t);
+      }
+      const titels = { menu:"🔒 ADMIN PANEEL", verbanner:"🚫 Verban Speler", spelverbanner:"🎮 Verban Spel", mods:"🧩 Mods Beheer", wereld:"🌍 Mod in Wereld", vibes:"⚡ Vibes in OBLITERATOR" };
+      const tit = document.createElement("h2");
+      tit.textContent = titels[apScherm] || "AP";
+      tit.style.cssText = "font-size:19px;font-weight:900;letter-spacing:2px;color:#fff;flex:1;";
+      hdr.appendChild(tit);
+      const x = document.createElement("button");
+      x.textContent = "✕";
+      x.style.cssText = "background:none;border:none;color:rgba(255,255,255,0.5);font-size:22px;cursor:pointer;padding:4px 8px;";
+      x.onclick = apSluit;
+      hdr.appendChild(x);
+      el.appendChild(hdr);
+
+      if (apScherm === "menu")          apTekenMenu(el);
+      else if (apScherm === "verbanner")     apTekenVerbanner(el);
+      else if (apScherm === "spelverbanner") apTekenSpelverbanner(el);
+      else if (apScherm === "mods")          apTekenMods(el);
+      else if (apScherm === "wereld")        apTekenWereld(el);
+      else if (apScherm === "vibes")         apTekenVibes(el);
+    }
+
+    function apMenuKnop(emoji, label, beschr, kleur, actie) {
+      const k = document.createElement("button");
+      k.style.cssText = "width:100%;background:rgba(255,255,255,0.04);border:2px solid " + kleur + "44;border-radius:18px;padding:18px 20px;margin-bottom:12px;cursor:pointer;text-align:left;transition:border-color 0.15s,background 0.15s;display:flex;align-items:center;gap:14px;";
+      k.onmouseenter = () => { k.style.borderColor = kleur; k.style.background = kleur + "18"; };
+      k.onmouseleave = () => { k.style.borderColor = kleur + "44"; k.style.background = "rgba(255,255,255,0.04)"; };
+      k.innerHTML = "<span style='font-size:28px'>" + emoji + "</span><div><div style='font-size:16px;font-weight:900;color:#fff;letter-spacing:1px'>" + label + "</div><div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px'>" + beschr + "</div></div>";
+      k.onclick = actie;
+      return k;
+    }
+
+    function apTekenMenu(el) {
+      // stats-blok bovenaan
+      const stats = document.createElement("div");
+      stats.style.cssText = "background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:16px 18px;margin-bottom:18px;";
+      stats.innerHTML = "<div style='color:rgba(255,255,255,0.4);font-size:11px;font-weight:700;letter-spacing:1px;margin-bottom:10px'>📊 SITE-STATS (NovaX telt niet mee)</div>" +
+        "<div id='ap-stats-inhoud' style='color:rgba(255,255,255,0.5);font-size:13px'>Laden...</div>" +
+        "<div id='ap-online-rij'><div style='color:rgba(255,255,255,0.2);font-size:12px;margin-top:10px'>🟢 Online laden...</div></div>";
+      el.appendChild(stats);
+
+      // Online-rij apart fetchen en insteken
+      fetch("/api/online").then(r => r.json()).then(data => {
+        const namen = Array.isArray(data.namen) ? data.namen : [];
+        const onlineEl = document.getElementById("ap-online-rij");
+        if (onlineEl) {
+          onlineEl.innerHTML =
+            "<div style='border-top:1px solid rgba(255,255,255,0.08);margin-top:12px;padding-top:12px'>" +
+            "<div style='color:rgba(255,255,255,0.4);font-size:11px;font-weight:700;letter-spacing:1px;margin-bottom:6px'>🟢 NU ONLINE (" + namen.length + ")</div>" +
+            "<div style='font-size:13px;color:#3bff6e;font-weight:700'>" +
+            (namen.length ? namen.map(n => "● " + n).join("  ") : "<span style='color:rgba(255,255,255,0.25)'>niemand online</span>") +
+            "</div><div id='ap-online-namen' style='display:none'>" + namen.join(", ") + "</div></div>";
+        }
+      }).catch(() => {});
+
+      fetch("/api/stats").then(r => r.json()).then(data => {
+        const bezoeken = data.bezoeken || 0;
+        const spellen  = data.spellen  || {};
+        const gesorteerd = Object.entries(spellen).sort((a, b) => b[1] - a[1]);
+        const top = gesorteerd[0];
+        let html = "<div style='display:flex;gap:24px;flex-wrap:wrap;'>";
+        html += "<div><div style='font-size:28px;font-weight:900;color:#fff'>" + bezoeken + "</div><div style='color:rgba(255,255,255,0.4);font-size:11px'>BEZOEKEN</div></div>";
+        if (top) {
+          html += "<div><div style='font-size:28px;font-weight:900;color:#ffd93b'>" + top[1] + "×</div><div style='color:rgba(255,255,255,0.4);font-size:11px'>MEEST: " + top[0] + "</div></div>";
+        }
+        html += "</div>";
+        if (gesorteerd.length > 1) {
+          html += "<div style='margin-top:10px;border-top:1px solid rgba(255,255,255,0.08);padding-top:10px'>";
+          gesorteerd.slice(0, 6).forEach(([n, v]) => {
+            const pct = top ? Math.round((v / top[1]) * 100) : 0;
+            html += "<div style='display:flex;align-items:center;gap:8px;margin-bottom:6px'>" +
+              "<div style='font-size:12px;color:#fff;font-weight:700;min-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>" + n + "</div>" +
+              "<div style='flex:1;background:rgba(255,255,255,0.08);border-radius:999px;height:6px'><div style='width:" + pct + "%;background:#ffd93b;height:100%;border-radius:999px'></div></div>" +
+              "<div style='font-size:12px;color:rgba(255,255,255,0.5);min-width:24px;text-align:right'>" + v + "</div></div>";
+          });
+          html += "</div>";
+        }
+        document.getElementById("ap-stats-inhoud").innerHTML = html;
+      }).catch(() => {
+        document.getElementById("ap-stats-inhoud").textContent = "Kan stats niet laden.";
+      });
+
+      el.appendChild(apMenuKnop("🚫", "VERBAN SPELER",       "Blokkeer iemand van de site",          "#ff3b3b", () => apGaNaar("verbanner")));
+      el.appendChild(apMenuKnop("🎮", "VERBAN SPEL",         "Verwijder een spel van iedereen",      "#ff3b3b", () => apGaNaar("spelverbanner")));
+      el.appendChild(apMenuKnop("🧩", "MODS MAKEN / EDITEN", "Maak nieuwe mods of pas ze aan",       "#ffd93b", () => apGaNaar("mods")));
+      el.appendChild(apMenuKnop("🌍", "MOD IN WERELD ZETTEN","Zet een mod in iemands wereld",        "#3b82ff", () => apGaNaar("wereld")));
+      el.appendChild(apMenuKnop("⚡", "VIBES IN OBLITERATOR","Geef iemand een speciale vibe",        "#a855f7", () => apGaNaar("vibes")));
+    }
+
+    function apTekenVerbanner(el) {
+      // invoer
+      const rij = document.createElement("div");
+      rij.style.cssText = "display:flex;gap:10px;margin-bottom:20px;";
+      const inp = document.createElement("input");
+      inp.placeholder = "Naam van de speler...";
+      inp.style.cssText = "flex:1;background:rgba(0,0,0,0.4);border:2px solid rgba(255,59,59,0.5);border-radius:12px;padding:12px 14px;font-size:15px;font-weight:700;color:#fff;outline:none;";
+      const btn = document.createElement("button");
+      btn.textContent = "🚫 Verban";
+      btn.style.cssText = "background:linear-gradient(90deg,#c0002b,#ff3b3b);color:#fff;border:none;border-radius:12px;padding:12px 18px;font-size:14px;font-weight:900;cursor:pointer;white-space:nowrap;";
+      btn.onclick = async () => {
+        const n = inp.value.trim();
+        if (!n || n === "NovaX") { apToast("❌ Ongeldige naam", true); return; }
+        btn.textContent = "...";
+        btn.disabled = true;
+        try {
+          await fetch("/api/admin", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({naam:n}) });
+          inp.value = "";
+          apToast("🚫 " + n + " is verbannen!");
+          apTeken();
+        } catch { apToast("❌ Mislukt, probeer opnieuw", true); }
+        btn.textContent = "🚫 Verban"; btn.disabled = false;
+      };
+      inp.addEventListener("keydown", e => { if (e.key === "Enter") btn.click(); });
+      rij.appendChild(inp); rij.appendChild(btn);
+      el.appendChild(rij);
+
+      // laad lijst van server
+      const lijstEl = document.createElement("div");
+      lijstEl.textContent = "Laden...";
+      lijstEl.style.cssText = "color:rgba(255,255,255,0.35);text-align:center;padding:16px;";
+      el.appendChild(lijstEl);
+
+      fetch("/api/admin").then(r => r.json()).then(bans => {
+        lijstEl.innerHTML = "";
+        if (!Array.isArray(bans) || bans.length === 0) {
+          lijstEl.textContent = "Nog niemand verbannen.";
+          return;
+        }
+        bans.forEach(naam => {
+          const r = document.createElement("div");
+          r.style.cssText = "display:flex;align-items:center;justify-content:space-between;background:rgba(255,59,59,0.08);border:1px solid rgba(255,59,59,0.3);border-radius:12px;padding:12px 16px;margin-bottom:8px;";
+          r.innerHTML = "<span style='color:#fff;font-weight:700'>🚫 " + naam + "</span>";
+          const ov = document.createElement("button");
+          ov.textContent = "Onverbannen";
+          ov.style.cssText = "background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);color:rgba(255,255,255,0.7);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;";
+          ov.onclick = async () => {
+            ov.textContent = "..."; ov.disabled = true;
+            await fetch("/api/admin?naam=" + encodeURIComponent(naam), { method:"DELETE" }).catch(()=>{});
+            apToast("✅ " + naam + " is onverbannen!");
+            apTeken();
+          };
+          r.appendChild(ov);
+          lijstEl.appendChild(r);
+        });
+      }).catch(() => { lijstEl.textContent = "Kan lijst niet laden."; });
+    }
+
+    function apTekenSpelverbanner(el) {
+      fetch("/api/spellen").then(r => r.json()).then(spellen => {
+        if (!Array.isArray(spellen) || spellen.length === 0) {
+          el.innerHTML += "<p style='color:rgba(255,255,255,0.35);text-align:center;padding:24px;'>Geen spellen online.</p>";
+          return;
+        }
+        spellen.forEach(g => {
+          const r = document.createElement("div");
+          r.style.cssText = "display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:12px 16px;margin-bottom:8px;";
+          r.innerHTML = "<div><span style='font-size:20px'>" + (g.emoji||"🎮") + "</span><span style='color:#fff;font-weight:700;margin-left:8px'>" + veilig(g.naam) + "</span><span style='color:rgba(255,255,255,0.4);font-size:12px;margin-left:8px'>van " + veilig(g.maker) + "</span></div>";
+          const del = document.createElement("button");
+          del.textContent = "🗑️ Verban";
+          del.style.cssText = "background:rgba(255,59,59,0.2);border:1px solid rgba(255,59,59,0.5);color:#ff3b3b;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;font-weight:700;";
+          del.onclick = () => {
+            if (!confirm("Spel \"" + g.naam + "\" voor iedereen verwijderen?")) return;
+            fetch("/api/spellen?id=" + g.id + "&maker=NovaX", { method:"DELETE" })
+              .then(res => { if (res.ok) r.remove(); else alert("Verwijderen mislukt 🙈"); });
+          };
+          r.appendChild(del);
+          el.appendChild(r);
+        });
+      }).catch(() => {
+        el.innerHTML += "<p style='color:rgba(255,255,255,0.35);text-align:center;padding:24px;'>Kan spellen niet laden.</p>";
+      });
+    }
+
+    function apTekenMods(el) {
+      let mods = apLees("deluxe-ap-mods", "[]");
+      const form = document.createElement("div");
+      form.style.cssText = "background:rgba(255,217,59,0.07);border:1px solid rgba(255,217,59,0.3);border-radius:16px;padding:18px;margin-bottom:20px;";
+      form.innerHTML = "<div style='color:#ffd93b;font-weight:900;margin-bottom:12px'>➕ Nieuw mod-idee</div>";
+      const velden = [{id:"m-emo",plh:"Emoji (bijv. 🔥)",max:4},{id:"m-naam",plh:"Naam van de mod",max:24},{id:"m-info",plh:"Wat doet de mod?",max:100}];
+      velden.forEach(v => {
+        const inp = document.createElement("input");
+        inp.id = v.id; inp.placeholder = v.plh; inp.maxLength = v.max;
+        inp.style.cssText = "width:100%;background:rgba(0,0,0,0.4);border:1px solid rgba(255,217,59,0.4);border-radius:10px;padding:10px 12px;font-size:14px;color:#fff;outline:none;margin-bottom:8px;";
+        form.appendChild(inp);
+      });
+      const sla = document.createElement("button");
+      sla.textContent = "💾 Opslaan";
+      sla.style.cssText = "background:linear-gradient(90deg,#c9a227,#ffd93b);color:#201a00;border:none;border-radius:10px;padding:10px 20px;font-size:14px;font-weight:900;cursor:pointer;";
+      sla.onclick = () => {
+        const e = (document.getElementById("m-emo").value.trim()||"🧩");
+        const n = document.getElementById("m-naam").value.trim();
+        const b = document.getElementById("m-info").value.trim();
+        if (!n) { apToast("❌ Typ een naam voor de mod!", true); return; }
+        mods.push({id:Date.now().toString(36), emoji:e, naam:n, beschr:b});
+        apSla("deluxe-ap-mods", mods);
+        apToast(e + " Mod \"" + n + "\" opgeslagen!");
+        apTeken();
+      };
+      form.appendChild(sla);
+      el.appendChild(form);
+      if (mods.length === 0) {
+        const leeg = document.createElement("p");
+        leeg.textContent = "Nog geen mod-ideeën.";
+        leeg.style.cssText = "color:rgba(255,255,255,0.35);text-align:center;padding:16px;";
+        el.appendChild(leeg);
+      } else {
+        mods.forEach(m => {
+          const r = document.createElement("div");
+          r.style.cssText = "display:flex;align-items:center;justify-content:space-between;background:rgba(255,217,59,0.06);border:1px solid rgba(255,217,59,0.25);border-radius:12px;padding:12px 16px;margin-bottom:8px;";
+          r.innerHTML = "<div><span style='font-size:20px'>" + m.emoji + "</span><span style='color:#fff;font-weight:700;margin-left:8px'>" + m.naam + "</span><br><span style='color:rgba(255,255,255,0.4);font-size:12px;margin-left:28px'>" + m.beschr + "</span></div>";
+          const weg = document.createElement("button");
+          weg.textContent = "✕";
+          weg.style.cssText = "background:none;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.5);border-radius:8px;padding:6px 10px;cursor:pointer;";
+          weg.onclick = () => { mods = mods.filter(x => x.id !== m.id); apSla("deluxe-ap-mods", mods); apTeken(); };
+          r.appendChild(weg);
+          el.appendChild(r);
+        });
+      }
+    }
+
+    function apTekenWereld(el) {
+      let wereldMods = apLees("deluxe-world-mods", "[]");
+      let eigenMods  = apLees("deluxe-ap-mods", "[]");
+      const form = document.createElement("div");
+      form.style.cssText = "background:rgba(59,130,255,0.07);border:1px solid rgba(59,130,255,0.3);border-radius:16px;padding:18px;margin-bottom:20px;";
+      form.innerHTML = "<div style='color:#7db4ff;font-weight:900;margin-bottom:12px'>🌍 Zet een mod in iemands wereld</div>";
+      const spInp = document.createElement("input");
+      spInp.placeholder = "Naam van de speler...";
+      spInp.style.cssText = "width:100%;background:rgba(0,0,0,0.4);border:1px solid rgba(59,130,255,0.4);border-radius:10px;padding:10px 12px;font-size:14px;color:#fff;outline:none;margin-bottom:8px;";
+      form.appendChild(spInp);
+      const sel = document.createElement("select");
+      sel.style.cssText = "width:100%;background:#0d1b2e;border:1px solid rgba(59,130,255,0.4);border-radius:10px;padding:10px 12px;font-size:14px;color:#fff;outline:none;margin-bottom:10px;";
+      [{naam:"SMILES",emoji:"😊"},{naam:"OBLITERATOR SKIN",emoji:"🛸"},{naam:"SPEED RUN",emoji:"⚡"}, ...eigenMods].forEach(m => {
+        const opt = document.createElement("option");
+        opt.value = m.naam;
+        opt.textContent = (m.emoji||"🧩") + " " + m.naam;
+        sel.appendChild(opt);
+      });
+      form.appendChild(sel);
+      const zet = document.createElement("button");
+      zet.textContent = "🌍 Zet in wereld";
+      zet.style.cssText = "background:linear-gradient(90deg,#1f5fe0,#3b82ff);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:14px;font-weight:900;cursor:pointer;";
+      zet.onclick = () => {
+        const sp = spInp.value.trim();
+        if (!sp) { apToast("❌ Typ een naam!", true); return; }
+        wereldMods.push({speler:sp, mod:sel.value, wanneer:new Date().toLocaleString("nl")});
+        apSla("deluxe-world-mods", wereldMods);
+        apToast("🌍 " + sel.value + " gezet in wereld van " + sp + "!");
+        spInp.value = "";
+        apTeken();
+      };
+      form.appendChild(zet);
+      el.appendChild(form);
+      if (wereldMods.length === 0) {
+        const leeg = document.createElement("p");
+        leeg.textContent = "Nog geen mods in werelden gezet.";
+        leeg.style.cssText = "color:rgba(255,255,255,0.35);text-align:center;padding:16px;";
+        el.appendChild(leeg);
+      } else {
+        [...wereldMods].reverse().forEach((w, i) => {
+          const r = document.createElement("div");
+          r.style.cssText = "display:flex;align-items:center;justify-content:space-between;background:rgba(59,130,255,0.07);border:1px solid rgba(59,130,255,0.25);border-radius:12px;padding:12px 16px;margin-bottom:8px;";
+          r.innerHTML = "<div><span style='color:#7db4ff;font-weight:700'>" + w.speler + "</span> <span style='color:rgba(255,255,255,0.4)'>→</span> <span style='color:#fff;font-weight:700'>" + w.mod + "</span><br><span style='color:rgba(255,255,255,0.3);font-size:11px'>" + w.wanneer + "</span></div>";
+          const weg = document.createElement("button");
+          weg.textContent = "✕";
+          weg.style.cssText = "background:none;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.5);border-radius:8px;padding:6px 10px;cursor:pointer;";
+          weg.onclick = () => { const idx = wereldMods.length - 1 - i; wereldMods.splice(idx, 1); apSla("deluxe-world-mods", wereldMods); apTeken(); };
+          r.appendChild(weg);
+          el.appendChild(r);
+        });
+      }
+    }
+
+    function apTekenVibes(el) {
+      let custom = apLees("deluxe-vibekast", "[]");
+      const hist = apLees("deluxe-vibes", "[]");
+      const alle = [...AP_VIBES, ...custom];
+
+      // ── 1. SPELER KIEZEN (geladen van server) ──
+      const s1 = document.createElement("div");
+      s1.innerHTML = "<div style='color:#7db4ff;font-weight:900;font-size:13px;letter-spacing:1px;margin-bottom:10px'>1️⃣ KIES EEN SPELER</div>";
+      const spelersEl = document.createElement("div");
+      spelersEl.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;min-height:40px;";
+      spelersEl.innerHTML = "<span style='color:rgba(255,255,255,0.3);font-size:13px;align-self:center'>Laden...</span>";
+      fetch("/api/spelers").then(r => r.json()).then(lijst => {
+        spelersEl.innerHTML = "";
+        if (!Array.isArray(lijst) || lijst.length === 0) {
+          spelersEl.innerHTML = "<span style='color:rgba(255,255,255,0.3);font-size:13px'>Nog geen spelers bekend.</span>";
+          return;
+        }
+        lijst.forEach(naam => {
+          const chip = document.createElement("button");
+          const ges = apGekozenSpeler === naam;
+          chip.textContent = naam;
+          chip.style.cssText = "background:" + (ges?"linear-gradient(90deg,#1f5fe0,#3b82ff)":"rgba(59,130,255,0.12)") + ";color:#fff;border:2px solid " + (ges?"#3b82ff":"rgba(59,130,255,0.35)") + ";border-radius:999px;padding:8px 16px;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.15s;";
+          chip.onclick = () => { apGekozenSpeler = ges ? null : naam; apTeken(); };
+          spelersEl.appendChild(chip);
+        });
+      }).catch(() => { spelersEl.innerHTML = "<span style='color:rgba(255,255,255,0.3);font-size:13px'>Kan spelers niet laden.</span>"; });
+      s1.appendChild(spelersEl);
+      el.appendChild(s1);
+
+      // ── 2. VIBE KIEZEN ──
+      const s2 = document.createElement("div");
+      s2.innerHTML = "<div style='color:#a855f7;font-weight:900;font-size:13px;letter-spacing:1px;margin-bottom:10px'>2️⃣ KIES EEN VIBE</div>";
+
+      // Nieuwe vibe toevoegen
+      const addRij = document.createElement("div");
+      addRij.style.cssText = "display:flex;gap:6px;margin-bottom:10px;align-items:center;";
+      const emoI = document.createElement("input");
+      emoI.placeholder="✨"; emoI.maxLength=4;
+      emoI.style.cssText="width:46px;background:rgba(0,0,0,0.4);border:1px solid rgba(168,85,247,0.4);border-radius:8px;padding:7px;font-size:17px;color:#fff;outline:none;text-align:center;";
+      const namI = document.createElement("input");
+      namI.placeholder="Nieuwe vibe naam..."; namI.maxLength=24;
+      namI.style.cssText="flex:1;background:rgba(0,0,0,0.4);border:1px solid rgba(168,85,247,0.4);border-radius:8px;padding:7px 10px;font-size:13px;color:#fff;outline:none;";
+      const addBtn = document.createElement("button");
+      addBtn.textContent="➕";
+      addBtn.style.cssText="background:rgba(168,85,247,0.25);color:#fff;border:1px solid #a855f7;border-radius:8px;padding:7px 12px;font-size:16px;cursor:pointer;";
+      addBtn.onclick=()=>{
+        const e=emoI.value.trim()||"✨", n=namI.value.trim();
+        if(!n){apToast("❌ Typ een naam!",true);return;}
+        custom.push({id:"c_"+Date.now().toString(36),emoji:e,naam:n,info:"Custom"});
+        apSla("deluxe-vibekast",custom);
+        apToast(e+" \""+n+"\" toegevoegd!");
+        emoI.value="";namI.value="";apTeken();
+      };
+      namI.addEventListener("keydown",e=>{if(e.key==="Enter")addBtn.click();});
+      addRij.appendChild(emoI);addRij.appendChild(namI);addRij.appendChild(addBtn);
+      s2.appendChild(addRij);
+
+      const grid = document.createElement("div");
+      grid.style.cssText = "display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px;";
+      alle.forEach(v => {
+        const isCustom = !!custom.find(x=>x.id===v.id);
+        const ges = apGekozenVibe === v.id;
+        const k = document.createElement("div");
+        k.style.cssText = "background:" + (ges?"rgba(168,85,247,0.25)":"rgba(168,85,247,0.07)") + ";border:2px solid " + (ges?"#a855f7":"rgba(168,85,247,0.25)") + ";border-radius:12px;padding:10px;cursor:pointer;position:relative;user-select:none;";
+        k.innerHTML = "<span style='font-size:22px'>" + v.emoji + "</span> <span style='color:#fff;font-weight:700;font-size:13px;vertical-align:middle'>" + v.naam + "</span>";
+        if (isCustom) {
+          const del = document.createElement("button");
+          del.textContent="✕";
+          del.style.cssText="position:absolute;top:4px;right:5px;background:none;border:none;color:rgba(255,255,255,0.25);font-size:12px;cursor:pointer;";
+          del.onclick=ev=>{ev.stopPropagation();custom=custom.filter(x=>x.id!==v.id);apSla("deluxe-vibekast",custom);if(apGekozenVibe===v.id)apGekozenVibe=null;apTeken();};
+          k.appendChild(del);
+        }
+        k.onclick=()=>{apGekozenVibe=ges?null:v.id;apTeken();};
+        grid.appendChild(k);
+      });
+      s2.appendChild(grid);
+      el.appendChild(s2);
+
+      // ── 3. GEEF KNOP (als speler én vibe gekozen) ──
+      if (apGekozenSpeler && apGekozenVibe) {
+        const gv = alle.find(v=>v.id===apGekozenVibe);
+        const geef = document.createElement("button");
+        geef.textContent = "⚡ Geef " + gv.emoji + " " + gv.naam + " aan " + apGekozenSpeler + "!";
+        geef.style.cssText = "width:100%;background:linear-gradient(90deg,#7c3aed,#a855f7);color:#fff;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:900;cursor:pointer;margin-bottom:20px;letter-spacing:0.5px;";
+        geef.onclick = async () => {
+          geef.textContent="...";geef.disabled=true;
+          try {
+            await fetch("/api/vibes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({speler:apGekozenSpeler,vibe:{emoji:gv.emoji,naam:gv.naam}})});
+            const h=apLees("deluxe-vibes","[]");
+            h.unshift({speler:apGekozenSpeler,emoji:gv.emoji,naam:gv.naam,wanneer:new Date().toLocaleString("nl")});
+            apSla("deluxe-vibes",h.slice(0,50));
+            apToast(gv.emoji+" "+gv.naam+" gestuurd naar "+apGekozenSpeler+"!");
+            apGekozenVibe=null;apGekozenSpeler=null;apTeken();
+          } catch{apToast("❌ Mislukt!",true);geef.textContent="⚡ Probeer opnieuw";geef.disabled=false;}
+        };
+        el.appendChild(geef);
+      } else if (apGekozenSpeler || apGekozenVibe) {
+        const hint = document.createElement("div");
+        hint.textContent = apGekozenSpeler ? "← Kies nu een vibe" : "← Kies eerst een speler";
+        hint.style.cssText = "text-align:center;color:rgba(168,85,247,0.6);font-size:13px;font-weight:700;margin-bottom:16px;";
+        el.appendChild(hint);
+      }
+
+      // ── Geschiedenis ──
+      if (hist.length > 0) {
+        const tit = document.createElement("div");
+        tit.textContent = "Eerder gegeven:";
+        tit.style.cssText = "color:rgba(255,255,255,0.35);font-size:12px;font-weight:700;letter-spacing:1px;margin-bottom:8px;";
+        el.appendChild(tit);
+        hist.slice(0,8).forEach(v=>{
+          const r=document.createElement("div");
+          r.style.cssText="display:flex;align-items:center;background:rgba(168,85,247,0.07);border:1px solid rgba(168,85,247,0.18);border-radius:10px;padding:9px 13px;margin-bottom:6px;gap:10px;";
+          r.innerHTML="<span style='font-size:18px'>"+v.emoji+"</span><div><div style='color:#fff;font-weight:700;font-size:13px'>"+v.naam+" <span style='color:rgba(255,255,255,0.35)'>→</span> <span style='color:#c084fc'>"+v.speler+"</span></div><div style='color:rgba(255,255,255,0.26);font-size:11px'>"+v.wanneer+"</div></div>";
+          el.appendChild(r);
+        });
+      }
+    }
+  </script>
+
+</body>
+</html>

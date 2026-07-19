@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OBLITERATOR — Deluxe Edition</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛸</text></svg>" />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* Brian's losse OBLITERATOR — de nieuwe Leerkwartier-versie, gebundeld
+       tot bundle.js. Opnieuw bouwen na een update: zie obliterator-bouw/. */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0d1b2e; min-height: 100vh; font-family: 'Fredoka', system-ui, sans-serif; }
+    .terug {
+      position: fixed; top: 10px; left: 12px; z-index: 9999;
+      color: rgba(255, 255, 255, 0.65); text-decoration: none;
+      font: 700 13px 'Fredoka', system-ui, sans-serif;
+      background: rgba(0, 0, 0, 0.4); border-radius: 999px; padding: 6px 14px;
+    }
+    .terug:hover { color: #fff; }
+    .laden {
+      min-height: 100vh; display: grid; place-items: center;
+      color: rgba(255, 255, 255, 0.7); font-size: 18px; font-weight: 600;
+    }
+    #versie-label {
+      position: fixed; bottom: 6px; left: 8px; z-index: 9997;
+      font-size: 10px; font-weight: 700; letter-spacing: 1px;
+      color: rgba(255,255,255,0.22); pointer-events: none;
+      font-family: 'Fredoka', system-ui, sans-serif;
+    }
+    /* 🎁 VIBE POPUP */
+    #vibe-popup {
+      position: fixed; inset: 0; background: rgba(13,27,46,0.94);
+      z-index: 99999; display: none; align-items: center; justify-content: center;
+    }
+    #vibe-popup-kaart {
+      text-align: center;
+      background: rgba(168,85,247,0.12); border: 3px solid #a855f7;
+      border-radius: 28px; padding: 40px 46px; max-width: min(360px, 90vw);
+      box-shadow: 0 0 80px rgba(168,85,247,0.55), 0 0 160px rgba(168,85,247,0.2);
+      animation: vibeIn 0.55s cubic-bezier(0.34,1.56,0.64,1);
+      font-family: 'Fredoka', system-ui, sans-serif;
+    }
+    @keyframes vibeIn {
+      from { transform: scale(0.25) rotate(-12deg); opacity:0; }
+      to   { transform: scale(1)    rotate(0deg);   opacity:1; }
+    }
+    #vibe-sluit {
+      background: linear-gradient(90deg,#7c3aed,#a855f7); color:#fff;
+      border:none; border-radius:14px; padding:14px 36px;
+      font-size:18px; font-weight:700; cursor:pointer; margin-top:24px;
+      font-family:'Fredoka',system-ui,sans-serif; letter-spacing:1px;
+    }
+  </style>
+</head>
+<body>
+  <a class="terug" href="/">← Deluxe Edition</a>
+  <div id="versie-label">v1</div>
+  <div id="root"><div class="laden">🛸 OBLITERATOR laden...</div></div>
+  <script>
+    // 🔐 eerst inloggen op de homepagina, anders geen spel
+    try { if (!(localStorage.getItem("deluxe-speler") || "").trim()) location.href = "/"; } catch {}
+  </script>
+  <script>
+    // ── 🧩 SMILES-MOD CAMEO ──────────────────────────────
+    // Mod geïnstalleerd (mods.html)? Dan rolt Smiles — in de
+    // rood/blauwe logo-kleuren — af en toe onderin over het
+    // scherm achter je aan. Hij doet niks... hij rolt alleen.
+    try {
+      const modAan = (JSON.parse(localStorage.getItem("deluxe-mods") || "[]")).includes("smiles");
+      if (modAan) {
+        const stijl = document.createElement("style");
+        stijl.textContent =
+          "#smiles-rol{position:fixed;bottom:6vh;left:-120px;width:86px;z-index:9998;pointer-events:none;display:none;filter:drop-shadow(0 0 14px rgba(255,59,59,0.45))}" +
+          "@keyframes smilesrol{from{left:-120px;transform:rotate(0deg)}to{left:110vw;transform:rotate(1080deg)}}";
+        document.head.appendChild(stijl);
+        const rol = document.createElement("div");
+        rol.id = "smiles-rol";
+        rol.innerHTML = '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">' +
+          '<defs><linearGradient id="lgO" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff3b3b"/><stop offset="1" stop-color="#3b82ff"/></linearGradient></defs>' +
+          '<circle cx="50" cy="50" r="46" fill="url(#lgO)" stroke="#0d1b2e" stroke-width="4"/>' +
+          '<circle cx="35" cy="40" r="6" fill="#fff"/><circle cx="65" cy="40" r="6" fill="#fff"/>' +
+          '<circle cx="36" cy="41" r="2.6" fill="#0d1b2e"/><circle cx="64" cy="41" r="2.6" fill="#0d1b2e"/>' +
+          '<path d="M28 60 Q50 82 72 60" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round"/></svg>';
+        document.body.appendChild(rol);
+        function rolLangs() {
+          rol.style.display = "block";
+          rol.style.animation = "smilesrol " + (3.5 + Math.random() * 2) + "s linear";
+          rol.onanimationend = () => { rol.style.display = "none"; rol.style.animation = ""; };
+        }
+        // eerste keer na ~8 sec, daarna om de 20-45 sec
+        setTimeout(function plan() { rolLangs(); setTimeout(plan, 20000 + Math.random() * 25000); }, 8000);
+      }
+    } catch {}
+  </script>
+  <!-- 🎁 VIBE POPUP -->
+  <div id="vibe-popup">
+    <div id="vibe-popup-kaart">
+      <div style="font-size:11px;font-weight:700;letter-spacing:3px;color:#c084fc;margin-bottom:14px">🎁 JE HEBT EEN VIBE GEKREGEN!</div>
+      <div id="vibe-emoji" style="font-size:78px;line-height:1;margin-bottom:12px">✨</div>
+      <div id="vibe-naam" style="font-size:26px;font-weight:700;color:#fff;letter-spacing:2px;margin-bottom:8px">Vibe</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.5)">van NovaX 🎁</div>
+      <button id="vibe-sluit" onclick="document.getElementById('vibe-popup').style.display='none'">🔥 SICK!</button>
+    </div>
+  </div>
+
+  <script>
+    // 🎁 VIBE POLLING — elke 8 sec checken of NovaX een vibe heeft gestuurd
+    (function() {
+      const naam = (localStorage.getItem("deluxe-speler") || "").trim();
+      if (!naam || naam === "NovaX") return;
+      function aanVibekast(vibe) {
+        try {
+          const kast = JSON.parse(localStorage.getItem("deluxe-mijn-vibes") || "[]");
+          kast.unshift({ emoji: vibe.emoji, naam: vibe.naam, wanneer: new Date().toLocaleString("nl") });
+          localStorage.setItem("deluxe-mijn-vibes", JSON.stringify(kast.slice(0, 50)));
+        } catch {}
+      }
+      async function check() {
+        try {
+          const vibe = await fetch("/api/vibes?naam=" + encodeURIComponent(naam)).then(r => r.json());
+          if (vibe && vibe.naam) {
+            document.getElementById("vibe-emoji").textContent = vibe.emoji || "✨";
+            document.getElementById("vibe-naam").textContent  = vibe.naam;
+            document.getElementById("vibe-popup").style.display = "flex";
+            aanVibekast(vibe);
+            fetch("/api/vibes?naam=" + encodeURIComponent(naam), { method:"DELETE" }).catch(()=>{});
+          }
+        } catch {}
+      }
+      check();
+      setInterval(check, 8000);
+    })();
+  </script>
+
+  <script type="module" src="bundle.js"></script>
+  <script src="../smiles-widget.js"></script>
+</body>
+</html>

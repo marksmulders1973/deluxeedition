@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create a Game — DELUXE EDITION</title>
+  <link rel="icon" href="images/logo.jpg" />
+  <style>
+    /* ══════════════════════════════════════════════
+       DE SPEL-MAKER — praat met de bouwer-bot en
+       maak je eigen spel dat op de homepagina komt!
+       ══════════════════════════════════════════════ */
+    :root { --rood: #ff3b3b; --blauw: #3b82ff; --zwart: #060a18; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--zwart); color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+      padding: 20px;
+    }
+    body::before {
+      content: ""; position: fixed; inset: 0;
+      background:
+        radial-gradient(500px 350px at 15% 20%, rgba(255,40,40,0.12), transparent 70%),
+        radial-gradient(500px 350px at 85% 80%, rgba(40,110,255,0.12), transparent 70%);
+      pointer-events: none;
+    }
+    header { display: flex; align-items: center; gap: 14px; margin: 6px 0 18px; position: relative; z-index: 1; }
+    header img { width: 64px; border-radius: 12px; box-shadow: 0 0 20px rgba(255,40,40,0.3), 0 0 40px rgba(40,110,255,0.25); }
+    header h1 { font-size: 22px; letter-spacing: 1px; }
+    header a { color: rgba(255,255,255,0.5); font-size: 13px; text-decoration: none; }
+    header a:hover { color: #fff; }
+
+    #chat {
+      position: relative; z-index: 1;
+      width: min(560px, 94vw); flex: 1;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 20px; padding: 18px;
+      display: flex; flex-direction: column; gap: 10px;
+      overflow-y: auto; max-height: 60vh; min-height: 320px;
+    }
+    .bubbel { max-width: 85%; padding: 11px 15px; border-radius: 16px; font-size: 15px; line-height: 1.45; animation: pop 0.25s ease; }
+    @keyframes pop { from { transform: scale(0.9); opacity: 0; } }
+    .bot  { align-self: flex-start; background: linear-gradient(135deg, rgba(59,130,255,0.25), rgba(59,130,255,0.1)); border: 1px solid rgba(59,130,255,0.4); border-bottom-left-radius: 4px; }
+    .ik   { align-self: flex-end; background: linear-gradient(135deg, rgba(255,59,59,0.3), rgba(255,59,59,0.12)); border: 1px solid rgba(255,59,59,0.45); border-bottom-right-radius: 4px; }
+
+    .keuzes { display: flex; flex-wrap: wrap; gap: 8px; align-self: flex-start; }
+    .keuzes button {
+      background: rgba(255,255,255,0.07); color: #fff;
+      border: 1px solid rgba(255,255,255,0.25); border-radius: 999px;
+      padding: 8px 16px; font-size: 14px; font-weight: 700; cursor: pointer;
+      transition: transform 0.12s, background 0.12s;
+    }
+    .keuzes button:hover { background: rgba(59,130,255,0.3); transform: translateY(-2px); }
+
+    #invoer-rij { position: relative; z-index: 1; width: min(560px, 94vw); display: flex; gap: 10px; margin-top: 14px; }
+    #invoer {
+      flex: 1; background: rgba(0,0,0,0.5); color: #fff;
+      border: 2px solid rgba(59,130,255,0.5); border-radius: 14px;
+      padding: 13px 16px; font-size: 16px; outline: none;
+    }
+    #invoer:focus { border-color: var(--blauw); box-shadow: 0 0 16px rgba(59,130,255,0.3); }
+    #stuur {
+      background: linear-gradient(90deg, #e42222, #ff5940 45%, #3b82ff 55%, #1f5fe0);
+      color: #fff; border: none; border-radius: 14px; padding: 13px 22px;
+      font-size: 16px; font-weight: 900; cursor: pointer; transition: transform 0.12s;
+    }
+    #stuur:hover { transform: scale(1.05); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <img src="images/logo.jpg" alt="logo" />
+    <div>
+      <h1>✨ CREATE A GAME</h1>
+      <a href="index.html">← terug naar home</a>
+    </div>
+  </header>
+
+  <div id="chat"></div>
+
+  <div id="invoer-rij">
+    <input id="invoer" type="text" placeholder="typ hier je antwoord..." autocomplete="off" />
+    <button id="stuur" onclick="verstuur()">▶</button>
+  </div>
+
+  <script>
+    // ══════════════════════════════════════════════════════
+    // DE BOUWER-BOT. Hij stelt vragen en bouwt van je
+    // antwoorden een écht speelbaar spel (drie soorten:
+    // vangen, springen of klikken). Het spel wordt bewaard
+    // op dit apparaat (localStorage "deluxe-games") en
+    // verschijnt daarna op de homepagina.
+    // ══════════════════════════════════════════════════════
+
+    const chat = document.getElementById("chat");
+    const invoer = document.getElementById("invoer");
+
+    // Woord → emoji: zodat "pizza" een 🍕 wordt.
+    const EMOJIS = {
+      pizza:"🍕", hond:"🐶", kat:"🐱", poes:"🐱", draak:"🐉", zombie:"🧟", spook:"👻",
+      ster:"⭐", hart:"❤️", bal:"⚽", voetbal:"⚽", auto:"🏎️", raket:"🚀", diamant:"💎",
+      monster:"👾", alien:"👽", snoep:"🍬", banaan:"🍌", appel:"🍎", donut:"🍩",
+      robot:"🤖", schedel:"💀", vuur:"🔥", bliksem:"⚡", geld:"💰", munt:"🪙",
+      kip:"🐔", eend:"🦆", haai:"🦈", dino:"🦖", eenhoorn:"🦄", kroon:"👑", bom:"💣"
+    };
+    const KLEUREN = { rood:"#ff3b3b", blauw:"#3b82ff", groen:"#2ecc71", paars:"#b26aff", oranje:"#ff9430", roze:"#ff6bd6", geel:"#ffd93b" };
+
+    // Wat we aan het bouwen zijn:
+    let spel = { naam: "", type: "", emoji: "", kleur: "" };
+    let stap = "naam";
+    let bewerken = false; // ✏️-stand: bestaand spel aanpassen i.p.v. nieuw maken
+
+    // ── ✏️ BEWERK-STAND ──────────────────────────────────
+    // Kom je via maak.html?edit=<id> (het potloodje op je eigen
+    // speltegel)? Dan laden we dat spel en mag je alles aanpassen.
+    (function checkBewerken() {
+      const editId = new URLSearchParams(location.search).get("edit");
+      if (!editId) return;
+      let alle = [];
+      try { alle = JSON.parse(localStorage.getItem("deluxe-games") || "[]"); } catch {}
+      let mijn = alle.find(g => g.id === editId);
+      if (!mijn) {
+        // niet op dit apparaat gemaakt? kijk in de online lijst
+        try {
+          const online = JSON.parse(localStorage.getItem("deluxe-online-games") || "[]");
+          mijn = online.find(g => g.id === editId);
+        } catch {}
+      }
+      if (!mijn) return; // niet gevonden → gewoon een nieuw spel maken
+      spel = { ...mijn };
+      bewerken = true;
+      stap = "menu";
+    })();
+
+    const MENU_KEUZES = ["de naam", "het soort spel", "het figuurtje", "de kleur", "✅ klaar, opslaan!"];
+    function toonMenu() {
+      stap = "menu";
+      bot("Dit is <b>" + spel.naam + "</b> nu: " + spel.emoji + " een " + spel.type + "-spel.<br>Wat wil je veranderen?", MENU_KEUZES);
+    }
+
+    function bot(tekst, keuzes) {
+      const b = document.createElement("div");
+      b.className = "bubbel bot";
+      b.innerHTML = tekst;
+      chat.appendChild(b);
+      if (keuzes) {
+        const rij = document.createElement("div");
+        rij.className = "keuzes";
+        keuzes.forEach(k => {
+          const btn = document.createElement("button");
+          btn.textContent = k;
+          btn.onclick = () => { invoer.value = k; verstuur(); };
+          rij.appendChild(btn);
+        });
+        chat.appendChild(rij);
+      }
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function ik(tekst) {
+      const b = document.createElement("div");
+      b.className = "bubbel ik";
+      b.textContent = tekst;
+      chat.appendChild(b);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function verstuur() {
+      const tekst = invoer.value.trim();
+      if (!tekst) return;
+      ik(tekst);
+      invoer.value = "";
+      setTimeout(() => verwerk(tekst), 400); // heel even "nadenken" 😄
+    }
+    invoer.addEventListener("keydown", e => { if (e.key === "Enter") verstuur(); });
+
+    function verwerk(tekst) {
+      const lager = tekst.toLowerCase();
+
+      if (stap === "menu") {
+        if (lager.includes("naam")) { stap = "naam"; bot("Wat wordt de nieuwe naam?"); }
+        else if (lager.includes("soort") || lager.includes("spel")) { stap = "type"; bot("Wat voor soort spel moet het worden?", ["vangen", "springen", "klikken"]); }
+        else if (lager.includes("figuur") || lager.includes("emoji")) { stap = "emoji"; bot("Welk figuurtje moet erin? Typ een emoji óf een woord (bijv. pizza, draak, zombie...)"); }
+        else if (lager.includes("kleur")) { stap = "kleur"; bot("Welke kleur krijgt je spel?", Object.keys(KLEUREN)); }
+        else if (lager.includes("klaar") || lager.includes("opslaan") || lager.includes("ja")) {
+          bewaar(true);
+          deelOnline();
+          bot("💾 <b>" + spel.naam + "</b> is aangepast! Iedereen ziet nu de nieuwe versie...");
+          setTimeout(() => location.href = "index.html", 1800);
+        } else { toonMenu(); }
+
+      } else if (stap === "naam") {
+        spel.naam = tekst.slice(0, 18).toUpperCase();
+        if (bewerken) { toonMenu(); return; }
+        stap = "type";
+        bot("<b>" + spel.naam + "</b> — vette naam! 😎<br>Wat voor soort spel wordt het?", ["vangen", "springen", "klikken"]);
+
+      } else if (stap === "type") {
+        if (lager.includes("vang")) spel.type = "vangen";
+        else if (lager.includes("spring") || lager.includes("ren")) spel.type = "springen";
+        else if (lager.includes("klik") || lager.includes("tik")) spel.type = "klikken";
+        else { bot("Kies uit deze drie — welke lijkt je het vetst?", ["vangen", "springen", "klikken"]); return; }
+        if (bewerken) { toonMenu(); return; }
+        stap = "emoji";
+        const uitleg = { vangen: "vallende dingen vangen met je bakje 🧺", springen: "over dingen heen springen, dino-stijl 🏃", klikken: "zo snel mogelijk overal op klikken 👆" };
+        bot("Een <b>" + spel.type + "</b>-spel: " + uitleg[spel.type] + "!<br>Welk figuurtje moet erin? Typ een emoji óf een woord (bijv. pizza, draak, zombie...)");
+
+      } else if (stap === "emoji") {
+        // Is het al een emoji? (alles wat geen gewone letter is)
+        const emojiMatch = tekst.match(/\p{Extended_Pictographic}/u);
+        let nieuweEmoji = "";
+        if (emojiMatch) nieuweEmoji = emojiMatch[0];
+        else {
+          const woord = Object.keys(EMOJIS).find(w => lager.includes(w));
+          if (woord) nieuweEmoji = EMOJIS[woord];
+        }
+        if (!nieuweEmoji) { bot("Die ken ik nog niet! 😅 Probeer bijv:", ["pizza", "draak", "zombie", "raket", "dino", "donut"]); return; }
+        spel.emoji = nieuweEmoji;
+        if (bewerken) { toonMenu(); return; }
+        stap = "kleur";
+        bot("Yes, " + spel.emoji + " wordt de ster van je spel!<br>Welke kleur krijgt je spel?", Object.keys(KLEUREN));
+
+      } else if (stap === "kleur") {
+        const kleur = Object.keys(KLEUREN).find(k => lager.includes(k));
+        if (!kleur) { bot("Kies één van deze kleuren:", Object.keys(KLEUREN)); return; }
+        spel.kleur = KLEUREN[kleur];
+        if (bewerken) { toonMenu(); return; }
+        stap = "klaar";
+        bot("🎉 <b>" + spel.naam + "</b> is klaar!<br>" +
+            spel.emoji + " Een " + spel.type + "-spel in het " + kleur + ".<br><br>Wat wil je doen?",
+            ["▶ eerst even testen", "✅ zet op mijn site!"]);
+
+      } else if (stap === "klaar") {
+        if (lager.includes("test")) {
+          bewaar(false);
+          location.href = "speel.html?id=" + spel.id + "&test=1";
+        } else if (lager.includes("site") || lager.includes("zet") || lager.includes("ja")) {
+          bewaar(true);
+          deelOnline();
+          bot("🚀 <b>" + spel.naam + "</b> staat op je homepagina! Ga maar kijken...");
+          setTimeout(() => location.href = "index.html", 1800);
+        } else {
+          bot("Kies maar:", ["▶ eerst even testen", "✅ zet op mijn site!"]);
+        }
+      }
+    }
+
+    // Spel opslaan in localStorage (sleutel "deluxe-games")
+    function bewaar(definitief) {
+      if (!spel.id) spel.id = "g" + Date.now();
+      spel.af = definitief;
+      let games = [];
+      try { games = JSON.parse(localStorage.getItem("deluxe-games") || "[]"); } catch {}
+      const idx = games.findIndex(g => g.id === spel.id);
+      if (idx >= 0) games[idx] = { ...spel }; else games.push({ ...spel });
+      try { localStorage.setItem("deluxe-games", JSON.stringify(games)); } catch {}
+    }
+
+    // ── 🌍 DEEL JE SPEL MET IEDEREEN ─────────────────────
+    // Stuurt het spel naar de online spellenlijst (api/spellen)
+    // zodat het op ÉLKE computer op de homepagina staat — dus
+    // ook als papa een spel maakt, kun jij het spelen!
+    function deelOnline() {
+      // bij bewerken blijft de oorspronkelijke maker + datum staan
+      const maker = spel.maker || localStorage.getItem("deluxe-speler") || "onbekend";
+      fetch("/api/spellen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...spel, maker, gemaakt: spel.gemaakt || new Date().toISOString().slice(0, 10) }),
+      }).then(r => {
+        if (r.ok) bot("🌍 En hij staat nu <b>online</b> — iedereen kan hem spelen!");
+        else bot("Hmm, online zetten lukte net niet — hij staat wél op dit apparaat. 🙈");
+      }).catch(() => {
+        bot("Hmm, online zetten lukte net niet — hij staat wél op dit apparaat. 🙈");
+      });
+    }
+
+    // Start het gesprek!
+    if (bewerken) {
+      bot("Hoi! We gaan <b>" + spel.naam + "</b> aanpassen ✏️");
+      toonMenu();
+    } else {
+      bot("Hoi! Ik ben de <b>bouwer-bot</b> van Deluxe Edition 🤖<br>Samen maken we in 1 minuut een écht spel voor op je site.<br><br>Eerste vraag: <b>hoe moet je spel heten?</b>");
+    }
+    invoer.focus();
+  </script>
+
+</body>
+</html>
