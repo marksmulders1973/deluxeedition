@@ -115,6 +115,24 @@
                    font-size:13px;font-weight:900;cursor:pointer}
     #knop-whatsapp:active{transform:scale(.94)}
 
+    /* ── SCOREBORD ── */
+    #s-scores{display:none;flex-direction:column;align-items:center;gap:14px;
+              padding:20px;width:100%;max-width:480px;max-height:100vh;overflow-y:auto}
+    .score-tabel{width:100%;background:rgba(255,255,255,.04);border-radius:14px;overflow:hidden}
+    .score-head{display:grid;grid-template-columns:28px 1fr 44px 44px 44px 40px;
+                gap:4px;padding:7px 12px;font-size:10px;font-weight:900;letter-spacing:1px;
+                opacity:.4;border-bottom:1px solid rgba(255,255,255,.08);text-align:center}
+    .score-head span:nth-child(2){text-align:left}
+    .score-rij{display:grid;grid-template-columns:28px 1fr 44px 44px 44px 40px;
+               gap:4px;padding:9px 12px;font-size:13px;font-weight:700;
+               border-bottom:1px solid rgba(255,255,255,.05);text-align:center;
+               align-items:center}
+    .score-rij:last-child{border-bottom:none}
+    .score-rij.ik{background:rgba(255,211,59,.1);outline:1px solid rgba(255,211,59,.35);
+                  border-radius:8px}
+    .score-naam{text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .score-pos{opacity:.45;font-size:12px}
+
     /* Versie-badge */
     #versie-badge{position:fixed;top:8px;right:10px;z-index:99;
                   font-size:11px;font-weight:700;letter-spacing:.5px;
@@ -159,7 +177,20 @@
   <input id="inp-code" class="inp inp-code" placeholder="CODE" maxlength="4" autocomplete="off"/>
   <button class="knop knop-blauw" onclick="joinKamer()">🔑 JOIN</button>
   <div id="fout-home" class="fout"></div>
+  <button class="knop knop-grijs" onclick="openScores()" style="width:min(300px,90vw)">🏆 Scorebord</button>
   <a href="index.html" style="color:rgba(255,255,255,0.25);font-size:13px;text-decoration:none">← home</a>
+</div>
+
+<!-- ══ SCOREBORD ══ -->
+<div id="s-scores">
+  <div class="titel" style="font-size:clamp(22px,5vw,38px)">🏆 ALL-TIME SCOREBORD</div>
+  <div id="scores-inhoud" style="width:100%;max-width:420px">
+    <div style="color:rgba(255,255,255,0.3);font-size:13px;text-align:center;padding:20px">laden...</div>
+  </div>
+  <div style="color:rgba(255,255,255,.25);font-size:11px;text-align:center;line-height:1.8">
+    💀 Spelers neergehaald &nbsp;·&nbsp; 🏆 Gewonnen &nbsp;·&nbsp; 👾 Bot neergehaald &nbsp;·&nbsp; 🎮 Gespeeld
+  </div>
+  <button class="knop knop-grijs" onclick="toon('s-home')">↩ terug</button>
 </div>
 
 <!-- ══ LOBBY ══ -->
@@ -229,7 +260,7 @@
   </div>
 </div>
 
-<div id="versie-badge">v1.6</div>
+<div id="versie-badge">v1.7</div></div>
 
 <script>
 // ══════════════════════════════════════════════════════════
@@ -242,6 +273,7 @@
 //   v1.4 — Versienummer zichtbaar in spel
 //   v1.5 — Bugfix: host gebruikt live bullet-posities + rode scherm-flits bij treffer
 //   v1.6 — Bugfix: bot kan speler doden in coop-fase (vanBot:true)
+//   v1.7 — All-time scorebord (Supabase) + schiet/geraakt/dood geluiden
 // ══════════════════════════════════════════════════════════
 
 const $ = id => document.getElementById(id);
@@ -292,7 +324,7 @@ let spawnBescherming = 0; // timestamp tot wanneer ik onkwetsbaar ben
 
 // ── Scherm wisselen ───────────────────────────────────────
 function toon(id) {
-  ['s-home','s-lobby','s-game'].forEach(s => {
+  ['s-home','s-lobby','s-game','s-scores'].forEach(s => {
     const el = $(s);
     if (el) el.style.display = s === id ? (s === 's-game' ? 'block' : 'flex') : 'none';
   });
@@ -525,6 +557,7 @@ async function snelPollen() {
   if (data.state === 'klaar') {
     clearInterval(pollInterval);
     clearInterval(attelInterval);
+    updateScore(data);
     toonWinnaar(data);
   }
 
@@ -623,6 +656,7 @@ function schieten() {
   const nu = performance.now();
   if (nu - laatsSchot < SHOOT_COOLDOWN) return;
   laatsSchot = nu;
+  geluidSchiet();
   bullets.push({
     x: mijn.x + Math.cos(mijn.hoek) * 22,
     y: mijn.y + Math.sin(mijn.hoek) * 22,
@@ -748,10 +782,10 @@ function controleerDoden(oudeData, nieuweData) {
   for (const sp of nieuweData.spelers) {
     const wasLevend = vorigeSpelerStatus.get(sp.naam);
     if (wasLevend === true && !sp.alive) {
-      // Gebruik lokale positie voor eigen schip (nauwkeuriger)
       const ex = sp.naam === mijnNaam ? mijn.x : sp.x;
       const ey = sp.naam === mijnNaam ? mijn.y : sp.y;
       maakDoodExplosie(ex, ey, sp.kleur || '#ffffff');
+      if (sp.naam === mijnNaam) geluidDood();
     }
     vorigeSpelerStatus.set(sp.naam, !!sp.alive);
   }
@@ -1084,7 +1118,10 @@ function updateHUD() {
   if (!kamerData) return;
   const ikData = kamerData.spelers.find(s => s.naam === mijnNaam);
   if (ikData) {
-    if (ikData.hp < mijn.hp) raakTijd = performance.now(); // treffer → flits
+    if (ikData.hp < mijn.hp) {
+      raakTijd = performance.now();
+      geluidGeraakt();
+    }
     mijn.hp = ikData.hp;
   }
 
@@ -1336,6 +1373,107 @@ function confettiBurst() {
 
 // ── STERREN (eenmalig genereren) ─────────────────────────
 const STERREN = Array.from({ length: 80 }, () => [Math.random(), Math.random(), Math.random() * 2 + 0.5]);
+
+// ── SCOREBORD ─────────────────────────────────────────────
+async function openScores() {
+  toon('s-scores');
+  const inhoud = $('scores-inhoud');
+  inhoud.innerHTML = '<div style="color:rgba(255,255,255,0.3);font-size:13px;text-align:center;padding:20px">laden...</div>';
+  try {
+    const rows = await (await fetch('/api/battle-scores', { cache: 'no-store' })).json();
+    if (!rows.length) {
+      inhoud.innerHTML = '<div style="color:rgba(255,255,255,0.3);font-size:13px;text-align:center;padding:20px">Nog geen scores — speel een potje!</div>';
+      return;
+    }
+    const medals = ['🥇','🥈','🥉'];
+    let html = `<div class="score-tabel">
+      <div class="score-head">
+        <span>#</span><span>Naam</span><span>💀</span><span>🏆</span><span>👾</span><span>🎮</span>
+      </div>`;
+    rows.forEach((r, i) => {
+      const ikBen = r.naam === mijnNaam ? ' ik' : '';
+      const pos = medals[i] || (i + 1);
+      html += `<div class="score-rij${ikBen}">
+        <span class="score-pos">${pos}</span>
+        <span class="score-naam" style="${ikBen ? 'color:#ffd93b' : ''}">${esc(r.naam)}</span>
+        <span>${r.kills || 0}</span>
+        <span>${r.wins || 0}</span>
+        <span>${r.bot_kills || 0}</span>
+        <span style="opacity:.5">${r.games || 0}</span>
+      </div>`;
+    });
+    html += '</div>';
+    inhoud.innerHTML = html;
+  } catch {
+    inhoud.innerHTML = '<div style="color:#ff6b6b;font-size:13px;text-align:center;padding:20px">Kon scores niet laden.</div>';
+  }
+}
+
+function updateScore(data) {
+  if (!mijnNaam || !data) return;
+  const kills    = (data.kills     || {})[mijnNaam] || 0;
+  const wins     = data.winnaar === mijnNaam ? 1 : 0;
+  const botKills = data.botKiller  === mijnNaam ? 1 : 0;
+  fetch('/api/battle-scores', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actie: 'update', naam: mijnNaam, wins, kills, bot_kills: botKills, games: 1 }),
+  }).catch(() => {});
+}
+
+// ── GELUID (Web Audio — geen bestanden nodig) ─────────────
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+  }
+  return audioCtx;
+}
+
+function geluidSchiet() {
+  const a = getAudio(); if (!a) return;
+  try {
+    const osc = a.createOscillator(), gain = a.createGain();
+    osc.connect(gain); gain.connect(a.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(700, a.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(140, a.currentTime + 0.09);
+    gain.gain.setValueAtTime(0.12, a.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, a.currentTime + 0.09);
+    osc.start(a.currentTime); osc.stop(a.currentTime + 0.09);
+  } catch {}
+}
+
+function geluidGeraakt() {
+  const a = getAudio(); if (!a) return;
+  try {
+    const osc = a.createOscillator(), gain = a.createGain();
+    osc.connect(gain); gain.connect(a.destination);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220, a.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(50, a.currentTime + 0.22);
+    gain.gain.setValueAtTime(0.28, a.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, a.currentTime + 0.22);
+    osc.start(a.currentTime); osc.stop(a.currentTime + 0.22);
+  } catch {}
+}
+
+function geluidDood() {
+  const a = getAudio(); if (!a) return;
+  try {
+    const len = Math.floor(a.sampleRate * 0.7);
+    const buf = a.createBuffer(1, len, a.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = a.createBufferSource(), filter = a.createBiquadFilter(), gain = a.createGain();
+    filter.type = 'lowpass'; filter.frequency.value = 280;
+    src.buffer = buf;
+    src.connect(filter); filter.connect(gain); gain.connect(a.destination);
+    gain.gain.setValueAtTime(0.55, a.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, a.currentTime + 0.7);
+    src.start(); src.stop(a.currentTime + 0.7);
+  } catch {}
+}
 
 // ── HULPFUNCTIE ───────────────────────────────────────────
 function esc(s) { return String(s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
