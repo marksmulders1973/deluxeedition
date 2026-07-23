@@ -113,6 +113,12 @@
     let stap = "naam";
     let bewerken = false; // ✏️-stand: bestaand spel aanpassen i.p.v. nieuw maken
 
+    // 🧩 MOD-MAKER (2026-07-23, Brian's wens): je kunt hier nu óók een
+    // échte mod voor Blokwereld bouwen — en de bot laat zien hoe dat
+    // werkt zoals bij echte Minecraft-mods: Java-code → texture →
+    // JSON → compileren → 📦 .jar (Brian's geplakte uitleg!).
+    let mod = { soort: "", naam: "", emoji: "", kleur: "", kracht: 1, eigenschap: "", vriendelijk: false };
+
     // ── ✏️ BEWERK-STAND ──────────────────────────────────
     // Kom je via maak.html?edit=<id> (het potloodje op je eigen
     // speltegel)? Dan laden we dat spel en mag je alles aanpassen.
@@ -179,6 +185,77 @@
 
     function verwerk(tekst) {
       const lager = tekst.toLowerCase();
+
+      if (stap === "watmaken") {
+        if (lager.includes("mod")) { startModFlow(); return; }
+        if (lager.includes("spel") || lager.includes("game")) {
+          stap = "naam";
+          bot("Leuk, een spel! 🎮<br>Eerste vraag: <b>hoe moet je spel heten?</b>");
+          return;
+        }
+        bot("Kies maar:", ["🎮 een spel", "🧩 een mod voor Blokwereld"]);
+        return;
+      }
+
+      // ── 🧩 DE MOD-FLOW ─────────────────────────────────
+      if (stap === "modsoort") {
+        if (lager.includes("blok")) mod.soort = "blok";
+        else if (lager.includes("wapen") || lager.includes("zwaard")) mod.soort = "wapen";
+        else if (lager.includes("mob") || lager.includes("wezen") || lager.includes("monster")) mod.soort = "mob";
+        else { bot("Kies wat je mod toevoegt:", ["🧱 een nieuw blok", "⚔️ een wapen", "🐉 een mob"]); return; }
+        stap = "modnaam";
+        const vb = { blok: "Ruby Block", wapen: "Laser Zwaard", mob: "Vuurdraak" };
+        bot("Een <b>" + (mod.soort === "blok" ? "nieuw blok 🧱" : mod.soort === "wapen" ? "wapen ⚔️" : "mob 🐉") + "</b>! Hoe gaat hij heten? (bijv. <b>" + vb[mod.soort] + "</b>)");
+        return;
+      }
+      if (stap === "modnaam") {
+        mod.naam = tekst.slice(0, 20);
+        stap = "modemoji";
+        bot("<b>" + mod.naam + "</b> — klinkt episch! 😎<br>Welk figuurtje hoort erbij? Typ een emoji óf een woord (bijv. diamant, draak, vuur...)");
+        return;
+      }
+      if (stap === "modemoji") {
+        const emojiMatch = tekst.match(/\p{Extended_Pictographic}/u);
+        let nieuweEmoji = "";
+        if (emojiMatch) nieuweEmoji = emojiMatch[0];
+        else { const woord = Object.keys(EMOJIS).find(w => lager.includes(w)); if (woord) nieuweEmoji = EMOJIS[woord]; }
+        if (!nieuweEmoji) { bot("Die ken ik nog niet! 😅 Probeer bijv:", ["diamant", "draak", "vuur", "ster", "schedel", "bliksem"]); return; }
+        mod.emoji = nieuweEmoji;
+        stap = "modkleur";
+        bot("Yes, " + mod.emoji + "!<br>Welke kleur krijgt je " + mod.soort + "?", Object.keys(KLEUREN));
+        return;
+      }
+      if (stap === "modkleur") {
+        const kleur = Object.keys(KLEUREN).find(k => lager.includes(k));
+        if (!kleur) { bot("Kies één van deze kleuren:", Object.keys(KLEUREN)); return; }
+        mod.kleur = KLEUREN[kleur];
+        stap = "modeigenschap";
+        if (mod.soort === "blok") bot("Laatste vraag: wat kan je blok? 🧱", ["gewoon mooi zijn", "gloeien in het donker ✨", "springkussen 🦘"]);
+        else if (mod.soort === "wapen") bot("Laatste vraag: hoe stérk is je wapen? ⚔️", ["+1 schade", "+2 schade", "+3 schade"]);
+        else bot("Laatste vraag: is je mob... 🐉", ["vriendelijk 😊", "gevaarlijk 😈"]);
+        return;
+      }
+      if (stap === "modeigenschap") {
+        if (mod.soort === "blok") {
+          if (lager.includes("gloei")) mod.eigenschap = "gloei";
+          else if (lager.includes("spring")) mod.eigenschap = "spring";
+          else mod.eigenschap = "";
+        } else if (mod.soort === "wapen") {
+          mod.kracht = lager.includes("3") ? 3 : lager.includes("2") ? 2 : 1;
+        } else {
+          mod.vriendelijk = lager.includes("vriend") || lager.includes("lief");
+          mod.kracht = mod.vriendelijk ? 1 : 2;
+        }
+        bouwDeMod();
+        return;
+      }
+      if (stap === "modklaar") {
+        if (lager.includes("blokwereld") || lager.includes("speel")) { location.href = "blokwereld.html"; return; }
+        if (lager.includes("mods")) { location.href = "mods.html"; return; }
+        if (lager.includes("nog")) { startModFlow(); return; }
+        bot("Kies maar:", ["🌍 speel Blokwereld", "🧩 naar de MODS-pagina", "🛠️ nog een mod maken"]);
+        return;
+      }
 
       if (stap === "menu") {
         if (lager.includes("naam")) { stap = "naam"; bot("Wat wordt de nieuwe naam?"); }
@@ -248,6 +325,74 @@
       }
     }
 
+    // ── 🧩 MOD-BOUWERIJ ──────────────────────────────────
+    function startModFlow() {
+      mod = { soort: "", naam: "", emoji: "", kleur: "", kracht: 1, eigenschap: "", vriendelijk: false };
+      stap = "modsoort";
+      bot("We gaan een échte <b>mod</b> maken, net als bij Minecraft! 🧩<br>Een mod = extra code die het spel nieuwe dingen geeft.<br><br>Wat gaat jouw mod toevoegen aan <b>Blokwereld</b>?",
+          ["🧱 een nieuw blok", "⚔️ een wapen", "🐉 een mob"]);
+    }
+
+    function codeBlok(tekst) {
+      const b = document.createElement("div");
+      b.className = "bubbel bot";
+      b.innerHTML = '<pre style="font:600 11.5px ui-monospace,Consolas,monospace;color:#7fd4ff;background:#050d18;border:1px solid rgba(59,130,255,0.4);border-radius:8px;padding:8px 10px;overflow-x:auto;white-space:pre">' + tekst + '</pre>';
+      chat.appendChild(b);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    // De bot bouwt de mod zichtbaar op: Java → texture → JSON →
+    // compileren → .jar — precies zoals echte Minecraft-mods werken.
+    function bouwDeMod() {
+      stap = "modbezig";
+      const slug = mod.naam.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "mijn_mod";
+      const registreer = { blok: "Block", wapen: "Item", mob: "Entity" }[mod.soort];
+      bot("Oké! Ik bouw je mod. Eerst de <b>Java-code</b> — die vertelt het spel dat jouw " + mod.soort + " bestaat (registreren):");
+      setTimeout(() => {
+        codeBlok("public static final " + registreer + " " + slug.toUpperCase() + " =\n    register(\"" + slug + "\",\n        new " + registreer + "(Settings.create())\n    );");
+        bot("Dan de <b>texture</b> — het plaatje (" + slug + ".png):");
+        const p = document.createElement("div");
+        p.className = "bubbel bot";
+        p.innerHTML = '<div style="width:72px;height:72px;border-radius:10px;background:' + mod.kleur + ';display:flex;align-items:center;justify-content:center;font-size:40px;image-rendering:pixelated;border:3px solid rgba(255,255,255,0.3)">' + mod.emoji + '</div>';
+        chat.appendChild(p); chat.scrollTop = chat.scrollHeight;
+      }, 900);
+      setTimeout(() => {
+        bot("En de <b>JSON</b> — die vertelt het spel welke texture erbij hoort:");
+        codeBlok('{\n  "parent": "blokwereld:cube_all",\n  "textures": {\n    "all": "mijnmod:' + mod.soort + '/' + slug + '"\n  }\n}');
+      }, 2200);
+      setTimeout(() => {
+        bot("⚙️ <b>Compileren...</b> (de code omzetten in taal die de computer snapt)");
+      }, 3400);
+      setTimeout(() => {
+        // opslaan + meteen installeren
+        mod.id = "m" + Date.now();
+        mod.maker = localStorage.getItem("deluxe-speler") || "onbekend";
+        mod.gemaakt = new Date().toISOString().slice(0, 10);
+        let defs = [];
+        try { defs = JSON.parse(localStorage.getItem("deluxe-eigen-mods") || "[]"); } catch {}
+        if (mod.soort === "blok") {
+          // vast blok-nummer zodat je blok in opgeslagen werelden blijft kloppen
+          let hoogste = 99;
+          defs.forEach(d => { if (d.blokId > hoogste) hoogste = d.blokId; });
+          mod.blokId = hoogste + 1;
+        }
+        defs.push({ ...mod });
+        try { localStorage.setItem("deluxe-eigen-mods", JSON.stringify(defs)); } catch {}
+        let aan = [];
+        try { aan = JSON.parse(localStorage.getItem("deluxe-mods") || "[]"); } catch {}
+        if (!aan.includes("eigen:" + mod.id)) aan.push("eigen:" + mod.id);
+        try { localStorage.setItem("deluxe-mods", JSON.stringify(aan)); } catch {}
+        stap = "modklaar";
+        const wat = mod.soort === "blok"
+          ? "Je krijgt <b>25 blokken</b> in je rugzak" + (mod.eigenschap === "gloei" ? " en hij GLOEIT ✨" : mod.eigenschap === "spring" ? " en het is een springkussen 🦘" : "")
+          : mod.soort === "wapen" ? "Je slaat vanaf nu <b>+" + mod.kracht + " schade</b> ⚔️"
+          : "Hij loopt straks écht rond in je wereld" + (mod.vriendelijk ? " (vriendelijk 😊)" : " (pas op! 😈)");
+        bot("📦 <b>" + slug + ".jar</b> is klaar en in de mods-map gezet — je mod is <b>GEÏNSTALLEERD</b>! ✅<br><br>" +
+            mod.emoji + " <b>" + mod.naam + "</b> werkt nu in Blokwereld. " + wat + "!<br><br>Wat wil je doen?",
+            ["🌍 speel Blokwereld", "🧩 naar de MODS-pagina", "🛠️ nog een mod maken"]);
+      }, 4600);
+    }
+
     // Spel opslaan in localStorage (sleutel "deluxe-games")
     function bewaar(definitief) {
       if (!spel.id) spel.id = "g" + Date.now();
@@ -282,8 +427,12 @@
     if (bewerken) {
       bot("Hoi! We gaan <b>" + spel.naam + "</b> aanpassen ✏️");
       toonMenu();
+    } else if (new URLSearchParams(location.search).get("mod")) {
+      bot("Hoi! Ik ben de <b>bouwer-bot</b> 🤖");
+      startModFlow();
     } else {
-      bot("Hoi! Ik ben de <b>bouwer-bot</b> van Deluxe Edition 🤖<br>Samen maken we in 1 minuut een écht spel voor op je site.<br><br>Eerste vraag: <b>hoe moet je spel heten?</b>");
+      stap = "watmaken";
+      bot("Hoi! Ik ben de <b>bouwer-bot</b> van Deluxe Edition 🤖<br>Wat gaan we maken?", ["🎮 een spel", "🧩 een mod voor Blokwereld"]);
     }
     invoer.focus();
   </script>

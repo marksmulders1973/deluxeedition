@@ -101,6 +101,11 @@
     </div>
   </div>
 
+  <!-- 🛠️ jouw eigen mods (gemaakt met de bouwer-bot) komen hier -->
+  <div id="eigenMods" style="position:relative;z-index:1;width:min(520px,94vw);display:flex;flex-direction:column;gap:14px;margin-top:16px"></div>
+
+  <a href="maak.html?mod=1" style="position:relative;z-index:1;width:min(520px,94vw);margin-top:16px;display:block;text-align:center;text-decoration:none;color:#fff;font-weight:900;font-size:15px;padding:16px;border-radius:20px;background:linear-gradient(90deg,#e42222,#ff5940 45%,#3b82ff 55%,#1f5fe0)">🛠️ MAAK JE EIGEN MOD — met de bouwer-bot!</a>
+
   <div class="binnenkort">🔒 Meer mods komen binnenkort... heb je een idee? Zeg het tegen Brian!</div>
 
   <script>
@@ -121,6 +126,49 @@
       setTimeout(() => { toon(); location.href = "smiles.html"; }, 700);
     }
     toon();
+
+    // ── 🛠️ EIGEN MODS (gemaakt met de bouwer-bot in maak.html) ──
+    // Ze werken in Blokwereld. AAN/UIT = 'eigen:<id>' in deluxe-mods.
+    function leesLijst(sleutel) { try { return JSON.parse(localStorage.getItem(sleutel) || "[]"); } catch { return []; } }
+    function toonEigenMods() {
+      const bak = document.getElementById("eigenMods");
+      bak.innerHTML = "";
+      const defs = leesLijst("deluxe-eigen-mods");
+      const aan = leesLijst("deluxe-mods");
+      defs.forEach(m => {
+        const actief = aan.includes("eigen:" + m.id);
+        const soortTekst = m.soort === "blok"
+          ? "Nieuw blok voor Blokwereld" + (m.eigenschap === "gloei" ? " — gloeit in het donker ✨" : m.eigenschap === "spring" ? " — springkussen 🦘" : "")
+          : m.soort === "wapen" ? "Wapen-mod: +" + (m.kracht || 1) + " schade in Blokwereld ⚔️"
+          : "Eigen mob die rondloopt in Blokwereld " + (m.vriendelijk ? "😊" : "😈");
+        const kaart = document.createElement("div");
+        kaart.className = "mod";
+        kaart.innerHTML =
+          '<div class="plaatje" style="display:flex;align-items:center;justify-content:center;font-size:44px;background:' + (m.kleur || "#333") + '">' + (m.emoji || "🧩") + "</div>" +
+          "<div style='flex:1'><h2>" + m.naam.replace(/</g, "&lt;") + "</h2><p>" + soortTekst + "<br>gemaakt door " + (m.maker || "?").replace(/</g, "&lt;") + "</p>" +
+          '<button class="' + (actief ? "speel" : "") + '" data-zet="' + m.id + '">' + (actief ? "✅ AAN — klik voor UIT" : "⬇ ZET AAN") + "</button> " +
+          '<button data-weg="' + m.id + '" style="background:rgba(255,255,255,0.12);color:#fff">🗑️</button></div>';
+        bak.appendChild(kaart);
+      });
+      bak.querySelectorAll("[data-zet]").forEach(b => b.onclick = () => {
+        const id = "eigen:" + b.dataset.zet;
+        let lijst = leesLijst("deluxe-mods");
+        if (lijst.includes(id)) lijst = lijst.filter(x => x !== id); else lijst.push(id);
+        try { localStorage.setItem("deluxe-mods", JSON.stringify(lijst)); } catch {}
+        toonEigenMods();
+      });
+      bak.querySelectorAll("[data-weg]").forEach(b => b.onclick = () => {
+        if (!confirm("Deze mod echt weggooien?")) return;
+        const defs2 = leesLijst("deluxe-eigen-mods").filter(m => m.id !== b.dataset.weg);
+        let lijst = leesLijst("deluxe-mods").filter(x => x !== "eigen:" + b.dataset.weg);
+        try {
+          localStorage.setItem("deluxe-eigen-mods", JSON.stringify(defs2));
+          localStorage.setItem("deluxe-mods", JSON.stringify(lijst));
+        } catch {}
+        toonEigenMods();
+      });
+    }
+    toonEigenMods();
   </script>
 
 </body>

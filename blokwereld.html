@@ -383,6 +383,7 @@ function getMaterials(t){
   // blokken die licht lijken te geven (emissive gloed)
   const GLOEIT={ [B.GLOEI]:0xffe9a8, [B.LANTAARN]:0xffd24a, [B.DISCO]:0xff66ff, [B.REGENBOOGBLOK]:0x88ffee, [B.STERSTEEN]:0x9fd8ff, [B.PORTAL]:0xb26aff, [B.MAGMA]:0xff5a1a };
   if(GLOEIT[t]!==undefined){ opts.emissive=new THREE.Color(GLOEIT[t]); opts.emissiveIntensity=0.5; }
+  if(info&&info.eigenGloei){ opts.emissive=new THREE.Color(info.eigenGloei); opts.emissiveIntensity=0.5; } // eigen-gemaakte gloei-mods
   if(t==B.LEAVES){ opts.transparent=true; opts.opacity=0.96; }
   let mats;
   if(t==B.GRASS){
@@ -865,7 +866,7 @@ function raycastVoxel(maxDist=6){
 // ====================================================================
 // INTERACTION
 // ====================================================================
-function swordDamage(){ const s=equipped.sword; return s==='diamond'?4:s==='iron'?3:s==='coal'?2:1; }
+function swordDamage(){ const s=equipped.sword; return (s==='diamond'?4:s==='iron'?3:s==='coal'?2:1)+modWapenBonus; }
 function leftClick(){
   triggerSwing();
   const hm=mobInCrosshair(); if(hm){ damageMob(hm,swordDamage()); return; }
@@ -913,7 +914,8 @@ function damageMob(m,dmg){ m.hp-=dmg; m.lastHit=performance.now();
   // schaduwman teleporteert weg zodra je hem raakt! 🌑
   if(m.type==='schaduwman'&&m.hp>0) m.tpT=0;
   if(m.hp<=0){ scene.remove(m.mesh); mobs.splice(mobs.indexOf(m),1);
-    if(m.type==='dragonman'){ addItem('ruby',2); addItem('gold',3); flash('Drakenman verslagen! +2 robijn +3 goud'); }
+    if(m.type&&m.type.startsWith('eigen_')){ addItem('emerald',1); flash((m.eigenNaam||'Mod-wezen')+' verslagen! +1 smaragd'); }
+    else if(m.type==='dragonman'){ addItem('ruby',2); addItem('gold',3); flash('Drakenman verslagen! +2 robijn +3 goud'); }
     else if(m.type==='zombie'){ if(Math.random()<0.5) addItem('iron',1); flash('Zombie verslagen!'); }
     else if(m.type==='skeleton'){ addItem('coal',1); flash('Skelet verslagen! +1 kolen'); }
     else if(m.type==='spin'){ addItem('emerald',1); flash('Spin verslagen! +1 smaragd'); }
@@ -1008,7 +1010,7 @@ function updatePlayer(dt){
   // 🟢 springkussen = superhoog stuiteren · 🌋 magma en 🌵 kaktus doen pijn!
   if(grounded){
     const onder=worldBlock(Math.floor(player.pos.x),Math.floor(player.pos.y-player.height-0.4),Math.floor(player.pos.z));
-    if(onder===B.SPRING){ player.vel.y=14; player.onGround=false; }
+    if(onder===B.SPRING||(BLOCK_INFO[onder]&&BLOCK_INFO[onder].eigenSpring)){ player.vel.y=14; player.onGround=false; }
     else if(onder===B.MAGMA||onder===B.KAKTUS) hurtPlayer(1,'heet');
   }
   // god mode: landing on the ground after falling re-enables flight automatically
@@ -1048,7 +1050,23 @@ function addEyes(g,hy,color,fwd){ const mat=new THREE.MeshLambertMaterial({color
   e1.position.set(-.12,hy,fwd); e2.position.set(.12,hy,fwd); g.add(e1,e2); }
 function spawnMob(type,x,y,z){
   const g=new THREE.Group(); let hp,dmg,speed,legs=[],arms=[];
-  if(type==='zombie'){
+  if(type.startsWith('eigen_')){
+    // 🧩 EIGEN MOD-MOB (gemaakt met de bouwer-bot in maak.html)
+    const d=EIGEN_MOB_DEFS[type]||{kleur:0xb26aff,emoji:'👾',kracht:1,vriendelijk:false};
+    const kl=d.kleur, don=(kl&0xfefefe)>>1; // donkerder variant voor de broek
+    g.add(staticPart(.5,.5,.45,kl,0,1.5,0));
+    g.add(staticPart(.55,.7,.32,kl,0,0.95,0));
+    const la=limb(.16,.6,.16,kl,-.34,1.28,0),ra=limb(.16,.6,.16,kl,.34,1.28,0);
+    const ll=limb(.18,.62,.18,don,-.13,0.62,0),rl=limb(.18,.62,.18,don,.13,0.62,0);
+    g.add(la,ra,ll,rl); arms=[la,ra]; legs=[ll,rl];
+    // het gezicht = het gekozen figuurtje (emoji op een canvas-sprite)
+    const fc=document.createElement('canvas'); fc.width=fc.height=64;
+    const fx=fc.getContext('2d'); fx.font='48px serif'; fx.textAlign='center'; fx.textBaseline='middle'; fx.fillText(d.emoji,32,36);
+    const ft=new THREE.CanvasTexture(fc);
+    const gezicht=new THREE.Sprite(new THREE.SpriteMaterial({map:ft,transparent:true,depthTest:false}));
+    gezicht.scale.set(.55,.55,1); gezicht.position.set(0,1.55,0.3); g.add(gezicht);
+    hp=6+(d.kracht||1)*4; dmg=d.vriendelijk?0:Math.max(1,d.kracht||1); speed=d.vriendelijk?0.9:1.8;
+  } else if(type==='zombie'){
     g.add(staticPart(.5,.5,.45,0x4a7a2a,0,1.5,0)); addEyes(g,1.52,0x331,0.23);
     g.add(staticPart(.55,.7,.32,0x2f5a8a,0,0.95,0));
     const la=limb(.16,.6,.16,0x4a7a2a,-.34,1.28,0),ra=limb(.16,.6,.16,0x4a7a2a,.34,1.28,0);
@@ -1148,6 +1166,7 @@ function spawnMob(type,x,y,z){
   const isAnimal = type==='pig'||type==='cow'||type==='chicken';
   const foodDrop = {pig:'porkchop',cow:'beef',chicken:'chicken'}[type]||null;
   const mob={type,mesh:g,hp,maxHp:hp,dmg,speed,vel:new THREE.Vector3(),lastShot:0,lastHit:0,onGround:false,legs,arms,walkPhase:0,hpBar,hpHeight,showBarUntil:0,passive:isAnimal,foodDrop,wanderT:0};
+  if(type.startsWith('eigen_')){ const d=EIGEN_MOB_DEFS[type]; if(d){ mob.eigenNaam=d.naam; mob.passive=!!d.vriendelijk; } }
   if(hpBar){ hpBar.sprite.position.y=hpHeight; }
   mobs.push(mob); return mob;
 }
@@ -1791,6 +1810,75 @@ function updateSmilesCameo(dt){
 }
 
 // ====================================================================
+// 🧩 EIGEN MODS (2026-07-23, Brian's wens "zelf een mod maken")
+// Mods gemaakt met de bouwer-bot (maak.html → MAAK EEN MOD) werken
+// hier écht: nieuwe blokken (met eigen texture, net als ruby_block
+// uit Brian's uitleg!), sterkere wapens en eigen mobs.
+// Definities: localStorage 'deluxe-eigen-mods'; geïnstalleerd =
+// 'eigen:<id>' in 'deluxe-mods'. Blok-ids zijn vast per mod (100+).
+// ====================================================================
+let modWapenBonus=0, EIGEN_MOB_DEFS={}, eigenBlokMods=[], eigenWapenMods=[], modStartGedaan=false, eigenSpawnT=0;
+function laadEigenMods(){
+  modWapenBonus=0; EIGEN_MOB_DEFS={}; eigenBlokMods=[]; eigenWapenMods=[]; modStartGedaan=false;
+  try{
+    const aan=JSON.parse(localStorage.getItem('deluxe-mods')||'[]');
+    const defs=JSON.parse(localStorage.getItem('deluxe-eigen-mods')||'[]');
+    for(const mod of defs){
+      if(!aan.includes('eigen:'+mod.id)) continue;
+      const kleurNum=parseInt((mod.kleur||'#b26aff').slice(1),16);
+      if(mod.soort==='blok'&&mod.blokId){
+        const bid=mod.blokId;
+        BLOCK_INFO[bid]={name:mod.naam,solid:true,drop:bid};
+        if(mod.eigenschap==='gloei') BLOCK_INFO[bid].eigenGloei=kleurNum;
+        if(mod.eigenschap==='spring') BLOCK_INFO[bid].eigenSpring=true;
+        // texture: eigen kleur + het figuurtje erop (de "ruby_block.png" van deze mod)
+        TEX[bid]=mkTex(c=>{
+          const basis=mod.kleur||'#b26aff';
+          noiseFill(c,0,[basis,basis,schaduw(basis,-24),schaduw(basis,24)]);
+          c.font='10px serif'; c.textAlign='center'; c.textBaseline='middle'; c.fillText(mod.emoji||'⬜',8,9);
+        });
+        delete MAT[bid]; // vers materiaal (bij her-laden)
+        if(!CREATIVE_BLOCKS.includes(bid)) CREATIVE_BLOCKS.push(bid);
+        eigenBlokMods.push(mod);
+      } else if(mod.soort==='wapen'){
+        modWapenBonus+=(mod.kracht||1); eigenWapenMods.push(mod);
+      } else if(mod.soort==='mob'){
+        EIGEN_MOB_DEFS['eigen_'+mod.id]={naam:mod.naam,kleur:kleurNum,emoji:mod.emoji||'👾',kracht:mod.kracht||1,vriendelijk:!!mod.vriendelijk};
+      }
+    }
+  }catch(e){}
+}
+function schaduw(hex,d){ // kleur ietsje lichter/donkerder maken
+  const n=parseInt(hex.slice(1),16);
+  const f=v=>Math.max(0,Math.min(255,v+d));
+  return '#'+((f(n>>16&255)<<16)|(f(n>>8&255)<<8)|f(n&255)).toString(16).padStart(6,'0');
+}
+function updateEigenMods(dt){
+  try{
+    if(!playing) return;
+    if(!modStartGedaan){
+      modStartGedaan=true;
+      // startpakket: 25 blokken van elke geïnstalleerde blok-mod (1x per wereld)
+      let gekregen=[];
+      for(const mod of eigenBlokMods){ if(blockCount(mod.blokId)<=0){ addBlock(mod.blokId,25); gekregen.push(mod.naam); } }
+      if(gekregen.length){ renderHotbar(); flash('🧩 Mod-blokken in je rugzak: '+gekregen.join(', ')+'!'); }
+      for(const mod of eigenWapenMods) flash('⚔️ '+mod.naam+' actief: +'+(mod.kracht||1)+' schade!');
+    }
+    // eigen mobs af en toe laten opduiken (max 2 per mod tegelijk)
+    const soorten=Object.keys(EIGEN_MOB_DEFS);
+    if(!soorten.length) return;
+    eigenSpawnT-=dt;
+    if(eigenSpawnT>0) return;
+    eigenSpawnT=14+Math.random()*10;
+    const type=soorten[Math.floor(Math.random()*soorten.length)];
+    if(mobs.filter(m=>m.type===type).length>=2) return;
+    const hoek=Math.random()*Math.PI*2, afst=12+Math.random()*10;
+    const x=player.pos.x+Math.cos(hoek)*afst, z=player.pos.z+Math.sin(hoek)*afst;
+    spawnMob(type,x+0.5,mobGroundY(x,z),z+0.5);
+  }catch(e){}
+}
+
+// ====================================================================
 // 💬 PRATEN MET SMILES — écht AI (2026-07-23, Brian's wens)
 // Zelfde AI-brein als smiles.html (/api/smiles-ai). Spel pauzeert
 // zolang het praatvenster open is. AI stuk? Vaste reserve-zinnen.
@@ -1869,6 +1957,7 @@ function loop(t){ requestAnimationFrame(loop);
   if(playing){
     updateDayNight(dt);
     updateSmilesCameo(dt);
+    updateEigenMods(dt);
     // golden apple bonus expiry
     if(goldAppleUntil && performance.now()>goldAppleUntil && gameMode!=='god'){
       goldAppleUntil=0; player.maxHp=10; if(player.hp>10) player.hp=10; renderHearts(); flash('Gouden appel-effect voorbij');
@@ -1899,6 +1988,7 @@ document.getElementById('respawnBtn').onclick=()=>{ player.hp=player.maxHp; cons
 let currentWorld=null; // {id,name,mode}
 function startGame(name, loadData){
   if(!scene){ initThree(); buildTextures(); }
+  laadEigenMods();
   document.getElementById('worldSelect').style.display='none';
   document.getElementById('menu').style.display='none';
   document.getElementById('loading').style.display='flex';
