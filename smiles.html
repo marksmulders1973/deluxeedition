@@ -70,6 +70,13 @@
 
   <a id="terug" href="index.html">← home</a>
 
+  <!-- 🔊 STEM-KIEZER — kies zelf welke stem Smiles krijgt (geldt overal!) -->
+  <button id="stemKnop" onclick="stemPaneelWissel()" style="position:fixed;top:10px;right:12px;z-index:60;background:rgba(13,27,46,0.85);color:#fff;border:2px solid #3b82ff;border-radius:999px;padding:7px 14px;font:700 13px system-ui;cursor:pointer">🔊 STEM</button>
+  <div id="stemPaneel" style="display:none;position:fixed;top:52px;right:12px;z-index:61;width:min(300px,90vw);max-height:60vh;overflow-y:auto;background:rgba(13,27,46,0.97);border:2px solid #3b82ff;border-radius:14px;padding:12px">
+    <div style="color:#fff;font:800 13px system-ui;margin-bottom:8px">Kies de stem van Smiles 🔊<br><span style="font-weight:600;opacity:.6;font-size:11px">klik = luisteren + kiezen (geldt op de hele site)</span></div>
+    <div id="stemLijst"></div>
+  </div>
+
   <!-- 📦 FASE 1: alleen een doos... -->
   <div id="doos-scene" onclick="openDoos()">
     <svg id="doos" viewBox="0 0 120 100" xmlns="http://www.w3.org/2000/svg">
@@ -156,12 +163,24 @@
     function bewaar() { try { localStorage.setItem("smiles-staat", JSON.stringify(staat)); } catch {} }
 
     // ── 🔊 STEM — Smiles praat echt via de browser-stem ──
+    // Welke stem? Die kies je zelf met de 🔊 STEM-knop; de keuze
+    // staat in localStorage "smiles-stem" en geldt op de hele site
+    // (ook het widgetje in de spellen en in Blokwereld).
+    function kiesStem() {
+      try {
+        const vs = speechSynthesis.getVoices();
+        const wens = localStorage.getItem("smiles-stem");
+        if (wens) { const v = vs.find(v => v.voiceURI === wens || v.name === wens); if (v) return v; }
+        const en = vs.filter(v => (v.lang || "").toLowerCase().startsWith("en"));
+        return en[0] || null;
+      } catch { return null; }
+    }
     function praat(tekst, opties) {
       try {
         const o = opties || {};
         const u = new SpeechSynthesisUtterance(tekst);
-        const stemmen = speechSynthesis.getVoices().filter(v => (v.lang || "").toLowerCase().startsWith("en"));
-        if (stemmen.length) u.voice = stemmen[0];
+        const stem = kiesStem();
+        if (stem) u.voice = stem;
         u.lang = "en-US";
         u.pitch = o.pitch ?? 1.5;
         u.rate = o.rate ?? 1.05;
@@ -169,6 +188,38 @@
         speechSynthesis.speak(u);
       } catch {}
     }
+
+    // ── 🔊 de stem-kiezer zelf ──
+    function stemPaneelWissel() {
+      const p = document.getElementById("stemPaneel");
+      const open = p.style.display === "block";
+      p.style.display = open ? "none" : "block";
+      if (!open) vulStemLijst();
+    }
+    function vulStemLijst() {
+      const lijst = document.getElementById("stemLijst");
+      let vs = [];
+      try { vs = speechSynthesis.getVoices(); } catch {}
+      if (!vs.length) { lijst.innerHTML = '<div style="color:#fff;font:600 12px system-ui;opacity:.6">stemmen laden... klik nog een keer op 🔊 STEM</div>'; return; }
+      // Engelse stemmen bovenaan (Smiles praat Engels), de rest eronder
+      const en = vs.filter(v => (v.lang || "").toLowerCase().startsWith("en"));
+      const rest = vs.filter(v => !(v.lang || "").toLowerCase().startsWith("en"));
+      const huidig = localStorage.getItem("smiles-stem");
+      lijst.innerHTML = "";
+      [...en, ...rest].forEach(v => {
+        const b = document.createElement("button");
+        const actief = huidig === v.voiceURI || huidig === v.name || (!huidig && en[0] === v);
+        b.style.cssText = "display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 10px;border-radius:9px;cursor:pointer;font:600 12px system-ui;color:#fff;background:" + (actief ? "rgba(59,130,255,0.4)" : "rgba(255,255,255,0.07)") + ";border:1px solid " + (actief ? "#3b82ff" : "rgba(255,255,255,0.15)");
+        b.textContent = (actief ? "✅ " : "") + v.name.replace(/Microsoft |Google |Online |\(Natural\)|Desktop - /g, "").slice(0, 34) + "  ·  " + v.lang;
+        b.onclick = () => {
+          try { localStorage.setItem("smiles-stem", v.voiceURI || v.name); } catch {}
+          praat("HELLO HELLO! This is my new voice! Do you like it? 😄");
+          vulStemLijst();
+        };
+        lijst.appendChild(b);
+      });
+    }
+    try { speechSynthesis.onvoiceschanged = () => { if (document.getElementById("stemPaneel").style.display === "block") vulStemLijst(); }; } catch {}
 
     // ── 😱 DE SCHREEUW (voor de jumpscare) ───────────────
     // Drie gillende tonen die wild trillen en omlaag storten

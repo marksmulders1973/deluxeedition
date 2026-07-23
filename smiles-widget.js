@@ -398,8 +398,12 @@
     voegToe(txt, 's');
     try {
       const u = new SpeechSynthesisUtterance(txt);
-      const vs = speechSynthesis.getVoices().filter(v => (v.lang || '').startsWith('en'));
-      if (vs.length) u.voice = vs[0];
+      // zelf-gekozen stem (🔊 STEM-knop op smiles.html) — anders eerste Engelse
+      const vs = speechSynthesis.getVoices();
+      const wens = localStorage.getItem('smiles-stem');
+      const gekozen = (wens && vs.find(v => v.voiceURI === wens || v.name === wens))
+        || vs.filter(v => (v.lang || '').startsWith('en'))[0];
+      if (gekozen) u.voice = gekozen;
       u.lang = 'en-US';
       u.pitch = horror ? 0.35 : 1.5;   // 😈 in horror-stand praat hij LAAG en eng
       u.rate  = horror ? 0.82 : 1.05;

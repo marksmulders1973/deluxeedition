@@ -1904,7 +1904,15 @@ const SMILES_RESERVE=[
   'The answer is: yes! Probably! I am ALWAYS right. 😄',
 ];
 function smilesSpreek(tekst){
-  try{ const u=new SpeechSynthesisUtterance(tekst.replace(/[^\p{L}\p{N}\s.,!?']/gu,'')); u.lang='en-US'; u.pitch=1.4; u.rate=1.05; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){}
+  try{
+    const u=new SpeechSynthesisUtterance(tekst.replace(/[^\p{L}\p{N}\s.,!?']/gu,''));
+    // zelf-gekozen stem (🔊 STEM-knop op smiles.html) — anders eerste Engelse
+    const vs=speechSynthesis.getVoices();
+    const wens=localStorage.getItem('smiles-stem');
+    const gekozen=(wens&&vs.find(v=>v.voiceURI===wens||v.name===wens))||vs.filter(v=>(v.lang||'').startsWith('en'))[0];
+    if(gekozen) u.voice=gekozen;
+    u.lang='en-US'; u.pitch=1.4; u.rate=1.05; speechSynthesis.cancel(); speechSynthesis.speak(u);
+  }catch(e){}
 }
 function smilesBubbel(wie,tekst){
   const log=document.getElementById('smilesChatLog'); if(!log) return;
