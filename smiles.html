@@ -166,12 +166,17 @@
     // Welke stem? Die kies je zelf met de 🔊 STEM-knop; de keuze
     // staat in localStorage "smiles-stem" en geldt op de hele site
     // (ook het widgetje in de spellen en in Blokwereld).
-    function kiesStem() {
+    // Twee keuzes: "smiles-stem" (normaal) en "smiles-stem-eng" (horror).
+    function kiesStem(soort) {
       try {
         const vs = speechSynthesis.getVoices();
-        const wens = localStorage.getItem("smiles-stem");
+        const wens = localStorage.getItem(soort === "eng" ? "smiles-stem-eng" : "smiles-stem");
         if (wens) { const v = vs.find(v => v.voiceURI === wens || v.name === wens); if (v) return v; }
         const en = vs.filter(v => (v.lang || "").toLowerCase().startsWith("en"));
+        if (soort === "eng") {
+          // geen keuze? pak automatisch een diepe mannenstem — extra eng
+          return en.find(v => /male|david|george|daniel|guy|christopher/i.test(v.name) && !/female/i.test(v.name)) || en[1] || en[0] || null;
+        }
         return en[0] || null;
       } catch { return null; }
     }
@@ -179,11 +184,12 @@
       try {
         const o = opties || {};
         const u = new SpeechSynthesisUtterance(tekst);
-        const stem = kiesStem();
+        const stem = kiesStem(o.eng ? "eng" : "normaal");
         if (stem) u.voice = stem;
         u.lang = "en-US";
-        u.pitch = o.pitch ?? 1.5;
-        u.rate = o.rate ?? 1.05;
+        // enge stem = extreem laag en langzaam (tenzij de zin zelf iets anders vraagt)
+        u.pitch = o.pitch ?? (o.eng ? 0.1 : 1.5);
+        u.rate = o.rate ?? (o.eng ? 0.7 : 1.05);
         speechSynthesis.cancel();
         speechSynthesis.speak(u);
       } catch {}
@@ -204,19 +210,32 @@
       // Engelse stemmen bovenaan (Smiles praat Engels), de rest eronder
       const en = vs.filter(v => (v.lang || "").toLowerCase().startsWith("en"));
       const rest = vs.filter(v => !(v.lang || "").toLowerCase().startsWith("en"));
-      const huidig = localStorage.getItem("smiles-stem");
       lijst.innerHTML = "";
-      [...en, ...rest].forEach(v => {
-        const b = document.createElement("button");
-        const actief = huidig === v.voiceURI || huidig === v.name || (!huidig && en[0] === v);
-        b.style.cssText = "display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 10px;border-radius:9px;cursor:pointer;font:600 12px system-ui;color:#fff;background:" + (actief ? "rgba(59,130,255,0.4)" : "rgba(255,255,255,0.07)") + ";border:1px solid " + (actief ? "#3b82ff" : "rgba(255,255,255,0.15)");
-        b.textContent = (actief ? "✅ " : "") + v.name.replace(/Microsoft |Google |Online |\(Natural\)|Desktop - /g, "").slice(0, 34) + "  ·  " + v.lang;
-        b.onclick = () => {
-          try { localStorage.setItem("smiles-stem", v.voiceURI || v.name); } catch {}
-          praat("HELLO HELLO! This is my new voice! Do you like it? 😄");
-          vulStemLijst();
-        };
-        lijst.appendChild(b);
+      // twee keuzes: de gewone stem én de horror-stem 😈
+      [
+        { soort: "normaal", sleutel: "smiles-stem", titel: "😄 NORMALE STEM", kleur: "#3b82ff",
+          test: "HELLO HELLO! This is my new voice! Do you like it? 😄", opties: {} },
+        { soort: "eng", sleutel: "smiles-stem-eng", titel: "😈 ENGE STEM (als de timer om is...)", kleur: "#ff2222",
+          test: "I told you... I am ALWAYS right. RUN.", opties: { eng: true } },
+      ].forEach(deel => {
+        const kop = document.createElement("div");
+        kop.style.cssText = "color:" + deel.kleur + ";font:800 12px system-ui;margin:10px 0 6px;letter-spacing:.5px";
+        kop.textContent = deel.titel;
+        lijst.appendChild(kop);
+        const huidig = localStorage.getItem(deel.sleutel);
+        const standaard = kiesStem(deel.soort);
+        [...en, ...rest].forEach(v => {
+          const b = document.createElement("button");
+          const actief = huidig === v.voiceURI || huidig === v.name || (!huidig && standaard === v);
+          b.style.cssText = "display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 10px;border-radius:9px;cursor:pointer;font:600 12px system-ui;color:#fff;background:" + (actief ? "rgba(59,130,255,0.4)" : "rgba(255,255,255,0.07)") + ";border:1px solid " + (actief ? deel.kleur : "rgba(255,255,255,0.15)");
+          b.textContent = (actief ? "✅ " : "") + v.name.replace(/Microsoft |Google |Online |\(Natural\)|Desktop - /g, "").slice(0, 34) + "  ·  " + v.lang;
+          b.onclick = () => {
+            try { localStorage.setItem(deel.sleutel, v.voiceURI || v.name); } catch {}
+            praat(deel.test, deel.opties);
+            vulStemLijst();
+          };
+          lijst.appendChild(b);
+        });
       });
     }
     try { speechSynthesis.onvoiceschanged = () => { if (document.getElementById("stemPaneel").style.display === "block") vulStemLijst(); }; } catch {}
@@ -289,7 +308,7 @@
       b.textContent = tekst;
       log.appendChild(b);
       log.scrollTop = log.scrollHeight;
-      if (spreek !== false) praat(tekst, staat.boos >= 2 ? { pitch: 0.6, rate: 0.9 } : undefined);
+      if (spreek !== false) praat(tekst, staat.boos >= 2 ? { eng: true, pitch: 0.35, rate: 0.85 } : undefined);
     }
     function jijZegt(tekst) {
       const b = document.createElement("div");
@@ -476,7 +495,7 @@
       speechSynthesis.cancel();
       toonFase();
       scene.classList.add("puls");
-      praat("Hehehehe. It is TIME.", { pitch: 0.25, rate: 0.7 });
+      praat("Hehehehe. It is TIME.", { eng: true, pitch: 0.08, rate: 0.62 });
       harten = 3; toonHarten();
       setTimeout(stuurMonster, 2500);
     }
@@ -504,7 +523,7 @@
       if (!onderweg) return;
       onderweg = false;
       clearTimeout(monsterTimer);
-      praat("Grrr!", { pitch: 0.3, rate: 1.2 });
+      praat("Grrr!", { eng: true, pitch: 0.1, rate: 1.1 });
       monsterEl.style.transition = "none";
       monsterEl.style.top = "-400px"; // weggejaagd!
       monsterSnelheid = Math.max(1100, monsterSnelheid - 180); // hij wordt sneller...
@@ -532,7 +551,7 @@
       staat.fase = "verity"; bewaar();
       scene.classList.remove("puls");
       clearTimeout(monsterTimer);
-      praat("I'm always right. I'm... VERITY.", { pitch: 0.4, rate: 0.75 });
+      praat("I'm always right. I'm... VERITY.", { eng: true, pitch: 0.3, rate: 0.68 });
       setTimeout(() => {
         toonFase();
         smiley.className = "";

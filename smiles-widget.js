@@ -398,15 +398,21 @@
     voegToe(txt, 's');
     try {
       const u = new SpeechSynthesisUtterance(txt);
-      // zelf-gekozen stem (🔊 STEM-knop op smiles.html) — anders eerste Engelse
+      // zelf-gekozen stemmen (🔊 STEM-knop op smiles.html):
+      // normaal = 'smiles-stem', horror = 'smiles-stem-eng' (aparte keuze!)
       const vs = speechSynthesis.getVoices();
-      const wens = localStorage.getItem('smiles-stem');
-      const gekozen = (wens && vs.find(v => v.voiceURI === wens || v.name === wens))
-        || vs.filter(v => (v.lang || '').startsWith('en'))[0];
+      const en = vs.filter(v => (v.lang || '').startsWith('en'));
+      const wens = localStorage.getItem(horror ? 'smiles-stem-eng' : 'smiles-stem');
+      let gekozen = wens && vs.find(v => v.voiceURI === wens || v.name === wens);
+      if (!gekozen) {
+        gekozen = horror
+          ? (en.find(v => /male|david|george|daniel|guy|christopher/i.test(v.name) && !/female/i.test(v.name)) || en[1] || en[0])
+          : en[0];
+      }
       if (gekozen) u.voice = gekozen;
       u.lang = 'en-US';
-      u.pitch = horror ? 0.35 : 1.5;   // 😈 in horror-stand praat hij LAAG en eng
-      u.rate  = horror ? 0.82 : 1.05;
+      u.pitch = horror ? 0.1 : 1.5;    // 😈 horror: EXTREEM laag...
+      u.rate  = horror ? 0.72 : 1.05;  // ...en griezelig langzaam
       speechSynthesis.cancel();
       speechSynthesis.speak(u);
     } catch {}
