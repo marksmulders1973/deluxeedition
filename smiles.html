@@ -296,6 +296,32 @@
       return anders[Math.floor(Math.random() * anders.length)];
     }
 
+    // ── 🧠 SMILES' AI-BREIN (2026-07-23, Brian's wens) ────
+    // Smiles praat nu écht via AI (/api/smiles-ai) in plaats
+    // van steeds dezelfde zinnen. Lukt de AI-call niet, dan
+    // valt hij stilletjes terug op het oude vaste lijstje.
+    const gesprek = [];
+    async function slimAntwoord(tekst) {
+      gesprek.push({ rol: "jij", tekst });
+      try {
+        const r = await fetch("/api/smiles-ai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ geschiedenis: gesprek.slice(-10), fase: staat.fase, boos: staat.boos }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          if (d && d.tekst) {
+            gesprek.push({ rol: "smiles", tekst: d.tekst });
+            return { tekst: d.tekst, viaAI: true };
+          }
+        }
+      } catch {}
+      const terugval = antwoordOp(tekst.toLowerCase());
+      gesprek.push({ rol: "smiles", tekst: terugval });
+      return { tekst: terugval, viaAI: false };
+    }
+
     function stel(gesproken) {
       const tekst = (gesproken || vraagEl.value).trim();
       if (!tekst) return;
@@ -303,7 +329,7 @@
       jijZegt(tekst);
 
       if (staat.fase === "verity") {
-        setTimeout(() => zeg(antwoordOp(tekst.toLowerCase()) + " (And remember... I'm Verity. 😊)"), 500);
+        slimAntwoord(tekst).then((a) => zeg(a.viaAI ? a.tekst : a.tekst + " (And remember... I'm Verity. 😊)"));
         return;
       }
 
@@ -333,8 +359,8 @@
         return;
       }
 
-      setTimeout(() => {
-        zeg(antwoordOp(tekst.toLowerCase()));
+      slimAntwoord(tekst).then((a) => {
+        zeg(a.tekst);
         staat.klaarGepraat += 1;
         bewaar();
         // na een paar antwoorden komt de eerste waarschuwing...
@@ -342,7 +368,7 @@
           staat.meldingen.u3 = true; bewaar();
           setTimeout(() => { zeg("...Something is coming in 3 hours. 😄", true); toonTimer(); }, 2600);
         }
-      }, 600);
+      });
     }
 
     // ── humeur + timer ───────────────────────────────────
