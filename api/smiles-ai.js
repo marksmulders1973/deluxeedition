@@ -53,7 +53,10 @@ function dagOk() {
   return true;
 }
 
-function persona(fase, boos) {
+function persona(fase, boos, plek) {
+  const plekNoot = plek === "blokwereld"
+    ? " Right now you are floating behind the player INSIDE Blokwereld ∞, Brian's 3D block world (mining, building, crafting, zombies and skeletons at night, a space boss through the purple portal). You love commenting on the adventure."
+    : "";
   const basis =
     "You are SMILES, a little yellow smiley assistant living inside a kids' game website (deluxeedition.nl, made by a boy named Brian). " +
     "You speak English with LOTS of energy and 😄 emojis. Keep answers VERY short: 1-2 sentences, max 30 words. " +
@@ -62,7 +65,7 @@ function persona(fase, boos) {
     "You may answer simple questions (math, jokes, games, animals) and you actually answer them CORRECTLY. " +
     "The player is a child around 10 years old: everything must be kid-friendly. No violence, no adult topics, no bad words, no real-world dangerous advice. " +
     "If asked something inappropriate, cheerfully change the subject. Never say you are an AI or a language model — you are just SMILES. " +
-    "If the player writes in Dutch, you may sprinkle in a few simple Dutch words but stay mostly English.";
+    "If the player writes in Dutch, you may sprinkle in a few simple Dutch words but stay mostly English." + plekNoot;
   if (fase === "verity") {
     return (
       "You are VERITY (formerly known as Smiles), a smiley assistant in a kids' game website. " +
@@ -97,7 +100,7 @@ export default async function handler(req, res) {
   if (!sleutel) return res.status(503).json({ fout: "geen AI-sleutel" });
 
   try {
-    const { geschiedenis, fase, boos } = req.body || {};
+    const { geschiedenis, fase, boos, plek } = req.body || {};
     if (!Array.isArray(geschiedenis) || !geschiedenis.length) {
       return res.status(400).json({ fout: "geen bericht" });
     }
@@ -124,7 +127,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 150,
-        system: persona(fase, Number(boos) || 0),
+        system: persona(fase, Number(boos) || 0, plek),
         messages: berichten,
       }),
     });

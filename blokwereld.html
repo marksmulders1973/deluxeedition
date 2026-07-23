@@ -808,12 +808,15 @@ let sprinting=false;
 let lastSpaceTap=0, lastWTap=0;
 const DOUBLE_TAP=400;     // ms window for a double tap (wider, easier)
 addEventListener('keydown',e=>{
+  // tijdens het praten met Smiles gaan toetsen naar het typvak, niet het spel
+  if(typeof smilesChatOpen!=='undefined'&&smilesChatOpen){ if(e.code==='Escape') sluitSmilesChat(); return; }
   const wasDown=keys[e.code];
   keys[e.code]=true;
   if(e.repeat) return;     // ignore auto-repeat entirely
   if(e.code==='KeyE'&&playing) toggleCraft();
   if(e.code==='KeyI'&&playing) toggleInv();
   if(e.code==='KeyO'&&playing) togglePause();
+  if(e.code==='KeyP'&&playing) openSmilesChat();
   if(e.code.startsWith('Digit')){ const n=+e.code.slice(5)-1; if(n>=0&&n<8){ activeSlot=n; renderHotbar(); } }
   if(playing && !wasDown){
     const now=performance.now();
@@ -836,7 +839,7 @@ addEventListener('mousemove',e=>{ if(!pointerLocked) return;
   player.yaw-=e.movementX*0.0024; player.pitch-=e.movementY*0.0024;
   player.pitch=Math.max(-1.55,Math.min(1.55,player.pitch));
 });
-addEventListener('mousedown',e=>{ if(!playing) return; if(!pointerLocked){ lockPointer(); return; }
+addEventListener('mousedown',e=>{ if(!playing) return; if(typeof smilesChatOpen!=='undefined'&&smilesChatOpen) return; if(!pointerLocked){ lockPointer(); return; }
   if(e.button===0) leftClick(); if(e.button===2) rightClick(); });
 addEventListener('contextmenu',e=>e.preventDefault());
 
@@ -1775,7 +1778,86 @@ function updateSmilesCameo(dt){
     if(afstand>60){ p.copy(player.pos).add(new THREE.Vector3(8,0,8)); } // portaal/teleport? hij vindt je toch.
     else if(afstand>4.5){ richting.normalize(); p.addScaledVector(richting,Math.min(afstand-4.4,(afstand>14?7:3.2)*dt*(afstand>14?3:1))); }
     p.y=player.pos.y+0.6+Math.sin(performance.now()/420)*0.25; // rustig zweven op ooghoogte
+    // hint tonen als hij dichtbij is: je kunt met hem praten!
+    if(!smilesHint){
+      smilesHint=document.createElement('div');
+      smilesHint.style.cssText='position:fixed;bottom:120px;left:50%;transform:translateX(-50%);z-index:60;display:none;background:rgba(13,27,46,0.85);color:#fff;border:2px solid #ff3b3b;border-radius:12px;padding:8px 16px;font:700 14px system-ui;cursor:pointer';
+      smilesHint.textContent='💬 Praat met Smiles'+(IS_TOUCH?'':' — druk P');
+      smilesHint.addEventListener('pointerdown',ev=>{ev.stopPropagation();openSmilesChat();});
+      document.body.appendChild(smilesHint);
+    }
+    smilesHint.style.display=(afstand<7&&!smilesChatOpen&&playing)?'block':'none';
   }catch(e){}
+}
+
+// ====================================================================
+// 💬 PRATEN MET SMILES — écht AI (2026-07-23, Brian's wens)
+// Zelfde AI-brein als smiles.html (/api/smiles-ai). Spel pauzeert
+// zolang het praatvenster open is. AI stuk? Vaste reserve-zinnen.
+// ====================================================================
+let smilesChatOpen=false, smilesHint=null, smilesGesprek=[], smilesChatUI=null;
+const SMILES_RESERVE=[
+  'HAHA! Great question! I know EVERYTHING. Trust me. 😄',
+  'Ooh! Ask me more, I LOVE talking! 😄',
+  'The answer is: yes! Probably! I am ALWAYS right. 😄',
+];
+function smilesSpreek(tekst){
+  try{ const u=new SpeechSynthesisUtterance(tekst.replace(/[^\p{L}\p{N}\s.,!?']/gu,'')); u.lang='en-US'; u.pitch=1.4; u.rate=1.05; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){}
+}
+function smilesBubbel(wie,tekst){
+  const log=document.getElementById('smilesChatLog'); if(!log) return;
+  const b=document.createElement('div');
+  b.style.cssText='max-width:85%;padding:8px 12px;border-radius:12px;font:600 14px system-ui;white-space:pre-wrap;'+
+    (wie==='jij'?'align-self:flex-end;background:#3b82ff;color:#fff':'align-self:flex-start;background:#fff;color:#0d1b2e;border:2px solid #ff3b3b');
+  b.textContent=tekst; log.appendChild(b); log.scrollTop=log.scrollHeight;
+}
+function maakSmilesChatUI(){
+  if(smilesChatUI) return;
+  smilesChatUI=document.createElement('div');
+  smilesChatUI.style.cssText='position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;background:rgba(13,27,46,0.7)';
+  smilesChatUI.innerHTML=
+    '<div style="width:min(440px,92vw);max-height:78vh;display:flex;flex-direction:column;background:linear-gradient(135deg,#141e30,#0d1b2e);border:3px solid #ff3b3b;border-radius:18px;padding:14px;box-shadow:0 0 40px rgba(255,59,59,0.4)">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
+    '<span style="color:#fff;font:800 17px system-ui">😄 SMILES</span>'+
+    '<button id="smilesChatDicht" style="background:none;border:none;color:#fff;font-size:22px;cursor:pointer">✕</button></div>'+
+    '<div id="smilesChatLog" style="flex:1;min-height:180px;max-height:46vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 2px"></div>'+
+    '<div style="display:flex;gap:8px;margin-top:10px">'+
+    '<input id="smilesChatInvoer" maxlength="200" placeholder="typ iets tegen Smiles..." style="flex:1;padding:10px 12px;border-radius:10px;border:2px solid #3b82ff;background:#0d1b2e;color:#fff;font:600 14px system-ui;outline:none">'+
+    '<button id="smilesChatStuur" style="padding:10px 16px;border:none;border-radius:10px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);color:#fff;font:800 14px system-ui;cursor:pointer">▶</button></div></div>';
+  document.body.appendChild(smilesChatUI);
+  document.getElementById('smilesChatDicht').addEventListener('click',sluitSmilesChat);
+  document.getElementById('smilesChatStuur').addEventListener('click',smilesVerstuur);
+  document.getElementById('smilesChatInvoer').addEventListener('keydown',e=>{ if(e.key==='Enter') smilesVerstuur(); e.stopPropagation(); });
+}
+function openSmilesChat(){
+  if(!smilesCameo||smilesChatOpen||!playing) return;
+  maakSmilesChatUI();
+  smilesChatOpen=true; smilesChatUI.style.display='flex';
+  try{ document.exitPointerLock(); }catch(e){}
+  if(!smilesGesprek.length){
+    const hoi='HELLLOOOOOOOOOO! 😄 I follow you EVERYWHERE in this world! Ask me ANYTHING!';
+    smilesGesprek.push({rol:'smiles',tekst:hoi}); smilesBubbel('smiles',hoi); smilesSpreek(hoi);
+  }
+  setTimeout(()=>{ const i=document.getElementById('smilesChatInvoer'); if(i&&!IS_TOUCH) i.focus(); },50);
+}
+function sluitSmilesChat(){ smilesChatOpen=false; if(smilesChatUI) smilesChatUI.style.display='none'; try{ speechSynthesis.cancel(); }catch(e){} }
+let smilesBezig=false;
+async function smilesVerstuur(){
+  if(smilesBezig) return;
+  const invoer=document.getElementById('smilesChatInvoer');
+  const tekst=(invoer.value||'').trim(); if(!tekst) return;
+  invoer.value=''; smilesBubbel('jij',tekst); smilesGesprek.push({rol:'jij',tekst});
+  smilesBezig=true;
+  let antwoord='';
+  try{
+    const r=await fetch('/api/smiles-ai',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({geschiedenis:smilesGesprek.slice(-10),fase:'assistent',boos:0,plek:'blokwereld'})});
+    if(r.ok){ const d=await r.json(); if(d&&d.tekst) antwoord=d.tekst; }
+  }catch(e){}
+  if(!antwoord) antwoord=SMILES_RESERVE[Math.floor(Math.random()*SMILES_RESERVE.length)];
+  smilesGesprek.push({rol:'smiles',tekst:antwoord});
+  smilesBubbel('smiles',antwoord); smilesSpreek(antwoord);
+  smilesBezig=false;
 }
 
 // ====================================================================
@@ -1791,7 +1873,7 @@ function loop(t){ requestAnimationFrame(loop);
     if(goldAppleUntil && performance.now()>goldAppleUntil && gameMode!=='god'){
       goldAppleUntil=0; player.maxHp=10; if(player.hp>10) player.hp=10; renderHearts(); flash('Gouden appel-effect voorbij');
     }
-    if(!craftOpen&&!tradeOpen&&!invOpen&&!paused){ if(pointerLocked||IS_TOUCH) updatePlayer(dt); updateMobs(dt); updateFireballs(dt); updateBliksems(dt); updateTnt(dt); updateWapenDrops(dt); updateMobSpawning(dt); }
+    if(!craftOpen&&!tradeOpen&&!invOpen&&!paused&&!smilesChatOpen){ if(pointerLocked||IS_TOUCH) updatePlayer(dt); updateMobs(dt); updateFireballs(dt); updateBliksems(dt); updateTnt(dt); updateWapenDrops(dt); updateMobSpawning(dt); }
     updateChunks(false);
     const clock=document.getElementById('clock'); const hh=Math.floor(timeOfDay*24), mm=Math.floor((timeOfDay*24-hh)*60);
     clock.textContent=(isNight?'🌙 ':'☀️ ')+String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
