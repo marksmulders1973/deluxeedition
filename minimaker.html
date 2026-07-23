@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>MINI-MINECRAFT MAKER — bouw je eigen game</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧱</text></svg>">
+<style>
+/* ══════════════════════════════════════════════════════
+   MINI-MINECRAFT MAKER 🧱 (2026-07-23, Brian's idee)
+   Brian plakte een uitleg "hoe werkt Minecraft technisch,
+   stap voor stap". Dit spel IS die uitleg: je begint met
+   1 blok op het scherm en bouwt met elke VOLGENDE-klik
+   een echt stukje game erbij — met de uitleg + het stukje
+   code ernaast, precies zoals in zijn tekst.
+   ══════════════════════════════════════════════════════ */
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0d1b2e;font-family:system-ui,sans-serif;touch-action:none}
+canvas{display:block}
+#terug{position:fixed;top:10px;left:12px;z-index:50;color:rgba(255,255,255,.65);text-decoration:none;font:700 13px system-ui;background:rgba(0,0,0,.4);border-radius:999px;padding:6px 14px}
+#terug:hover{color:#fff}
+/* stappen-kaart */
+#kaart{position:fixed;left:12px;bottom:12px;z-index:40;width:min(360px,calc(100vw - 24px));background:linear-gradient(135deg,rgba(20,30,48,.96),rgba(13,27,46,.96));border:3px solid #3b82ff;border-radius:16px;padding:14px;color:#fff;box-shadow:0 0 30px rgba(59,130,255,.35)}
+#kaart h2{font-size:17px;margin-bottom:6px}
+#kaart .uitleg{font-size:13px;line-height:1.45;opacity:.92;margin-bottom:8px}
+#kaart pre{background:#050d18;border:1px solid rgba(59,130,255,.4);border-radius:8px;padding:8px 10px;font:600 11.5px ui-monospace,Consolas,monospace;color:#7fd4ff;overflow-x:auto;margin-bottom:10px;white-space:pre}
+#kaart .rij{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#volgende{flex:1;padding:11px 14px;border:none;border-radius:10px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);color:#fff;font:800 15px system-ui;cursor:pointer;letter-spacing:.5px}
+#volgende:disabled{opacity:.4;cursor:default}
+#stapTeller{font:800 12px system-ui;color:#7fd4ff;white-space:nowrap}
+#klein{position:fixed;left:12px;bottom:12px;z-index:41;display:none;background:#3b82ff;border:none;color:#fff;font:800 16px system-ui;border-radius:12px;padding:10px 14px;cursor:pointer}
+#kaartDicht{background:none;border:none;color:rgba(255,255,255,.6);font-size:16px;cursor:pointer}
+/* HUD */
+#hud{position:fixed;top:10px;right:12px;z-index:40;color:#fff;font:700 13px system-ui;text-align:right;text-shadow:0 1px 3px #000}
+#fps{display:none;color:#7fd4ff}
+#seedRegel{display:none}
+#seedRegel button{background:rgba(255,255,255,.15);border:none;border-radius:8px;color:#fff;font:700 12px system-ui;padding:4px 10px;cursor:pointer;margin-left:6px}
+#harten{display:none;font-size:18px;letter-spacing:2px}
+#hotbar{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:39;display:none;gap:6px}
+.slot{width:52px;height:52px;border:3px solid rgba(255,255,255,.35);border-radius:10px;background:rgba(0,0,0,.45);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font:700 10px system-ui;cursor:pointer}
+.slot.actief{border-color:#ffd700;box-shadow:0 0 12px rgba(255,215,0,.5)}
+.slot .em{font-size:20px}
+#craft{position:fixed;top:60px;right:12px;z-index:40;display:none;background:rgba(13,27,46,.92);border:2px solid #2ecc71;border-radius:12px;padding:10px 12px;color:#fff;font:700 13px system-ui}
+#craft button{margin-top:6px;width:100%;padding:8px;border:none;border-radius:8px;background:#2ecc71;color:#06280f;font:800 13px system-ui;cursor:pointer}
+#richtkruis{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:38;color:#fff;font-size:20px;display:none;pointer-events:none;text-shadow:0 0 4px #000}
+#melding{position:fixed;top:54px;left:50%;transform:translateX(-50%);z-index:45;background:rgba(13,27,46,.9);border:2px solid #ffd700;color:#fff;font:700 14px system-ui;border-radius:10px;padding:8px 16px;display:none;max-width:90vw;text-align:center}
+/* feest-scherm */
+#feest{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;background:rgba(13,27,46,.92)}
+#feest .binnen{text-align:center;color:#fff;padding:30px;border:3px solid #ffd700;border-radius:20px;background:linear-gradient(135deg,#141e30,#0d1b2e);max-width:min(420px,90vw)}
+#feest button{margin-top:16px;padding:12px 22px;border:none;border-radius:12px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);color:#fff;font:800 15px system-ui;cursor:pointer}
+/* touch-knoppen */
+#touch{display:none}
+@media (pointer:coarse){ #touch.aan{display:block} }
+#joy{position:fixed;left:18px;bottom:150px;width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.3);z-index:42}
+#joyKnop{position:absolute;left:35px;top:35px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.5)}
+#springKnop,#modusKnop{position:fixed;right:18px;z-index:42;width:64px;height:64px;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(255,255,255,.15);color:#fff;font-size:24px}
+#springKnop{bottom:150px}
+#modusKnop{bottom:230px}
+</style>
+</head>
+<body>
+<a id="terug" href="index.html">← home</a>
+<div id="hud">
+  <div id="fps">🔄 loop: <span id="fpsN">0</span>× per seconde</div>
+  <div id="seedRegel">🌍 seed: <span id="seedN">123456789</span><button id="seedKnop">🎲</button></div>
+  <div id="harten"></div>
+</div>
+<div id="richtkruis">+</div>
+<div id="hotbar"></div>
+<div id="craft">🛠️ CRAFTEN<br><span style="font-weight:600;font-size:12px">1 hout → 4 planken</span><button id="craftKnop">MAAK PLANKEN</button></div>
+<div id="melding"></div>
+<div id="kaart">
+  <div class="rij" style="margin-bottom:4px"><h2 id="kTitel"></h2><button id="kaartDicht">▼</button></div>
+  <div class="uitleg" id="kUitleg"></div>
+  <pre id="kCode"></pre>
+  <div class="rij"><button id="volgende">VOLGENDE STAP ▶</button><span id="stapTeller"></span></div>
+</div>
+<button id="klein">📖 stap</button>
+<div id="feest"><div class="binnen">
+  <div style="font-size:60px">🎉</div>
+  <h2 style="margin:10px 0">JE HEBT EEN GAME GEBOUWD!</h2>
+  <p style="font-size:14px;opacity:.9;line-height:1.5">Blok → game-loop → lopen → springen → breken → plaatsen → wereld met seed → crafting → zombie-AI → redstone + geluid.<br><br>Zó werkt Minecraft dus óók — alleen dan met miljoenen regels code. En jij snapt nu hoe! 😄</p>
+  <button onclick="document.getElementById('feest').style.display='none'">VERDER SPELEN ⛏️</button>
+</div></div>
+<div id="touch">
+  <div id="joy"><div id="joyKnop"></div></div>
+  <button id="springKnop">⬆️</button>
+  <button id="modusKnop">⛏️</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// 🔐 eerst inloggen op de homepagina
+try{ if(!(localStorage.getItem('deluxe-speler')||'').trim()) location.href='index.html'; }catch(e){}
+
+// ════════════ DE 10 STAPPEN (Brian's geplakte uitleg!) ════════════
+const STAPPEN=[
+ {t:'🧱 Stap 1 — Eén blok op het scherm',
+  u:'Alles begint met één blok. De computer ziet geen mooi blok — hij ziet 8 hoekpunten en 6 kanten. De grafische kaart maakt er pixels van.',
+  c:'world[0][64][0] = GRASS;\ndrawBlock(0, 64, 0);'},
+ {t:'🔄 Stap 2 — De game-loop',
+  u:'Een game controleert ALLES steeds opnieuw, wel 60 keer per seconde. Kijk rechtsboven: de loop draait nu echt! Daarom kan het blok ronddraaien.',
+  c:'while (gameIsRunning) {\n  readInput();\n  updateGame();\n  drawGame();\n}'},
+ {t:'⌨️ Stap 3 — WASD + muis',
+  u:'Klik op het scherm en loop met W A S D, kijk rond met de muis. Elke keer dat de loop draait checkt de game: is W ingedrukt? Dan speler naar voren!',
+  c:'if (keyPressed("W")) {\n  player.moveForward();\n}'},
+ {t:'🦘 Stap 4 — Springen + zwaartekracht',
+  u:'Druk op SPATIE! Springen = je snelheid omhoog geeft een zetje, en de zwaartekracht trekt je elke loop-ronde weer naar beneden.',
+  c:'velocityY -= gravity;\nplayer.y += velocityY;\nif (player.isOnGround())\n  velocityY = 0;'},
+ {t:'🖱️ Stap 5 — Klikken = blok breken',
+  u:'De game schiet een onzichtbare lijn uit je ogen: een RAYCAST. Raakt die lijn een blok en klik je? Dan gaat het blok weg — en in je rugzak (kijk onderin)!',
+  c:'target = raycastFromCamera();\nif (leftClick && target != null)\n  world.removeBlock(target);'},
+ {t:'🧱 Stap 6 — Rechtsklik = blok plaatsen',
+  u:'Plaatsen is breken omgekeerd: de game kijkt tegen welke KANT van het blok je aankijkt, en zet je nieuwe blok op het vakje ernaast. Kies een blok onderin!',
+  c:'pos = target.position\n  .add(target.faceDirection);\nworld.placeBlock(pos, selected);'},
+ {t:'🌍 Stap 7 — Een hele wereld met een seed',
+  u:'BOEM — een echte wereld! De seed (kijk rechtsboven) is een geheim getal. Uit dat ene getal rekent de game bergen, dalen en bomen uit. Zelfde seed = zelfde wereld. Druk op 🎲!',
+  c:'hoogte = berekening(x, z, seed);\nif (hoogte > 10) → berg\nanders → gras'},
+ {t:'🎒 Stap 8 — Inventaris + crafting',
+  u:'Hak een boom om (hout in je rugzak) en klik dan op MAAK PLANKEN rechtsboven. De game checkt het recept: 1 hout eraf, 4 planken erbij!',
+  c:'if (inventory.has("WOOD", 1)) {\n  inventory.remove("WOOD", 1);\n  inventory.add("PLANKS", 4);\n}'},
+ {t:'🧟 Stap 9 — Een mob met AI',
+  u:'Er loopt nu een zombie rond! Zijn "brein" is simpel: zie je de speler? Loop er naartoe. Dichtbij? Aanvallen! Sla hem 3× (klik op hem) — en pas op je hartjes.',
+  c:'if (distanceToPlayer < 20)\n  zombie.follow(player);\nif (distanceToPlayer < 2)\n  zombie.attack(player);'},
+ {t:'🔴 Stap 10 — Redstone + geluid',
+  u:'Bij jou in de buurt staat nu een deurtje met een hendel (goud blokje). Klik op de hendel = deur open/dicht, net als elektriciteit! En luister: breken en plaatsen maakt nu geluid. 🔊',
+  c:'if (lever.isPowered())\n  door.open();\nplaySound("stone_break.wav");'},
+];
+
+// ════════════ WERELD-DATA ════════════
+const W=48,H=20,D=48;
+const LUCHT=0,GRAS=1,AARDE=2,STEEN=3,HOUT=4,BLAD=5,PLANK=6,HENDEL=7,DEUR=8;
+const NAMEN={ [GRAS]:'Gras',[AARDE]:'Aarde',[STEEN]:'Steen',[HOUT]:'Hout',[BLAD]:'Blad',[PLANK]:'Plank' };
+const EMOJI={ [GRAS]:'🟩',[AARDE]:'🟫',[STEEN]:'⬜',[HOUT]:'🪵',[BLAD]:'🍃',[PLANK]:'🟧' };
+let world=new Uint8Array(W*H*D);
+const idx=(x,y,z)=>x+W*(z+D*y);
+const inW=(x,y,z)=>x>=0&&x<W&&y>=0&&y<H&&z>=0&&z<D;
+const blokOp=(x,y,z)=>inW(x,y,z)?world[idx(x,y,z)]:LUCHT;
+const vast=t=>t!==LUCHT;
+
+let stap=1;
+try{ stap=Math.min(10,Math.max(1,parseInt(localStorage.getItem('deluxe-minimaker-stap')||'1',10)||1)); }catch(e){}
+
+// seed-toevalsgetallen (stap 7 uit Brian's tekst!)
+let seed=123456789;
+function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function hoogteOp(x,z){
+  const s=seed%1000/1000;
+  let h=8+Math.sin((x+seed%97)*0.22+s*9)*2.6+Math.cos((z+seed%53)*0.19+s*5)*2.2+Math.sin((x+z)*0.11+s*3)*1.4;
+  return Math.max(2,Math.min(H-6,Math.round(h)));
+}
+function bouwWereld(){
+  world=new Uint8Array(W*H*D);
+  const rnd=mulberry(seed);
+  if(stap<7){
+    // klein plat oefen-plateau (stap 3-6)
+    for(let x=16;x<32;x++)for(let z=16;z<32;z++){
+      world[idx(x,6,z)]=STEEN; world[idx(x,7,z)]=AARDE; world[idx(x,8,z)]=GRAS;
+    }
+    if(stap>=5){ world[idx(20,9,20)]=STEEN; world[idx(27,9,26)]=HOUT; world[idx(24,9,28)]=AARDE; }
+  } else {
+    for(let x=0;x<W;x++)for(let z=0;z<D;z++){
+      const h=hoogteOp(x,z);
+      for(let y=0;y<=h;y++) world[idx(x,y,z)]= y===h?GRAS : y>h-3?AARDE : STEEN;
+    }
+    // bomen uit de seed
+    for(let i=0;i<14;i++){
+      const x=4+Math.floor(rnd()*(W-8)), z=4+Math.floor(rnd()*(D-8)), h=hoogteOp(x,z);
+      if(blokOp(x,h,z)!==GRAS) continue;
+      const th=3+Math.floor(rnd()*2);
+      for(let y=1;y<=th;y++) world[idx(x,h+y,z)]=HOUT;
+      for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++)for(let dy=0;dy<=2;dy++){
+        const ax=x+dx,ay=h+th+dy,az=z+dz;
+        if(!inW(ax,ay,az)) continue;
+        if(Math.abs(dx)+Math.abs(dz)+dy<=3&&blokOp(ax,ay,az)===LUCHT) world[idx(ax,ay,az)]=BLAD;
+      }
+    }
+  }
+  if(stap>=10) bouwRedstoneDeur();
+}
+// stap 10: stenen deurtje + hendel naast de spawn
+let deurBlokken=[],deurOpen=false,hendelPos=null;
+function bouwRedstoneDeur(){
+  deurBlokken=[];
+  const sx=Math.floor(W/2)+4, sz=Math.floor(D/2);
+  const h=stap>=7?hoogteOp(sx,sz):8;
+  for(let y=1;y<=3;y++){ world[idx(sx-1,h+y,sz)]=STEEN; world[idx(sx+1,h+y,sz)]=STEEN; }
+  world[idx(sx,h+3,sz)]=STEEN;
+  world[idx(sx,h+1,sz)]=DEUR; world[idx(sx,h+2,sz)]=DEUR;
+  deurBlokken=[[sx,h+1,sz],[sx,h+2,sz]]; deurOpen=false;
+  world[idx(sx-2,h+1,sz)]=HENDEL; hendelPos=[sx-2,h+1,sz];
+}
+
+// ════════════ THREE.JS OPZET ════════════
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87b8e8);
+scene.fog=new THREE.Fog(0x87b8e8,30,80);
+const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.1,200);
+const renderer=new THREE.WebGLRenderer({antialias:false});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+document.body.appendChild(renderer.domElement);
+scene.add(new THREE.AmbientLight(0xffffff,0.75));
+const zon=new THREE.DirectionalLight(0xfff3d0,0.7); zon.position.set(30,50,20); scene.add(zon);
+addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+// pixel-textures zoals echte Minecraft-textures (stap 9 uit de tekst)
+function pixTex(basis,vlekken,extra){
+  const c=document.createElement('canvas'); c.width=c.height=16; const x=c.getContext('2d');
+  x.fillStyle=basis; x.fillRect(0,0,16,16);
+  const r=mulberry(basis.length*7919+16);
+  for(let i=0;i<46;i++){ x.fillStyle=vlekken[Math.floor(r()*vlekken.length)]; x.fillRect(Math.floor(r()*16),Math.floor(r()*16),1,1); }
+  if(extra) extra(x);
+  const t=new THREE.CanvasTexture(c); t.magFilter=THREE.NearestFilter; t.minFilter=THREE.NearestFilter; return t;
+}
+const T={
+  grasTop:pixTex('#5fae45',['#4c9a37','#6fc24f','#57a53e']),
+  grasZij:pixTex('#8a6244',['#7a5230','#96703d'],x=>{x.fillStyle='#5fae45';x.fillRect(0,0,16,4);x.fillStyle='#4c9a37';for(let i=0;i<8;i++)x.fillRect(i*2,4,1,1);}),
+  aarde:pixTex('#8a6244',['#7a5230','#96703d','#6e4a2a']),
+  steen:pixTex('#8f8f8f',['#7a7a7a','#a3a3a3','#6f6f6f']),
+  hout:pixTex('#7a5230',['#6e4a2a','#8a6244'],x=>{x.fillStyle='#5e3f22';for(let i=0;i<4;i++)x.fillRect(i*4+1,0,1,16);}),
+  blad:pixTex('#3b6d11',['#2f5a0c','#4c8a1a','#357010']),
+  plank:pixTex('#b08850',['#a07840','#c09860'],x=>{x.fillStyle='#8a6a38';x.fillRect(0,3,16,1);x.fillRect(0,8,16,1);x.fillRect(0,13,16,1);}),
+  hendel:pixTex('#c8a020',['#b89018','#ffd700','#e0b830']),
+  deur:pixTex('#c0c8d0',['#a8b0b8','#d8e0e8'],x=>{x.strokeStyle='#808890';x.strokeRect(2,1,12,14);x.strokeRect(4,3,8,4);x.strokeRect(4,9,8,4);}),
+};
+const mat=t=>new THREE.MeshLambertMaterial({map:t});
+const MATS={
+  [GRAS]:[mat(T.grasZij),mat(T.grasZij),mat(T.grasTop),mat(T.aarde),mat(T.grasZij),mat(T.grasZij)],
+  [AARDE]:mat(T.aarde),[STEEN]:mat(T.steen),[HOUT]:mat(T.hout),[BLAD]:mat(T.blad),
+  [PLANK]:mat(T.plank),[HENDEL]:mat(T.hendel),[DEUR]:mat(T.deur),
+};
+const doosGeo=new THREE.BoxGeometry(1,1,1);
+let meshes=[];
+function tekenWereld(){
+  for(const m of meshes){ scene.remove(m); m.dispose&&m.dispose(); }
+  meshes=[];
+  const perType={};
+  for(let y=0;y<H;y++)for(let z=0;z<D;z++)for(let x=0;x<W;x++){
+    const t=world[idx(x,y,z)]; if(t===LUCHT) continue;
+    // alleen blokken tekenen die je kunt ZIEN (een buur is lucht)
+    if(vast(blokOp(x+1,y,z))&&vast(blokOp(x-1,y,z))&&vast(blokOp(x,y+1,z))&&vast(blokOp(x,y-1,z))&&vast(blokOp(x,y,z+1))&&vast(blokOp(x,y,z-1))) continue;
+    (perType[t]=perType[t]||[]).push([x,y,z]);
+  }
+  const M=new THREE.Matrix4();
+  for(const t in perType){
+    const lijst=perType[t];
+    const im=new THREE.InstancedMesh(doosGeo,MATS[t],lijst.length);
+    lijst.forEach((p,i)=>{ M.setPosition(p[0]+0.5,p[1]+0.5,p[2]+0.5); im.setMatrixAt(i,M); });
+    im.instanceMatrix.needsUpdate=true;
+    scene.add(im); meshes.push(im);
+  }
+}
+
+// ════════════ SPELER ════════════
+const speler={pos:new THREE.Vector3(24,12,24),vel:new THREE.Vector3(),yaw:0,pitch:-0.15,opGrond:false,harten:3};
+function spawn(){
+  const sx=Math.floor(W/2),sz=Math.floor(D/2);
+  let y=H-2; while(y>1&&blokOp(sx,y-1,sz)===LUCHT) y--;
+  speler.pos.set(sx+0.5,Math.max(y,9),sz+0.5); speler.vel.set(0,0,0);
+}
+function botst(px,py,pz){
+  const r=0.3;
+  for(const dx of [-r,r]) for(const dz of [-r,r]) for(const dy of [0,0.9,1.75]){
+    if(vast(blokOp(Math.floor(px+dx),Math.floor(py+dy),Math.floor(pz+dz)))) return true;
+  }
+  return false;
+}
+const keys={}; let pointerLocked=false;
+addEventListener('keydown',e=>{ keys[e.code]=true; if(e.code==='Space')e.preventDefault(); });
+addEventListener('keyup',e=>{ keys[e.code]=false; });
+document.addEventListener('pointerlockchange',()=>{ pointerLocked=document.pointerLockElement===renderer.domElement; });
+renderer.domElement.addEventListener('mousedown',e=>{
+  if(stap<3) return;
+  if(!pointerLocked){ try{renderer.domElement.requestPointerLock();}catch(err){} return; }
+  if(e.button===0) actieLinks(); if(e.button===2) actieRechts();
+});
+addEventListener('contextmenu',e=>e.preventDefault());
+addEventListener('mousemove',e=>{ if(!pointerLocked) return;
+  speler.yaw-=e.movementX*0.0024; speler.pitch-=e.movementY*0.0024;
+  speler.pitch=Math.max(-1.5,Math.min(1.5,speler.pitch));
+});
+// touch: joystick + kijken + knoppen
+let joyV={x:0,z:0}, IS_TOUCH=matchMedia('(pointer:coarse)').matches, touchModus='hak';
+(function(){
+  const joy=document.getElementById('joy'),knop=document.getElementById('joyKnop');
+  let actief=null;
+  joy.addEventListener('pointerdown',e=>{actief=e.pointerId;joy.setPointerCapture(e.pointerId);});
+  joy.addEventListener('pointermove',e=>{ if(e.pointerId!==actief)return;
+    const r=joy.getBoundingClientRect(),dx=e.clientX-r.left-55,dy=e.clientY-r.top-55,len=Math.hypot(dx,dy)||1,m=Math.min(len,38);
+    knop.style.left=(35+dx/len*m)+'px'; knop.style.top=(35+dy/len*m)+'px';
+    joyV.x=dx/len*(m/38); joyV.z=dy/len*(m/38);
+  });
+  const los=e=>{ if(e.pointerId!==actief)return; actief=null; joyV={x:0,z:0}; knop.style.left='35px'; knop.style.top='35px'; };
+  joy.addEventListener('pointerup',los); joy.addEventListener('pointercancel',los);
+  let kijk=null,kx=0,ky=0,tikT=0,bewogen=0;
+  renderer.domElement.addEventListener('pointerdown',e=>{ if(!IS_TOUCH||stap<3)return; kijk=e.pointerId;kx=e.clientX;ky=e.clientY;tikT=performance.now();bewogen=0; });
+  renderer.domElement.addEventListener('pointermove',e=>{ if(e.pointerId!==kijk)return;
+    const dx=e.clientX-kx,dy=e.clientY-ky; bewogen+=Math.abs(dx)+Math.abs(dy);
+    speler.yaw-=dx*0.006; speler.pitch=Math.max(-1.5,Math.min(1.5,speler.pitch-dy*0.006)); kx=e.clientX;ky=e.clientY; });
+  renderer.domElement.addEventListener('pointerup',e=>{ if(e.pointerId!==kijk)return; kijk=null;
+    if(bewogen<12&&performance.now()-tikT<400){ touchModus==='hak'?actieLinks():actieRechts(); } });
+  document.getElementById('springKnop').addEventListener('pointerdown',()=>{ keys.Space=true; setTimeout(()=>keys.Space=false,120); });
+  document.getElementById('modusKnop').addEventListener('click',function(){ touchModus=touchModus==='hak'?'bouw':'hak'; this.textContent=touchModus==='hak'?'⛏️':'🧱'; });
+})();
+
+function updateSpeler(dt){
+  if(stap<3) return;
+  const snel=5;
+  let vx=0,vz=0;
+  const f=new THREE.Vector3(-Math.sin(speler.yaw),0,-Math.cos(speler.yaw));
+  const r=new THREE.Vector3(-f.z,0,f.x);
+  if(keys.KeyW){vx+=f.x;vz+=f.z} if(keys.KeyS){vx-=f.x;vz-=f.z}
+  if(keys.KeyA){vx-=r.x;vz-=r.z} if(keys.KeyD){vx+=r.x;vz+=r.z}
+  vx+=f.x*-joyV.z+r.x*joyV.x; vz+=f.z*-joyV.z+r.z*joyV.x;
+  const l=Math.hypot(vx,vz); if(l>1){vx/=l;vz/=l}
+  // zwaartekracht + springen pas vanaf stap 4 (zoals in Brian's tekst!)
+  if(stap>=4){
+    speler.vel.y-=22*dt;
+    if(keys.Space&&speler.opGrond){ speler.vel.y=8; speler.opGrond=false; }
+  } else speler.vel.y=Math.max(speler.vel.y-22*dt,-20);
+  let nx=speler.pos.x+vx*snel*dt;
+  if(!botst(nx,speler.pos.y,speler.pos.z)) speler.pos.x=nx;
+  let nz=speler.pos.z+vz*snel*dt;
+  if(!botst(speler.pos.x,speler.pos.y,nz)) speler.pos.z=nz;
+  let ny=speler.pos.y+speler.vel.y*dt;
+  if(botst(speler.pos.x,ny,speler.pos.z)){
+    if(speler.vel.y<0) speler.opGrond=true;
+    speler.vel.y=0;
+  } else { speler.pos.y=ny; if(speler.vel.y<0) speler.opGrond=false; }
+  if(speler.pos.y<-8) spawn();
+}
+function kijkricht(){ return new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(speler.pitch,speler.yaw,0,'YXZ')); }
+// raycast: kleine stapjes langs de kijklijn (stap 4 uit Brian's tekst)
+function raycast(max=6){
+  const o=camera.position.clone(),d=kijkricht();
+  let vorige=null;
+  for(let t=0;t<max;t+=0.04){
+    const p=o.clone().addScaledVector(d,t);
+    const x=Math.floor(p.x),y=Math.floor(p.y),z=Math.floor(p.z);
+    const cel=x+','+y+','+z;
+    if(vast(blokOp(x,y,z))) return {x,y,z,type:blokOp(x,y,z),vorige};
+    vorige={x,y,z,cel};
+  }
+  return null;
+}
+
+// ════════════ INVENTARIS + CRAFTING ════════════
+const rugzak={ [AARDE]:0,[GRAS]:0,[STEEN]:0,[HOUT]:0,[BLAD]:0,[PLANK]:0 };
+const HOTBAR_TYPES=[AARDE,STEEN,HOUT,PLANK];
+let gekozen=0;
+function tekenHotbar(){
+  const hb=document.getElementById('hotbar');
+  hb.style.display=stap>=5?'flex':'none';
+  if(stap<5) return;
+  hb.innerHTML='';
+  HOTBAR_TYPES.forEach((t,i)=>{
+    const d=document.createElement('div');
+    d.className='slot'+(i===gekozen?' actief':'');
+    d.innerHTML='<span class="em">'+EMOJI[t]+'</span>'+NAMEN[t]+' '+(rugzak[t]||0);
+    d.addEventListener('pointerdown',e=>{e.stopPropagation();gekozen=i;tekenHotbar();});
+    hb.appendChild(d);
+  });
+}
+addEventListener('keydown',e=>{ if(e.code.startsWith('Digit')){ const n=+e.code.slice(5)-1; if(n>=0&&n<HOTBAR_TYPES.length){gekozen=n;tekenHotbar();} } });
+document.getElementById('craftKnop').addEventListener('click',()=>{
+  if((rugzak[HOUT]||0)>=1){ rugzak[HOUT]--; rugzak[PLANK]=(rugzak[PLANK]||0)+4; tekenHotbar(); meld('🛠️ 1 hout → 4 planken!'); piep(520); }
+  else meld('Je hebt nog geen hout — hak eerst een boom om! 🪵');
+});
+
+// ════════════ ACTIES ════════════
+function actieLinks(){
+  if(stap>=9&&zombieRaak()) return;
+  if(stap<5) return;
+  const r=raycast(); if(!r) return;
+  if(r.type===HENDEL){ zetHendel(); return; }
+  if(r.type===DEUR) return;
+  world[idx(r.x,r.y,r.z)]=LUCHT;
+  const t=r.type===GRAS?AARDE:r.type; // gras breken geeft aarde, net echt
+  if(rugzak[t]!==undefined) rugzak[t]++; else if(rugzak[r.type]!==undefined) rugzak[r.type]++;
+  tekenWereld(); tekenHotbar(); if(stap>=10) piep(200,0.12,'sawtooth');
+}
+function actieRechts(){
+  if(stap<6) return;
+  const r=raycast(); if(!r||!r.vorige) return;
+  if(r.type===HENDEL){ zetHendel(); return; }
+  const t=HOTBAR_TYPES[gekozen];
+  if((rugzak[t]||0)<1){ meld('Geen '+NAMEN[t].toLowerCase()+' meer — hak eerst wat! ⛏️'); return; }
+  const v=r.vorige;
+  if(!inW(v.x,v.y,v.z)) return;
+  // niet in jezelf bouwen
+  const px=Math.floor(speler.pos.x),pz=Math.floor(speler.pos.z);
+  if(v.x===px&&v.z===pz&&(v.y===Math.floor(speler.pos.y)||v.y===Math.floor(speler.pos.y+1))) return;
+  world[idx(v.x,v.y,v.z)]=t; rugzak[t]--;
+  tekenWereld(); tekenHotbar(); if(stap>=10) piep(350,0.1);
+}
+function zetHendel(){
+  if(stap<10) return;
+  deurOpen=!deurOpen;
+  for(const [x,y,z] of deurBlokken) world[idx(x,y,z)]=deurOpen?LUCHT:DEUR;
+  tekenWereld(); piep(deurOpen?600:450,0.15); meld(deurOpen?'🔴 Hendel AAN — deur open!':'⚫ Hendel UIT — deur dicht.');
+}
+
+// ════════════ ZOMBIE (stap 9) ════════════
+let zombie=null,zombieHp=3,zombieCd=0,pijnCd=0;
+function maakZombie(){
+  const g=new THREE.Group();
+  const lijf=b=>new THREE.MeshLambertMaterial({color:b});
+  const kop=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5),lijf(0x4c9a37)); kop.position.y=1.55;
+  const oog=new THREE.MeshBasicMaterial({color:0x111111});
+  [-0.12,0.12].forEach(dx=>{ const o=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.08,0.05),oog); o.position.set(dx,1.6,0.26); g.add(o); });
+  const romp=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.7,0.3),lijf(0x2f6b8a)); romp.position.y=0.95;
+  const benen=new THREE.Mesh(new THREE.BoxGeometry(0.45,0.6,0.28),lijf(0x2a4a6a)); benen.position.y=0.3;
+  const armen=new THREE.Mesh(new THREE.BoxGeometry(0.95,0.18,0.2),lijf(0x4c9a37)); armen.position.set(0,1.2,-0.15);
+  g.add(kop,romp,benen,armen);
+  g.position.copy(speler.pos).add(new THREE.Vector3(8,0,8));
+  scene.add(g); return g;
+}
+function updateZombie(dt){
+  if(stap<9) return;
+  if(!zombie){ zombie=maakZombie(); zombieHp=3; }
+  zombieCd=Math.max(0,zombieCd-dt); pijnCd=Math.max(0,pijnCd-dt);
+  const naar=new THREE.Vector3().subVectors(speler.pos,zombie.position); naar.y=0;
+  const afst=naar.length();
+  if(afst<20&&afst>1.1){ naar.normalize(); zombie.position.addScaledVector(naar,1.8*dt); zombie.lookAt(speler.pos.x,zombie.position.y,speler.pos.z); }
+  // op de grond blijven staan
+  const zx=Math.floor(zombie.position.x),zz=Math.floor(zombie.position.z);
+  let zy=H-1; while(zy>0&&blokOp(zx,zy-1,zz)===LUCHT) zy--;
+  zombie.position.y+=((zy)-zombie.position.y)*Math.min(1,10*dt);
+  if(afst<1.3&&pijnCd<=0){
+    pijnCd=1.5; speler.harten--; tekenHarten(); if(stap>=10) piep(120,0.25,'sawtooth');
+    meld('🧟 Au! De zombie pakt je!');
+    if(speler.harten<=0){ speler.harten=3; spawn(); tekenHarten(); meld('💀 Je bent gepakt... maar je mag opnieuw! Hartjes weer vol.'); }
+  }
+}
+function zombieRaak(){
+  if(!zombie||zombieCd>0) return false;
+  const naar=new THREE.Vector3().subVectors(zombie.position,camera.position);
+  if(naar.length()>3.5) return false;
+  naar.normalize();
+  if(naar.dot(kijkricht())<0.8) return false;
+  zombieCd=0.4; zombieHp--;
+  zombie.position.addScaledVector(naar,1.6);
+  if(stap>=10) piep(160,0.15,'square');
+  if(zombieHp<=0){
+    scene.remove(zombie); zombie=null; meld('🎉 Zombie verslagen! (er komt zo een nieuwe...)');
+    setTimeout(()=>{ if(stap>=9&&!zombie){ zombie=maakZombie(); zombieHp=3; } },6000);
+  } else meld('⚔️ Raak! Nog '+zombieHp+' klappen.');
+  return true;
+}
+function tekenHarten(){
+  const el=document.getElementById('harten');
+  el.style.display=stap>=9?'block':'none';
+  el.textContent='❤️'.repeat(Math.max(0,speler.harten))+'🖤'.repeat(Math.max(0,3-speler.harten));
+}
+
+// ════════════ GELUID (stap 10) ════════════
+let audioCtx=null;
+function piep(freq,duur=0.12,vorm='square'){
+  if(stap<10) return;
+  try{
+    audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.type=vorm; o.frequency.setValueAtTime(freq,audioCtx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(Math.max(60,freq*0.6),audioCtx.currentTime+duur);
+    g.gain.setValueAtTime(0.12,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+duur);
+    o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+duur);
+  }catch(e){}
+}
+
+// ════════════ UI ════════════
+let meldT=null;
+function meld(t){ const m=document.getElementById('melding'); m.textContent=t; m.style.display='block'; clearTimeout(meldT); meldT=setTimeout(()=>m.style.display='none',2600); }
+function toonStap(){
+  const s=STAPPEN[stap-1];
+  document.getElementById('kTitel').textContent=s.t;
+  document.getElementById('kUitleg').textContent=s.u;
+  document.getElementById('kCode').textContent=s.c;
+  document.getElementById('stapTeller').textContent='stap '+stap+'/10';
+  document.getElementById('volgende').textContent=stap<10?'VOLGENDE STAP ▶':'🎉 KLAAR!';
+  document.getElementById('fps').style.display=stap>=2?'block':'none';
+  document.getElementById('seedRegel').style.display=stap>=7?'block':'none';
+  document.getElementById('craft').style.display=stap>=8?'block':'none';
+  document.getElementById('richtkruis').style.display=stap>=5?'block':'none';
+  document.getElementById('touch').className=(IS_TOUCH&&stap>=3)?'aan':'';
+  document.getElementById('seedN').textContent=seed;
+  tekenHotbar(); tekenHarten();
+}
+document.getElementById('volgende').addEventListener('click',()=>{
+  if(stap>=10){ document.getElementById('feest').style.display='flex'; return; }
+  stap++;
+  try{ localStorage.setItem('deluxe-minimaker-stap',String(stap)); }catch(e){}
+  if(stap===3||stap===7||stap===10){ bouwWereld(); tekenWereld(); spawn(); }
+  toonStap(); piep(700,0.1,'triangle');
+  if(stap===3) meld('Klik op het scherm om te kijken/lopen! (Esc = muis terug)');
+});
+document.getElementById('kaartDicht').addEventListener('click',()=>{ document.getElementById('kaart').style.display='none'; document.getElementById('klein').style.display='block'; });
+document.getElementById('klein').addEventListener('click',()=>{ document.getElementById('kaart').style.display='block'; document.getElementById('klein').style.display='none'; });
+document.getElementById('seedKnop').addEventListener('click',()=>{
+  seed=Math.floor(Math.random()*999999999);
+  bouwWereld(); tekenWereld(); spawn(); toonStap();
+  meld('🎲 Nieuwe seed = een héél andere wereld!');
+});
+
+// ════════════ GAME-LOOP (stap 2!) ════════════
+let lastT=0,fpsN=0,fpsT=0;
+function loop(t){
+  requestAnimationFrame(loop);
+  const dt=Math.min((t-lastT)/1000||0,0.05); lastT=t;
+  fpsN++; if(t-fpsT>1000){ document.getElementById('fpsN').textContent=fpsN; fpsN=0; fpsT=t; }
+  if(stap<2){
+    // stap 1: camera draait langzaam om het ene blok
+    const a=t/4000;
+    camera.position.set(24.5+Math.sin(a)*5,10.5,24.5+Math.cos(a)*5);
+    camera.lookAt(24.5,8.5,24.5);
+  } else if(stap<3){
+    const a=t/4000;
+    camera.position.set(24.5+Math.sin(a)*6,11,24.5+Math.cos(a)*6);
+    camera.lookAt(24.5,8.5,24.5);
+  } else {
+    updateSpeler(dt);
+    updateZombie(dt);
+    camera.position.set(speler.pos.x,speler.pos.y+1.6,speler.pos.z);
+    camera.rotation.set(0,0,0); camera.rotateY(speler.yaw); camera.rotateX(speler.pitch);
+  }
+  renderer.render(scene,camera);
+}
+
+// ════════════ START ════════════
+function startWereldVoorStap(){
+  if(stap<3){ world=new Uint8Array(W*H*D); world[idx(24,8,24)]=GRAS; }
+  else bouwWereld();
+  tekenWereld();
+  if(stap>=3) spawn();
+}
+startWereldVoorStap();
+toonStap();
+requestAnimationFrame(loop);
+</script>
+<script src="smiles-widget.js"></script>
+</body>
+</html>
