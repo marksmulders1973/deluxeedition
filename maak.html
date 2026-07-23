@@ -187,7 +187,12 @@
       const lager = tekst.toLowerCase();
 
       if (stap === "watmaken") {
-        if (lager.includes("mod")) { startModFlow(); return; }
+        // mods maak je nu ÉCHT zelf (code typen!) in de mod-werkplaats
+        if (lager.includes("mod")) {
+          bot("Mods maak je in de <b>MOD-WERKPLAATS</b> — daar typ je zelf de échte code, teken je je eigen texture en bouw je de .jar! 🛠️ Ik breng je erheen...");
+          setTimeout(() => location.href = "modstudio.html", 1600);
+          return;
+        }
         if (lager.includes("spel") || lager.includes("game")) {
           stap = "naam";
           bot("Leuk, een spel! 🎮<br>Eerste vraag: <b>hoe moet je spel heten?</b>");
@@ -428,8 +433,7 @@
       bot("Hoi! We gaan <b>" + spel.naam + "</b> aanpassen ✏️");
       toonMenu();
     } else if (new URLSearchParams(location.search).get("mod")) {
-      bot("Hoi! Ik ben de <b>bouwer-bot</b> 🤖");
-      startModFlow();
+      location.href = "modstudio.html"; // mods maak je in de echte werkplaats
     } else {
       stap = "watmaken";
       bot("Hoi! Ik ben de <b>bouwer-bot</b> van Deluxe Edition 🤖<br>Wat gaan we maken?", ["🎮 een spel", "🧩 een mod voor Blokwereld"]);

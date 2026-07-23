@@ -1059,13 +1059,23 @@ function spawnMob(type,x,y,z){
     const la=limb(.16,.6,.16,kl,-.34,1.28,0),ra=limb(.16,.6,.16,kl,.34,1.28,0);
     const ll=limb(.18,.62,.18,don,-.13,0.62,0),rl=limb(.18,.62,.18,don,.13,0.62,0);
     g.add(la,ra,ll,rl); arms=[la,ra]; legs=[ll,rl];
-    // het gezicht = het gekozen figuurtje (emoji op een canvas-sprite)
-    const fc=document.createElement('canvas'); fc.width=fc.height=64;
-    const fx=fc.getContext('2d'); fx.font='48px serif'; fx.textAlign='center'; fx.textBaseline='middle'; fx.fillText(d.emoji,32,36);
-    const ft=new THREE.CanvasTexture(fc);
-    const gezicht=new THREE.Sprite(new THREE.SpriteMaterial({map:ft,transparent:true,depthTest:false}));
-    gezicht.scale.set(.55,.55,1); gezicht.position.set(0,1.55,0.3); g.add(gezicht);
-    hp=6+(d.kracht||1)*4; dmg=d.vriendelijk?0:Math.max(1,d.kracht||1); speed=d.vriendelijk?0.9:1.8;
+    // het gezicht: zelf-getekende texture (mod-werkplaats) op de kop,
+    // anders het gekozen emoji-figuurtje als sprite
+    if(d.pixels){
+      const fc=document.createElement('canvas'); fc.width=fc.height=16;
+      const fx=fc.getContext('2d');
+      for(let i=0;i<256;i++){ fx.fillStyle=d.pixels[i]||'#8f8f8f'; fx.fillRect(i%16,(i/16)|0,1,1); }
+      const ft=new THREE.CanvasTexture(fc); ft.magFilter=THREE.NearestFilter; ft.minFilter=THREE.NearestFilter;
+      const kop=new THREE.Mesh(new THREE.BoxGeometry(.52,.52,.47),new THREE.MeshLambertMaterial({map:ft}));
+      kop.position.set(0,1.5,0); g.add(kop);
+    } else {
+      const fc=document.createElement('canvas'); fc.width=fc.height=64;
+      const fx=fc.getContext('2d'); fx.font='48px serif'; fx.textAlign='center'; fx.textBaseline='middle'; fx.fillText(d.emoji,32,36);
+      const ft=new THREE.CanvasTexture(fc);
+      const gezicht=new THREE.Sprite(new THREE.SpriteMaterial({map:ft,transparent:true,depthTest:false}));
+      gezicht.scale.set(.55,.55,1); gezicht.position.set(0,1.55,0.3); g.add(gezicht);
+    }
+    hp=d.hp||6+(d.kracht||1)*4; dmg=d.vriendelijk?0:Math.max(1,d.kracht||1); speed=d.vriendelijk?0.9:1.8;
   } else if(type==='zombie'){
     g.add(staticPart(.5,.5,.45,0x4a7a2a,0,1.5,0)); addEyes(g,1.52,0x331,0.23);
     g.add(staticPart(.55,.7,.32,0x2f5a8a,0,0.95,0));
@@ -1831,11 +1841,15 @@ function laadEigenMods(){
         BLOCK_INFO[bid]={name:mod.naam,solid:true,drop:bid};
         if(mod.eigenschap==='gloei') BLOCK_INFO[bid].eigenGloei=kleurNum;
         if(mod.eigenschap==='spring') BLOCK_INFO[bid].eigenSpring=true;
-        // texture: eigen kleur + het figuurtje erop (de "ruby_block.png" van deze mod)
+        // texture: zelf-getekende pixels (mod-werkplaats!) of anders kleur+figuurtje
         TEX[bid]=mkTex(c=>{
-          const basis=mod.kleur||'#b26aff';
-          noiseFill(c,0,[basis,basis,schaduw(basis,-24),schaduw(basis,24)]);
-          c.font='10px serif'; c.textAlign='center'; c.textBaseline='middle'; c.fillText(mod.emoji||'⬜',8,9);
+          if(Array.isArray(mod.pixels)&&mod.pixels.length===256){
+            for(let i=0;i<256;i++){ c.fillStyle=mod.pixels[i]||'#8f8f8f'; c.fillRect(i%16,(i/16)|0,1,1); }
+          } else {
+            const basis=mod.kleur||'#b26aff';
+            noiseFill(c,0,[basis,basis,schaduw(basis,-24),schaduw(basis,24)]);
+            c.font='10px serif'; c.textAlign='center'; c.textBaseline='middle'; c.fillText(mod.emoji||'⬜',8,9);
+          }
         });
         delete MAT[bid]; // vers materiaal (bij her-laden)
         if(!CREATIVE_BLOCKS.includes(bid)) CREATIVE_BLOCKS.push(bid);
@@ -1843,7 +1857,7 @@ function laadEigenMods(){
       } else if(mod.soort==='wapen'){
         modWapenBonus+=(mod.kracht||1); eigenWapenMods.push(mod);
       } else if(mod.soort==='mob'){
-        EIGEN_MOB_DEFS['eigen_'+mod.id]={naam:mod.naam,kleur:kleurNum,emoji:mod.emoji||'👾',kracht:mod.kracht||1,vriendelijk:!!mod.vriendelijk};
+        EIGEN_MOB_DEFS['eigen_'+mod.id]={naam:mod.naam,kleur:kleurNum,emoji:mod.emoji||'👾',kracht:mod.kracht||1,vriendelijk:!!mod.vriendelijk,hp:mod.hp||0,pixels:(Array.isArray(mod.pixels)&&mod.pixels.length===256)?mod.pixels:null};
       }
     }
   }catch(e){}

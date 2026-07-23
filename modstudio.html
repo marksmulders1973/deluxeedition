@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MOD-WERKPLAATS — DELUXE EDITION</title>
+<link rel="icon" href="images/logo.jpg">
+<style>
+/* ══════════════════════════════════════════════════════
+   🛠️ DE MOD-WERKPLAATS (2026-07-23, Brian's wens)
+   "je moet zelf de code invoeren en alles wat in
+   Minecraft ook moet" — dus: een echte mini-IDE.
+   Je maakt ZELF elk bestand van een echte mod:
+   mods.toml → Java-code → texture (pixel-editor)
+   → model-JSON → gradle build → 📦 .jar
+   Met échte compiler-foutmeldingen als het mis is!
+   ══════════════════════════════════════════════════════ */
+:root{--rood:#ff3b3b;--blauw:#3b82ff;--zwart:#060a18;--groen:#2ecc71;--geel:#ffd93b}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--zwart);color:#fff;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;padding:14px}
+body::before{content:"";position:fixed;inset:0;background:radial-gradient(500px 350px at 15% 15%,rgba(255,40,40,.10),transparent 70%),radial-gradient(500px 350px at 85% 85%,rgba(40,110,255,.10),transparent 70%);pointer-events:none}
+header{display:flex;align-items:center;gap:12px;margin-bottom:14px;position:relative;z-index:1}
+header img{width:52px;border-radius:10px}
+header h1{font-size:19px;letter-spacing:1px}
+header a{color:rgba(255,255,255,.5);font-size:13px;text-decoration:none}
+#werkplaats{position:relative;z-index:1;display:flex;gap:14px;flex-wrap:wrap;max-width:1000px;margin:0 auto}
+/* bestanden-boom */
+#boom{width:250px;flex-shrink:0;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:12px;font:600 12.5px ui-monospace,Consolas,monospace;line-height:1.9;height:fit-content}
+#boom .map{color:#8ab4ff}
+#boom .bestand{color:rgba(255,255,255,.85);cursor:pointer;border-radius:6px;padding:1px 6px;display:block}
+#boom .bestand:hover{background:rgba(59,130,255,.2)}
+#boom .bestand.actief{background:rgba(59,130,255,.35)}
+#boom .ok{color:var(--groen)}
+/* editor-paneel */
+#paneel{flex:1;min-width:min(560px,100%);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:16px}
+#paneel h2{font-size:16px;margin-bottom:4px}
+#paneel .taak{font-size:13px;color:rgba(255,255,255,.75);line-height:1.5;margin-bottom:10px}
+textarea{width:100%;min-height:180px;background:#050d18;color:#7fd4ff;border:2px solid rgba(59,130,255,.4);border-radius:10px;padding:12px;font:600 13px ui-monospace,Consolas,monospace;outline:none;resize:vertical;tab-size:4}
+textarea:focus{border-color:var(--blauw)}
+.knoppen{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+button{border:none;border-radius:10px;padding:11px 18px;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit}
+.blauwK{background:linear-gradient(135deg,#1f5fe0,#3b82ff);color:#fff}
+.grijsK{background:rgba(255,255,255,.1);color:#fff}
+.groenK{background:linear-gradient(135deg,#1f9d4b,#2ecc71);color:#fff}
+.goudK{background:linear-gradient(135deg,#c9a227,#ffd93b);color:#201a00}
+/* console */
+#console{margin-top:12px;background:#000;border-radius:10px;padding:10px 12px;font:600 12.5px ui-monospace,Consolas,monospace;min-height:44px;max-height:220px;overflow-y:auto;white-space:pre-wrap;line-height:1.6}
+#console .fout{color:#ff6b6b}
+#console .goed{color:#5fe08a}
+#console .info{color:#8ab4ff}
+/* spiek */
+#spiek{display:none;margin-top:10px;background:#0a1428;border:1px dashed rgba(255,217,59,.5);border-radius:10px;padding:10px 12px;font:600 12px ui-monospace,Consolas,monospace;color:#ffd93b;white-space:pre-wrap}
+/* pixel-editor */
+#pixWrap{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+#pix{display:grid;grid-template-columns:repeat(16,1fr);width:min(320px,84vw);aspect-ratio:1;border:2px solid rgba(255,255,255,.3);border-radius:6px;overflow:hidden;touch-action:none}
+#pix div{border:1px solid rgba(255,255,255,.05)}
+#palet{display:grid;grid-template-columns:repeat(4,36px);gap:6px}
+#palet button{width:36px;height:36px;border-radius:8px;padding:0;border:2px solid rgba(255,255,255,.25)}
+#palet button.actief{border-color:#fff;transform:scale(1.12)}
+#pixPreview{width:64px;height:64px;image-rendering:pixelated;border:2px solid rgba(255,255,255,.3);border-radius:6px}
+.pixTools{display:flex;flex-direction:column;gap:8px}
+</style>
+</head>
+<body>
+<header>
+  <img src="images/logo.jpg" alt="logo">
+  <div>
+    <h1>🛠️ MOD-WERKPLAATS</h1>
+    <a href="index.html">← home</a> &nbsp;·&nbsp; <a href="mods.html">🧩 mods</a>
+  </div>
+</header>
+
+<div id="werkplaats">
+  <div id="boom">
+    <span class="map">📁 MijnMod/</span><br>
+    <span class="map">&nbsp;├─ 📁 src/main/java/</span><br>
+    <span class="bestand" data-b="java">&nbsp;│&nbsp;&nbsp;└─ <span id="ok-java"></span>MijnMod.java</span>
+    <span class="map">&nbsp;├─ 📁 src/main/resources/</span><br>
+    <span class="map">&nbsp;│&nbsp;&nbsp;└─ 📁 assets/mijnmod/</span><br>
+    <span class="bestand" data-b="texture">&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ <span id="ok-texture"></span><span id="pngNaam">textures/…​.png</span></span>
+    <span class="bestand" data-b="json">&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <span id="ok-json"></span><span id="jsonNaam">models/…​.json</span></span>
+    <span class="bestand" data-b="toml">&nbsp;├─ <span id="ok-toml"></span>mods.toml</span>
+    <span class="bestand" data-b="gradle">&nbsp;├─ <span id="ok-gradle"></span>build.gradle</span>
+    <span class="bestand" data-b="build">&nbsp;└─ 📦 <b>BOUW DE MOD</b></span>
+  </div>
+
+  <div id="paneel"></div>
+</div>
+
+<script>
+try{ if(!(localStorage.getItem('deluxe-speler')||'').trim()) location.href='index.html'; }catch(e){}
+
+// ════════ DE MOD DIE WE BOUWEN (concept, blijft bewaard) ════════
+let mod={ soort:'', slug:'', weergaveNaam:'', versie:'', tomlOk:false, javaOk:false, jsonOk:false, gradleGezien:false,
+  eigenschap:'', kracht:1, vriendelijk:false, pixels:new Array(256).fill('#8f8f8f'), pixelsGetekend:false,
+  javaCode:'', jsonCode:'', tomlCode:'' };
+try{ const c=JSON.parse(localStorage.getItem('deluxe-modstudio-concept')||'null'); if(c&&c.pixels) mod=c; }catch(e){}
+function bewaarConcept(){ try{ localStorage.setItem('deluxe-modstudio-concept',JSON.stringify(mod)); }catch(e){} }
+
+const paneel=document.getElementById('paneel');
+let huidig='';
+
+// ════════ BESTANDEN-BOOM ════════
+document.querySelectorAll('#boom .bestand').forEach(b=>b.addEventListener('click',()=>open(b.dataset.b)));
+function vinkjes(){
+  document.getElementById('ok-toml').textContent=mod.tomlOk?'✅ ':'';
+  document.getElementById('ok-java').textContent=mod.javaOk?'✅ ':'';
+  document.getElementById('ok-texture').textContent=mod.pixelsGetekend?'✅ ':'';
+  document.getElementById('ok-json').textContent=mod.jsonOk?'✅ ':'';
+  document.getElementById('ok-gradle').textContent=mod.gradleGezien?'✅ ':'';
+  const map=mod.soort==='wapen'?'item':mod.soort==='mob'?'entity':'block';
+  document.getElementById('pngNaam').textContent='textures/'+map+'/'+(mod.slug||'…')+'.png';
+  document.getElementById('jsonNaam').textContent='models/'+map+'/'+(mod.slug||'…')+'.json';
+  document.querySelectorAll('#boom .bestand').forEach(b=>b.classList.toggle('actief',b.dataset.b===huidig));
+}
+
+// ════════ CONSOLE-HULPJES (compiler-stijl!) ════════
+function consoleUit(regels){
+  const c=document.getElementById('console'); if(!c) return;
+  c.innerHTML=regels.map(r=>'<div class="'+r[0]+'">'+r[1].replace(/</g,'&lt;')+'</div>').join('');
+  c.scrollTop=c.scrollHeight;
+}
+
+// ════════ PANEEL 0: WELKOM / SOORT KIEZEN ════════
+function openWelkom(){
+  huidig=''; vinkjes();
+  paneel.innerHTML=
+    '<h2>Welkom in de mod-werkplaats! 🛠️</h2>'+
+    '<div class="taak">Hier maak je een mod zoals échte Minecraft-modders: je typt <b>zelf de code</b>, tekent <b>zelf de texture</b> en maakt alle bestanden die erbij horen. Links zie je je mod-project — klik op een bestand om eraan te werken.<br><br>Pas als álle bestanden kloppen, kun je de mod <b>bouwen</b> (compileren naar een 📦 .jar) — en dan werkt hij écht in Blokwereld!<br><br><b>Wat gaat jouw mod toevoegen?</b></div>'+
+    '<div class="knoppen">'+
+    '<button class="blauwK" onclick="kiesSoort(\'blok\')">🧱 een nieuw blok</button>'+
+    '<button class="blauwK" onclick="kiesSoort(\'wapen\')">⚔️ een wapen</button>'+
+    '<button class="blauwK" onclick="kiesSoort(\'mob\')">🐉 een mob</button></div>'+
+    (mod.soort?'<div class="taak" style="margin-top:12px">Je bent bezig met een <b>'+mod.soort+'</b>-mod'+(mod.slug?' ("'+mod.slug+'")':'')+' — klik links op een bestand om verder te gaan, of kies hierboven opnieuw (dan begin je opnieuw).</div>':'');
+}
+function kiesSoort(s){
+  mod={ soort:s, slug:'', weergaveNaam:'', versie:'', tomlOk:false, javaOk:false, jsonOk:false, gradleGezien:false,
+    eigenschap:'', kracht:1, vriendelijk:false, pixels:new Array(256).fill(s==='wapen'?'#00000000':'#8f8f8f'), pixelsGetekend:false,
+    javaCode:'', jsonCode:'', tomlCode:'' };
+  bewaarConcept(); open('toml');
+}
+
+function open(b){
+  if(!mod.soort&&b!=='gradle'){ openWelkom(); return; }
+  huidig=b; vinkjes();
+  if(b==='toml') openToml();
+  else if(b==='java') openJava();
+  else if(b==='texture') openTexture();
+  else if(b==='json') openJson();
+  else if(b==='gradle') openGradle();
+  else if(b==='build') openBuild();
+}
+
+// ════════ mods.toml ════════
+function openToml(){
+  paneel.innerHTML=
+    '<h2>📄 mods.toml</h2>'+
+    '<div class="taak">Dit bestand vertelt de mod-loader wíé je mod is. Typ zelf drie regels:<br>• <b>modId</b> = korte naam in kleine letters (geen spaties, bijv. rubymod)<br>• <b>name</b> = de echte naam (mag hoofdletters/spaties)<br>• <b>version</b> = versienummer, bijv. 1.0.0</div>'+
+    '<textarea id="ed" spellcheck="false" placeholder=\'modId="rubymod"\nname="Ruby Mod"\nversion="1.0.0"\'></textarea>'+
+    '<div class="knoppen"><button class="groenK" onclick="checkToml()">▶ CONTROLEER</button>'+
+    '<button class="grijsK" onclick="spiek()">📋 spiek</button></div>'+
+    '<div id="spiek">modId="rubymod"\nname="Ruby Mod"\nversion="1.0.0"</div>'+
+    '<div id="console"><div class="info">&gt; wachtend op jouw mods.toml...</div></div>';
+  document.getElementById('ed').value=mod.tomlCode||'';
+}
+function checkToml(){
+  const t=document.getElementById('ed').value; mod.tomlCode=t;
+  const fouten=[];
+  const mId=t.match(/modId\s*=\s*"([a-z0-9_]+)"/);
+  const mNaam=t.match(/name\s*=\s*"([^"]{2,24})"/);
+  const mVer=t.match(/version\s*=\s*"([0-9.]+)"/);
+  if(!mId) fouten.push('modId ontbreekt of is fout — kleine letters tussen "aanhalingstekens", bijv. modId="rubymod"');
+  if(!mNaam) fouten.push('name ontbreekt — bijv. name="Ruby Mod"');
+  if(!mVer) fouten.push('version ontbreekt — bijv. version="1.0.0"');
+  if(fouten.length){ mod.tomlOk=false; bewaarConcept(); vinkjes();
+    consoleUit([['fout','❌ '+fouten.length+' fout(en) in mods.toml:'],...fouten.map(f=>['fout','   • '+f])]); return; }
+  mod.weergaveNaam=mNaam[1]; mod.versie=mVer[1]; mod.tomlOk=true; bewaarConcept(); vinkjes();
+  consoleUit([['goed','✅ mods.toml is goed! Je mod heet "'+mNaam[1]+'" (id: '+mId[1]+', v'+mVer[1]+')'],['info','→ klik links op MijnMod.java voor de echte code!']]);
+}
+
+// ════════ MijnMod.java ════════
+const JAVA_VOORBEELD={
+  blok:'public static final Block RUBY_BLOCK =\n    register("ruby_block",\n        new Block(Settings.create())\n    );\n\n// extra\'s die je mag toevoegen in Settings.create():\n//   .luminance(15)     → je blok GLOEIT in het donker\n// of gebruik new SlimeBlock(...) → springkussen!',
+  wapen:'public static final Item RUBY_SWORD =\n    register("ruby_sword",\n        new SwordItem(Materials.RUBY, 3, Settings.create())\n    );\n\n// het getal (1, 2 of 3) = hoeveel EXTRA schade je zwaard doet',
+  mob:'public static final Entity VUURDRAAK =\n    register("vuurdraak",\n        new Mob(Settings.create()\n            .health(14)\n            .damage(2))\n    );\n\n// .health(...) = hoeveel leven hij heeft (6 t/m 20)\n// .damage(...) = hoe hard hij slaat (0 = vriendelijk!)'
+};
+function openJava(){
+  const taak={
+    blok:'Registreer je blok, net als in echte Minecraft-mods. Je code moet hebben: <b>public static final Block</b>, een <b>register("naam_in_kleine_letters", ...)</b> en <b>new Block(Settings.create())</b>. Wil je iets speciaals? <b>.luminance(15)</b> = gloeien, of <b>new SlimeBlock</b> = springkussen!',
+    wapen:'Registreer je wapen. Je code moet hebben: <b>public static final Item</b>, een <b>register("naam", ...)</b> en <b>new SwordItem(Materials.NAAM, getal, Settings.create())</b>. Het getal (1-3) is hoeveel extra schade hij doet.',
+    mob:'Registreer je mob. Je code moet hebben: <b>public static final Entity</b>, <b>register("naam", ...)</b> en <b>new Mob(Settings.create().health(getal).damage(getal))</b>. damage(0) = een vriendelijke mob!'
+  }[mod.soort];
+  paneel.innerHTML=
+    '<h2>🧠 MijnMod.java <span style="font-size:11px;color:rgba(255,255,255,.5)">— de echte code</span></h2>'+
+    '<div class="taak">'+taak+'<br>⚠️ Let op: haakjes moeten kloppen en vergeet de <b>puntkomma ;</b> niet aan het eind — anders krijg je een échte compileer-fout!</div>'+
+    '<textarea id="ed" spellcheck="false" style="min-height:200px"></textarea>'+
+    '<div class="knoppen"><button class="groenK" onclick="checkJava()">▶ CONTROLEER CODE</button>'+
+    '<button class="grijsK" onclick="spiek()">📋 spiek</button></div>'+
+    '<div id="spiek">'+JAVA_VOORBEELD[mod.soort]+'</div>'+
+    '<div id="console"><div class="info">&gt; javac wacht op jouw code...</div></div>';
+  document.getElementById('ed').value=mod.javaCode||'';
+}
+function checkJava(){
+  const code=document.getElementById('ed').value; mod.javaCode=code;
+  const fouten=[];
+  // haakjes tellen — zoals een echte compiler
+  const opens=(code.match(/\(/g)||[]).length, sluit=(code.match(/\)/g)||[]).length;
+  if(opens!==sluit) fouten.push('je haakjes kloppen niet: '+opens+'× ( maar '+sluit+'× )');
+  if(!/;\s*$/m.test(code.trim())) fouten.push("vergeet de puntkomma ; niet aan het einde van je statement");
+  if(!/public\s+static\s+final/.test(code)) fouten.push('begin met: public static final ...');
+  const reg=code.match(/register\s*\(\s*"([a-z0-9_]+)"/);
+  if(!reg) fouten.push('je mist register("naam_in_kleine_letters", ...) — kleine letters en _ alleen!');
+  if(mod.soort==='blok'){
+    if(!/new\s+(Block|SlimeBlock)\s*\(/.test(code)) fouten.push('je mist new Block(Settings.create()) — of new SlimeBlock(...) voor een springkussen');
+    if(!/Settings\.create\s*\(\s*\)/.test(code)) fouten.push('je mist Settings.create()');
+  } else if(mod.soort==='wapen'){
+    if(!/new\s+SwordItem\s*\(/.test(code)) fouten.push('je mist new SwordItem(Materials.NAAM, getal, Settings.create())');
+    if(!/Materials\.[A-Z_]+/.test(code)) fouten.push('je mist het materiaal: Materials.RUBY (of een eigen naam in HOOFDLETTERS)');
+    if(!/SwordItem\s*\([^,]+,\s*\d/.test(code)) fouten.push('je mist het schade-getal, bijv: new SwordItem(Materials.RUBY, 3, ...)');
+  } else {
+    if(!/new\s+Mob\s*\(/.test(code)) fouten.push('je mist new Mob(Settings.create()...)');
+    if(!/\.health\s*\(\s*\d+\s*\)/.test(code)) fouten.push('je mist .health(getal) — hoeveel leven heeft je mob?');
+    if(!/\.damage\s*\(\s*\d+\s*\)/.test(code)) fouten.push('je mist .damage(getal) — 0 = vriendelijk');
+  }
+  if(fouten.length){ mod.javaOk=false; bewaarConcept(); vinkjes();
+    consoleUit([['fout','❌ COMPILEER-FOUT — '+fouten.length+' probleem(en):'],...fouten.map(f=>['fout','   MijnMod.java: error: '+f])]); return; }
+  // gelukt → eigenschappen uit de code halen (zoals een echte mod-loader!)
+  mod.slug=reg[1];
+  if(mod.soort==='blok'){
+    mod.eigenschap=/new\s+SlimeBlock/.test(code)?'spring':(/\.luminance\s*\(\s*([1-9]\d*)\s*\)/.test(code)?'gloei':'');
+  } else if(mod.soort==='wapen'){
+    const d=code.match(/SwordItem\s*\([^,]+,\s*(\d+)/); mod.kracht=Math.max(1,Math.min(3,parseInt(d[1],10)||1));
+  } else {
+    const h=code.match(/\.health\s*\(\s*(\d+)\s*\)/), d=code.match(/\.damage\s*\(\s*(\d+)\s*\)/);
+    mod.kracht=Math.max(1,Math.min(3,Math.ceil((parseInt(d[1],10)||1)/1)||1));
+    mod.vriendelijk=parseInt(d[1],10)===0;
+    mod.hp=Math.max(6,Math.min(20,parseInt(h[1],10)||10));
+  }
+  mod.javaOk=true; bewaarConcept(); vinkjes();
+  const extra=mod.soort==='blok'?(mod.eigenschap==='gloei'?' — en hij GLOEIT ✨':mod.eigenschap==='spring'?' — een springkussen! 🦘':''):
+    mod.soort==='wapen'?' — +'+mod.kracht+' schade ⚔️':(mod.vriendelijk?' — vriendelijk 😊':' — gevaarlijk 😈');
+  consoleUit([['goed','✅ 0 errors — je code compileert! "'+mod.slug+'" is geregistreerd'+extra],['info','→ nu de texture: klik links op '+mod.slug+'.png']]);
+}
+
+// ════════ TEXTURE (pixel-editor — je tekent je eigen .png!) ════════
+const PALET=['#e24b4a','#ff9430','#ffd93b','#5fae45','#2ecc71','#3b82ff','#8ab4ff','#b26aff','#ff6bd6','#8a6244','#8f8f8f','#e8e6dc','#2c2c2a','#f0d0b0','#5dcaa5','#efc04f'];
+let penKleur=PALET[0], tekenen=false;
+function openTexture(){
+  paneel.innerHTML=
+    '<h2>🎨 '+(mod.slug||'mijn')+'.png <span style="font-size:11px;color:rgba(255,255,255,.5)">— 16×16 pixels, net echt</span></h2>'+
+    '<div class="taak">Echte Minecraft-textures zijn maar 16×16 pixels! Teken je eigen texture: kies een kleur en klik/sleep over het raster. Rechts zie je hoe hij er in het spel uitziet.</div>'+
+    '<div id="pixWrap"><div id="pix"></div>'+
+    '<div class="pixTools"><div id="palet"></div>'+
+    '<input type="color" id="eigenKleur" value="#e24b4a" style="width:78px;height:36px;border:none;border-radius:8px;background:none;cursor:pointer">'+
+    '<button class="grijsK" onclick="vulAlles()">🪣 vul alles</button>'+
+    '<div style="font-size:11px;color:rgba(255,255,255,.5)">voorbeeld:</div><canvas id="pixPreview" width="16" height="16"></canvas>'+
+    '<button class="groenK" onclick="textureKlaar()">✅ TEXTURE KLAAR</button></div></div>'+
+    '<div id="console"><div class="info">&gt; teken maar! (elke pixel telt 😄)</div></div>';
+  const pix=document.getElementById('pix');
+  for(let i=0;i<256;i++){ const d=document.createElement('div'); d.dataset.i=i; d.style.background=mod.pixels[i]; pix.appendChild(d); }
+  pix.addEventListener('pointerdown',e=>{ tekenen=true; pix.setPointerCapture(e.pointerId); verf(e); });
+  pix.addEventListener('pointermove',e=>{ if(tekenen) verf(e); });
+  pix.addEventListener('pointerup',()=>{ tekenen=false; bewaarConcept(); });
+  const palet=document.getElementById('palet');
+  PALET.forEach(k=>{ const b=document.createElement('button'); b.style.background=k; if(k===penKleur)b.className='actief';
+    b.onclick=()=>{ penKleur=k; document.querySelectorAll('#palet button').forEach(x=>x.className=''); b.className='actief'; }; palet.appendChild(b); });
+  document.getElementById('eigenKleur').addEventListener('input',e=>{ penKleur=e.target.value; document.querySelectorAll('#palet button').forEach(x=>x.className=''); });
+  tekenPreview();
+}
+function verf(e){
+  const pix=document.getElementById('pix'), r=pix.getBoundingClientRect();
+  const x=Math.floor((e.clientX-r.left)/r.width*16), y=Math.floor((e.clientY-r.top)/r.height*16);
+  if(x<0||x>15||y<0||y>15) return;
+  const i=y*16+x; mod.pixels[i]=penKleur;
+  pix.children[i].style.background=penKleur; tekenPreview();
+}
+function tekenPreview(){
+  const c=document.getElementById('pixPreview'); if(!c) return; const x=c.getContext('2d');
+  for(let i=0;i<256;i++){ x.fillStyle=mod.pixels[i]||'#000'; x.fillRect(i%16,(i/16)|0,1,1); }
+}
+function vulAlles(){ mod.pixels=mod.pixels.map(()=>penKleur);
+  document.querySelectorAll('#pix div').forEach(d=>d.style.background=penKleur); tekenPreview(); bewaarConcept(); }
+function textureKlaar(){
+  const uniek=new Set(mod.pixels);
+  if(uniek.size<2){ consoleUit([['fout','❌ je texture is nog helemaal leeg (of één kleur) — teken er wat op! Echte modders tekenen elke pixel zelf 😄']]); return; }
+  mod.pixelsGetekend=true; bewaarConcept(); vinkjes();
+  consoleUit([['goed','✅ '+(mod.slug||'texture')+'.png opgeslagen ('+uniek.size+' kleuren gebruikt)'],['info','→ nu het model-JSON: klik links op '+(mod.slug||'…')+'.json']]);
+}
+
+// ════════ MODEL-JSON ════════
+function jsonVoorbeeld(){
+  const map=mod.soort==='wapen'?'item':mod.soort==='mob'?'entity':'block';
+  const parent=mod.soort==='blok'?'blokwereld:block/cube_all':'blokwereld:item/generated';
+  const laag=mod.soort==='blok'?'all':'layer0';
+  return '{\n  "parent": "'+parent+'",\n  "textures": {\n    "'+laag+'": "mijnmod:'+map+'/'+(mod.slug||'mijn_mod')+'"\n  }\n}';
+}
+function openJson(){
+  paneel.innerHTML=
+    '<h2>📄 '+(mod.slug||'mijn')+'.json <span style="font-size:11px;color:rgba(255,255,255,.5)">— het model</span></h2>'+
+    '<div class="taak">Het JSON-bestand vertelt het spel welke texture bij jouw '+(mod.soort||'mod')+' hoort. Typ geldige JSON met een <b>"parent"</b> en een <b>"textures"</b>-deel dat naar jouw texture wijst (<b>mijnmod:…/'+(mod.slug||'naam')+'</b>). Elke { } en " moet kloppen — JSON is streng!</div>'+
+    '<textarea id="ed" spellcheck="false" style="min-height:160px"></textarea>'+
+    '<div class="knoppen"><button class="groenK" onclick="checkJson()">▶ CONTROLEER</button>'+
+    '<button class="grijsK" onclick="spiek()">📋 spiek</button></div>'+
+    '<div id="spiek">'+jsonVoorbeeld().replace(/</g,'&lt;')+'</div>'+
+    '<div id="console"><div class="info">&gt; wachtend op jouw model-JSON...</div></div>';
+  document.getElementById('ed').value=mod.jsonCode||'';
+}
+function checkJson(){
+  const t=document.getElementById('ed').value; mod.jsonCode=t;
+  let data;
+  try{ data=JSON.parse(t); }
+  catch(err){ mod.jsonOk=false; bewaarConcept(); vinkjes();
+    consoleUit([['fout','❌ JSON-FOUT: '+err.message],['fout','   tip: elke { moet een } hebben, elke "tekst" moet tussen aanhalingstekens, en een komma tussen de delen']]); return; }
+  const fouten=[];
+  if(!data.parent) fouten.push('je mist "parent" — welk basismodel gebruikt je '+mod.soort+'?');
+  if(!data.textures||typeof data.textures!=='object') fouten.push('je mist het "textures"-deel');
+  else{ const waarden=Object.values(data.textures).join(' ');
+    if(!waarden.includes(mod.slug||'@@')) fouten.push('je textures wijzen niet naar jouw texture "'+(mod.slug||'?')+'"'); }
+  if(fouten.length){ mod.jsonOk=false; bewaarConcept(); vinkjes();
+    consoleUit([['fout','❌ '+fouten.length+' fout(en):'],...fouten.map(f=>['fout','   • '+f])]); return; }
+  mod.jsonOk=true; bewaarConcept(); vinkjes();
+  consoleUit([['goed','✅ model-JSON is goed! Het spel weet nu hoe jouw '+mod.soort+' eruitziet'],['info','→ alles af? Klik links op 📦 BOUW DE MOD!']]);
+}
+
+// ════════ build.gradle (klaargezet — wel even lezen!) ════════
+function openGradle(){
+  mod.gradleGezien=true; bewaarConcept(); vinkjes();
+  paneel.innerHTML=
+    '<h2>⚙️ build.gradle</h2>'+
+    '<div class="taak">Dit bestand vertelt de computer HOE hij je mod moet bouwen (compileren + inpakken tot .jar). Bij echte mods is dit best ingewikkeld — deze heb ik alvast voor je klaargezet. Lees maar even wat er gebeurt:</div>'+
+    '<textarea readonly style="min-height:170px;color:#9ab">// build.gradle — het bouw-recept van je mod\nplugins {\n    id "mod-loader" version "1.0"\n}\n\n// 1) compileer alle .java-bestanden\n// 2) stop de resources (textures + json) erbij\n// 3) pak alles in als één .jar-bestand\njar {\n    from "src/main/java"\n    from "src/main/resources"\n}</textarea>'+
+    '<div id="console"><div class="goed">✅ build.gradle staat klaar (deze hoef je niet aan te passen)</div></div>';
+}
+
+// ════════ BOUWEN! ════════
+function openBuild(){
+  paneel.innerHTML=
+    '<h2>📦 BOUW DE MOD</h2>'+
+    '<div class="taak">Dit is het moment! <b>gradle build</b> gaat je code compileren en alles inpakken tot een .jar. Maar let op: als er nog een bestand mist of fout is, faalt de build — net als bij echte mods.</div>'+
+    '<div class="knoppen"><button class="goudK" style="font-size:16px" onclick="bouw()">▶ gradle build</button></div>'+
+    '<div id="console"><div class="info">&gt; klaar om te bouwen...</div></div>';
+}
+function bouw(){
+  const c=document.getElementById('console'); c.innerHTML='';
+  const regel=(cls,txt)=>{ const d=document.createElement('div'); d.className=cls; d.textContent=txt; c.appendChild(d); c.scrollTop=c.scrollHeight; };
+  regel('info','> gradle build');
+  const missend=[];
+  if(!mod.tomlOk) missend.push(['mods.toml','modId/name/version ontbreken of zijn fout']);
+  if(!mod.javaOk) missend.push(['MijnMod.java','je code compileert nog niet']);
+  if(!mod.pixelsGetekend) missend.push([(mod.slug||'texture')+'.png','je texture is nog niet getekend']);
+  if(!mod.jsonOk) missend.push([(mod.slug||'model')+'.json','je model-JSON klopt nog niet']);
+  setTimeout(()=>{ regel('info','> Task :compileJava'+(mod.javaOk?' ✓':'')); },400);
+  setTimeout(()=>{ regel('info','> Task :processResources'+((mod.pixelsGetekend&&mod.jsonOk)?' ✓':'')); },900);
+  setTimeout(()=>{
+    if(missend.length){
+      regel('fout','BUILD FAILED in 1s — '+missend.length+' probleem(en):');
+      missend.forEach(m=>regel('fout','   ✗ '+m[0]+' — '+m[1]));
+      regel('info','fix het bestand (klik links) en probeer het opnieuw!');
+      return;
+    }
+    regel('info','> Task :jar');
+    setTimeout(()=>{
+      regel('goed','BUILD SUCCESSFUL in 2s');
+      regel('goed','📦 '+mod.slug+'-'+(mod.versie||'1.0.0')+'.jar staat klaar!');
+      installeer();
+      regel('goed','✅ In de mods-map gezet — GEÏNSTALLEERD! "'+(mod.weergaveNaam||mod.slug)+'" werkt nu in Blokwereld!');
+      const kn=document.createElement('div'); kn.className='knoppen'; kn.style.marginTop='10px';
+      kn.innerHTML='<button class="groenK" onclick="location.href=\'blokwereld.html\'">🌍 SPEEL BLOKWERELD</button>'+
+        '<button class="grijsK" onclick="location.href=\'mods.html\'">🧩 naar mods</button>'+
+        '<button class="blauwK" onclick="kiesSoort(\''+mod.soort+'\');open(\'toml\')">🛠️ nog een mod</button>';
+      c.parentElement.appendChild(kn);
+    },700);
+  },1500);
+}
+function installeer(){
+  const def={ id:'m'+Date.now(), soort:mod.soort, naam:mod.weergaveNaam||mod.slug, slug:mod.slug,
+    pixels:mod.pixels.slice(), eigenschap:mod.eigenschap, kracht:mod.kracht, vriendelijk:mod.vriendelijk,
+    hp:mod.hp||10, kleur:vaaksteKleur(), emoji:'🧩',
+    maker:localStorage.getItem('deluxe-speler')||'onbekend', gemaakt:new Date().toISOString().slice(0,10), zelfGecodeerd:true };
+  let defs=[]; try{ defs=JSON.parse(localStorage.getItem('deluxe-eigen-mods')||'[]'); }catch(e){}
+  if(def.soort==='blok'){ let h=99; defs.forEach(d=>{ if(d.blokId>h)h=d.blokId; }); def.blokId=h+1; }
+  defs.push(def);
+  try{ localStorage.setItem('deluxe-eigen-mods',JSON.stringify(defs)); }catch(e){}
+  let aan=[]; try{ aan=JSON.parse(localStorage.getItem('deluxe-mods')||'[]'); }catch(e){}
+  if(!aan.includes('eigen:'+def.id)) aan.push('eigen:'+def.id);
+  try{ localStorage.setItem('deluxe-mods',JSON.stringify(aan)); }catch(e){}
+  try{ localStorage.removeItem('deluxe-modstudio-concept'); }catch(e){}
+}
+function vaaksteKleur(){
+  const telling={}; let beste='#8f8f8f',n=0;
+  for(const p of mod.pixels){ telling[p]=(telling[p]||0)+1; if(telling[p]>n&&p!=='#00000000'){ n=telling[p]; beste=p; } }
+  return beste;
+}
+
+function spiek(){ const s=document.getElementById('spiek'); if(s) s.style.display=s.style.display==='block'?'none':'block'; }
+
+// start!
+if(mod.soort&&(mod.tomlOk||mod.javaCode)) { openWelkom(); } else { openWelkom(); }
+vinkjes();
+</script>
+<script src="smiles-widget.js"></script>
+</body>
+</html>
