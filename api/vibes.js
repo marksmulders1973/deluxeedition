@@ -3,24 +3,11 @@
 // Opgeslagen in Vercel Blob: vibes/pending.json
 // { "spelerNaam": { emoji, naam, wanneer }, ... }
 // ══════════════════════════════════════════════════════
-import { put, list } from "@vercel/blob";
+import { kvLees, kvSchrijf, kvWis, kvLijst } from "./_kv.js";
 
-const PAD = "vibes/pending.json";
-
-async function laad() {
-  const { blobs } = await list({ prefix: "vibes/", limit: 1 });
-  if (!blobs.length) return {};
-  try { return await (await fetch(blobs[0].url, { cache: "no-store" })).json(); } catch { return {}; }
-}
-
-async function sla(data) {
-  await put(PAD, JSON.stringify(data), {
-    access: "public",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-  });
-}
+const SLEUTEL = "vibes";
+const laad = () => kvLees(SLEUTEL, {});
+const sla = (data) => kvSchrijf(SLEUTEL, data);
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");

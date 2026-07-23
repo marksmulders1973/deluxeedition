@@ -6,9 +6,8 @@
 // De bots praten NIET via deze server — die antwoorden
 // razendsnel in je eigen browser (zie chat.html).
 // ══════════════════════════════════════════════════════
-import { put, list } from "@vercel/blob";
+import { kvLees, kvSchrijf, kvWis, kvLijst } from "./_kv.js";
 
-const BESTAND = "chat/berichten.json";
 const MAX_BERICHTEN = 60;
 
 // Woorden die we niet in de chat willen (site voor kinderen!).
@@ -29,12 +28,8 @@ function schoonBericht(b) {
 }
 
 async function leesBerichten() {
-  try {
-    const { blobs } = await list({ prefix: BESTAND, limit: 1 });
-    if (!blobs.length) return [];
-    const lijst = await (await fetch(blobs[0].url, { cache: "no-store" })).json();
-    return Array.isArray(lijst) ? lijst : [];
-  } catch { return []; }
+  const lijst = await kvLees("chat-berichten", []);
+  return Array.isArray(lijst) ? lijst : [];
 }
 
 export default async function handler(req, res) {
@@ -52,12 +47,7 @@ export default async function handler(req, res) {
       const lijst = await leesBerichten();
       lijst.push(nieuw);
       const bewaren = lijst.slice(-MAX_BERICHTEN);
-      await put(BESTAND, JSON.stringify(bewaren), {
-        access: "public",
-        addRandomSuffix: false,
-        allowOverwrite: true,
-        contentType: "application/json",
-      });
+      await kvSchrijf("chat-berichten", bewaren);
       return res.status(200).json({ ok: true });
     }
 

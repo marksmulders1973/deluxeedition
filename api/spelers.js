@@ -2,22 +2,11 @@
 // SPELERS API — lijst van iedereen die ooit langs is geweest
 // Zodat NovaX in het AP-paneel namen kan aanklikken.
 // ══════════════════════════════════════════════════════
-import { put, list } from "@vercel/blob";
+import { kvLees, kvSchrijf, kvWis, kvLijst } from "./_kv.js";
 
-const PAD = "spelers/lijst.json";
-
-async function laad() {
-  const { blobs } = await list({ prefix: "spelers/", limit: 1 });
-  if (!blobs.length) return [];
-  try { return await (await fetch(blobs[0].url, { cache: "no-store" })).json(); } catch { return []; }
-}
-
-async function sla(data) {
-  await put(PAD, JSON.stringify(data), {
-    access: "public", addRandomSuffix: false,
-    allowOverwrite: true, contentType: "application/json",
-  });
-}
+const SLEUTEL = "spelers-lijst";
+const laad = () => kvLees(SLEUTEL, []);
+const sla = (data) => kvSchrijf(SLEUTEL, data);
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");

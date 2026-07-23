@@ -3,27 +3,11 @@
 // Werkt op alle apparaten, niet alleen op het apparaat
 // van NovaX.
 // ══════════════════════════════════════════════════════
-import { put, list } from "@vercel/blob";
+import { kvLees, kvSchrijf, kvWis, kvLijst } from "./_kv.js";
 
-const PAD = "admin/bans.json";
-
-async function laadBans() {
-  const { blobs } = await list({ prefix: "admin/", limit: 1 });
-  if (!blobs.length) return [];
-  try {
-    const r = await fetch(blobs[0].url, { cache: "no-store" });
-    return await r.json();
-  } catch { return []; }
-}
-
-async function slaBans(bans) {
-  await put(PAD, JSON.stringify(bans), {
-    access: "public",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-  });
-}
+const SLEUTEL = "admin-bans";
+const laadBans = () => kvLees(SLEUTEL, []);
+const slaBans = (bans) => kvSchrijf(SLEUTEL, bans);
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");

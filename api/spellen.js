@@ -6,7 +6,7 @@
 // (spellen/<id>.json), zodat twee makers elkaar nooit
 // per ongeluk overschrijven.
 // ══════════════════════════════════════════════════════
-import { put, list, del } from "@vercel/blob";
+import { kvLees, kvSchrijf, kvWis, kvLijst } from "./_kv.js";
 
 const TYPES = ["vangen", "springen", "klikken"];
 
@@ -27,16 +27,8 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === "GET") {
-      const { blobs } = await list({ prefix: "spellen/", limit: 200 });
-      const spellen = await Promise.all(
-        blobs.map(async (b) => {
-          try {
-            const r = await fetch(b.url, { cache: "no-store" });
-            return await r.json();
-          } catch { return null; }
-        })
-      );
-      return res.status(200).json(spellen.filter(Boolean));
+      const rijen = await kvLijst("spel:", 200);
+      return res.status(200).json(rijen.map((r) => r.data).filter(Boolean));
     }
 
     if (req.method === "POST") {
@@ -46,14 +38,9 @@ export default async function handler(req, res) {
       // Bestaat dit spel al online? Dan mag alleen de maker zelf
       // het aanpassen (✏️-knop) — anders kan iemand anders jouw
       // spel stiekem veranderen.
-      const { blobs: bestaand } = await list({ prefix: `spellen/${s.id}.json`, limit: 1 });
-      if (bestaand.length) {
-        try {
-          const oud = await (await fetch(bestaand[0].url, { cache: "no-store" })).json();
-          if (oud.maker && oud.maker !== s.maker.trim().slice(0, 20)) {
-            return res.status(403).json({ fout: "alleen de maker mag dit spel aanpassen" });
-          }
-        } catch { /* oud spel onleesbaar → overschrijven mag */ }
+      const oud = await kvLees("spel:" + s.id);
+      if (oud && oud.maker && oud.maker !== s.maker.trim().slice(0, 20)) {
+        return res.status(403).json({ fout: "alleen de maker mag dit spel aanpassen" });
       }
       const schoon = {
         id: s.id,
@@ -64,12 +51,7 @@ export default async function handler(req, res) {
         maker: s.maker.trim().slice(0, 20),
         gemaakt: s.gemaakt || null,
       };
-      await put(`spellen/${schoon.id}.json`, JSON.stringify(schoon), {
-        access: "public",
-        addRandomSuffix: false,
-        allowOverwrite: true,
-        contentType: "application/json",
-      });
+      await kvSchrijf("spel:" + schoon.id, schoon);
       return res.status(200).json({ ok: true });
     }
 
@@ -78,13 +60,12 @@ export default async function handler(req, res) {
       const maker = String(req.query.maker || "");
       if (!/^g\d{8,16}$/.test(id)) return res.status(400).json({ fout: "gek id" });
       // Alleen de maker zelf (of NovaX, de baas van de site) mag verwijderen.
-      const { blobs } = await list({ prefix: `spellen/${id}.json`, limit: 1 });
-      if (!blobs.length) return res.status(404).json({ fout: "spel niet gevonden" });
-      const spel = await (await fetch(blobs[0].url, { cache: "no-store" })).json();
+      const spel = await kvLees("spel:" + id);
+      if (!spel) return res.status(404).json({ fout: "spel niet gevonden" });
       if (spel.maker !== maker && maker !== "NovaX") {
         return res.status(403).json({ fout: "alleen de maker mag dit spel verwijderen" });
       }
-      await del(blobs[0].url);
+      await kvWis("spel:" + id);
       return res.status(200).json({ ok: true });
     }
 

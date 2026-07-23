@@ -3,23 +3,12 @@
 // Elke speler stuurt elke 30 sec een ping.
 // Spelers die de afgelopen 2 minuten pingden = online.
 // ══════════════════════════════════════════════════════
-import { put, list } from "@vercel/blob";
+import { kvLees, kvSchrijf, kvWis, kvLijst } from "./_kv.js";
 
-const PAD = "online/aanwezig.json";
+const SLEUTEL = "online-aanwezig";
 const TIMEOUT_MS = 2 * 60 * 1000; // 2 minuten
-
-async function laad() {
-  const { blobs } = await list({ prefix: "online/", limit: 1 });
-  if (!blobs.length) return {};
-  try { return await (await fetch(blobs[0].url, { cache: "no-store" })).json(); } catch { return {}; }
-}
-
-async function sla(data) {
-  await put(PAD, JSON.stringify(data), {
-    access: "public", addRandomSuffix: false,
-    allowOverwrite: true, contentType: "application/json",
-  });
-}
+const laad = () => kvLees(SLEUTEL, {});
+const sla = (data) => kvSchrijf(SLEUTEL, data);
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");

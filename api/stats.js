@@ -3,27 +3,11 @@
 // Één JSON-bestand in Vercel Blob: stats/data.json
 // NovaX telt nooit mee.
 // ══════════════════════════════════════════════════════
-import { put, list } from "@vercel/blob";
+import { kvLees, kvSchrijf, kvWis, kvLijst } from "./_kv.js";
 
-const BLOB_PAD = "stats/data.json";
-
-async function laadStats() {
-  const { blobs } = await list({ prefix: "stats/", limit: 1 });
-  if (!blobs.length) return { bezoeken: 0, spellen: {} };
-  try {
-    const r = await fetch(blobs[0].url, { cache: "no-store" });
-    return await r.json();
-  } catch { return { bezoeken: 0, spellen: {} }; }
-}
-
-async function slaStats(data) {
-  await put(BLOB_PAD, JSON.stringify(data), {
-    access: "public",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-  });
-}
+const SLEUTEL = "stats";
+const laadStats = () => kvLees(SLEUTEL, { bezoeken: 0, spellen: {} });
+const slaStats = (data) => kvSchrijf(SLEUTEL, data);
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");

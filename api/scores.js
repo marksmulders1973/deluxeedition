@@ -3,23 +3,12 @@
 // GET ?periode=vandaag|week|alltime&limit=25
 // POST { naam, score, level }
 // ══════════════════════════════════════════════════════
-import { put, list } from "@vercel/blob";
+import { kvLees, kvSchrijf, kvWis, kvLijst } from "./_kv.js";
 
-const PAD = "scores/obliterator.json";
+const SLEUTEL = "scores-obliterator";
 const MAX_BEWAARD = 500; // bewaar maximaal 500 runs
-
-async function laad() {
-  const { blobs } = await list({ prefix: "scores/", limit: 1 });
-  if (!blobs.length) return [];
-  try { return await (await fetch(blobs[0].url, { cache: "no-store" })).json(); } catch { return []; }
-}
-
-async function sla(scores) {
-  await put(PAD, JSON.stringify(scores), {
-    access: "public", addRandomSuffix: false,
-    allowOverwrite: true, contentType: "application/json",
-  });
-}
+const laad = () => kvLees(SLEUTEL, []);
+const sla = (scores) => kvSchrijf(SLEUTEL, scores);
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
