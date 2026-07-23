@@ -74,6 +74,36 @@
     opacity: 0; transition: opacity 0.4s;
   }
   #sw-bel.aan { opacity: 1; }
+
+  /* ── 😈 HORROR-STAND (timer om!) ── */
+  #sw-doem {
+    position: fixed; inset: 0; z-index: 9990; pointer-events: none; display: none;
+    background: radial-gradient(circle at 50% 45%, rgba(25,0,8,0.15), rgba(0,0,0,0.78) 92%);
+    animation: sw-flikker 5s infinite;
+  }
+  @keyframes sw-flikker {
+    0%,88%,100% { opacity: 1; }
+    90% { opacity: .5; } 92% { opacity: 1; } 95% { opacity: .65; } 97% { opacity: 1; }
+  }
+  #sw-flits {
+    position: fixed; inset: 0; z-index: 10001; pointer-events: none;
+    background: radial-gradient(circle, #fff 30%, #ff2222 100%); opacity: 0;
+    transition: opacity 0.9s;
+  }
+  #sw-banner {
+    display: none; position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
+    z-index: 9995; background: rgba(25,0,0,0.93); border: 2px solid #ff2222;
+    color: #fff; font: 800 12.5px system-ui,sans-serif; padding: 8px 16px;
+    border-radius: 999px; text-decoration: none; pointer-events: all;
+    animation: sw-bang 1.2s infinite; max-width: 92vw; text-align: center;
+  }
+  @keyframes sw-bang {
+    0%,100% { box-shadow: 0 0 10px rgba(255,0,0,0.5); }
+    50% { box-shadow: 0 0 28px rgba(255,0,0,0.95); }
+  }
+  body.sw-horror #sw-knop { background: linear-gradient(135deg,#7a0000,#1a0505); animation: none; }
+  body.sw-horror #sw-naam { color: #ff4444; }
+  #sw-rol.sw-boos { width: 66px; height: 66px; filter: drop-shadow(0 0 16px rgba(255,0,0,0.85)); }
   `;
   document.head.appendChild(css);
 
@@ -89,6 +119,20 @@
     <circle cx="36" cy="41" r="2.6" fill="#0d1b2e"/>
     <circle cx="64" cy="41" r="2.6" fill="#0d1b2e"/>
     <path d="M28 60 Q50 80 72 60" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round"/>
+  </svg>`;
+
+  /* 😈 het boze gezicht — voor als de timer om is... */
+  const HORROR_SVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <defs><radialGradient id="sw-h" cx="0.5" cy="0.4">
+      <stop offset="0" stop-color="#5a0a0a"/>
+      <stop offset="1" stop-color="#120202"/>
+    </radialGradient></defs>
+    <circle cx="50" cy="50" r="44" fill="url(#sw-h)" stroke="#ff2222" stroke-width="3"/>
+    <path d="M24 32 L44 42" stroke="#ff2222" stroke-width="5" stroke-linecap="round"/>
+    <path d="M76 32 L56 42" stroke="#ff2222" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="37" cy="45" r="4.5" fill="#ff2222"/>
+    <circle cx="63" cy="45" r="4.5" fill="#ff2222"/>
+    <path d="M26 70 L34 62 L42 70 L50 62 L58 70 L66 62 L74 70" stroke="#ff2222" stroke-width="4" fill="none" stroke-linecap="round"/>
   </svg>`;
 
   /* ── HTML bouwen ── */
@@ -119,6 +163,13 @@
   bel.id = 'sw-bel';
   document.body.appendChild(bel);
 
+  /* 😈 horror-elementen (onzichtbaar tot de timer om is) */
+  const doem = document.createElement('div'); doem.id = 'sw-doem'; document.body.appendChild(doem);
+  const flits = document.createElement('div'); flits.id = 'sw-flits'; document.body.appendChild(flits);
+  const banner = document.createElement('a'); banner.id = 'sw-banner'; banner.href = '/smiles.html';
+  banner.textContent = '😱 DE TIJD IS OM — SMILES IS LOS! Klik hier om hem te verslaan!';
+  document.body.appendChild(banner);
+
   /* ── Muis volgen met rol-rotatie ── */
   let mx = window.innerWidth / 2, my = window.innerHeight * 0.7;
   let px = mx, py = my, hoek = 0;
@@ -134,11 +185,147 @@
     gesloten = !!document.pointerLockElement;
   });
 
+  /* ── 😈 HORROR-MOTOR ─────────────────────────────────
+     Loopt de Smiles-timer af (smiles-staat in localStorage)?
+     Dan wordt de HELE SITE eng: donker, intense muziek en
+     Smiles jaagt op je — in elk spel. Versla het monster in
+     de doos (smiles.html) en alles wordt weer normaal.
+     (Brian's wens 2026-07-23) */
+  let horror = false;
+  const H_VANG = ['GOTCHA. 😈', 'I told you... I am ALWAYS right.', 'You cannot run from SMILES.', 'Tik. Tak. 😈'];
+  const H_BERICHTJES = [
+    'THE TIME IS UP. 😈', 'I see you...', 'RUN.', 'You cannot hide.',
+    'Kom naar de doos... als je durft.', 'I am ALWAYS right. ALWAYS.', 'Achter je. 😈',
+  ];
+  const H_ANTW = [
+    'Why are you still talking? RUN. 😈', 'The time is UP, little player.',
+    'I gave you HOURS... 😈', 'Versla me maar in de doos. Als je durft.',
+    'hehehe... 😈', 'I am not angry. I am... HUNGRY. 😈',
+  ];
+  function horrorActief() {
+    try {
+      const mods = JSON.parse(localStorage.getItem('deluxe-mods') || '[]');
+      if (!mods.includes('smiles')) return false;
+      const s = JSON.parse(localStorage.getItem('smiles-staat') || 'null');
+      if (!s) return false;
+      if (s.fase === 'monster') return true;
+      if (s.fase === 'assistent' && s.doomTijd && Date.now() > s.doomTijd) return true;
+      return false;
+    } catch { return false; }
+  }
+  /* intense muziek: lage dreun + hartslag + valse uithalen (WebAudio) */
+  let ac = null, muziekAan = null, muziekTimer = null;
+  function startMuziek() {
+    if (muziekAan) return;
+    try {
+      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === 'suspended') { ac.resume(); }
+      const master = ac.createGain(); master.gain.value = 0.085; master.connect(ac.destination);
+      const d1 = ac.createOscillator(); d1.type = 'sawtooth'; d1.frequency.value = 55;
+      const d2 = ac.createOscillator(); d2.type = 'sawtooth'; d2.frequency.value = 55.8;
+      const lf = ac.createBiquadFilter(); lf.type = 'lowpass'; lf.frequency.value = 200;
+      const dg = ac.createGain(); dg.gain.value = 0.55;
+      d1.connect(lf); d2.connect(lf); lf.connect(dg); dg.connect(master);
+      d1.start(); d2.start();
+      muziekAan = { master, ossen: [d1, d2] };
+      muziekTimer = setInterval(() => {
+        if (!muziekAan) return;
+        try {
+          // hartslag: boem... boem...
+          const o = ac.createOscillator(); o.type = 'sine';
+          o.frequency.setValueAtTime(60, ac.currentTime);
+          o.frequency.exponentialRampToValueAtTime(36, ac.currentTime + 0.16);
+          const g = ac.createGain(); g.gain.setValueAtTime(0.8, ac.currentTime);
+          g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.24);
+          o.connect(g); g.connect(muziekAan.master); o.start(); o.stop(ac.currentTime + 0.26);
+          // af en toe een valse hoge uithaal
+          if (Math.random() < 0.22) {
+            const s = ac.createOscillator(); s.type = 'triangle';
+            const f = 700 + Math.random() * 800;
+            s.frequency.setValueAtTime(f, ac.currentTime);
+            s.frequency.exponentialRampToValueAtTime(f * 0.45, ac.currentTime + 0.8);
+            const sg = ac.createGain(); sg.gain.setValueAtTime(0.12, ac.currentTime);
+            sg.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.85);
+            s.connect(sg); sg.connect(muziekAan.master); s.start(); s.stop(ac.currentTime + 0.9);
+          }
+        } catch {}
+      }, 850);
+    } catch {}
+  }
+  function stopMuziek() {
+    if (muziekTimer) { clearInterval(muziekTimer); muziekTimer = null; }
+    if (muziekAan) {
+      const m = muziekAan; muziekAan = null;
+      try { m.master.gain.setTargetAtTime(0.0001, ac.currentTime, 0.25); } catch {}
+      setTimeout(() => m.ossen.forEach(o => { try { o.stop(); } catch {} }), 900);
+    }
+  }
+  function schreeuw() {
+    try {
+      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === 'suspended') ac.resume();
+      const duur = 0.5, buf = ac.createBuffer(1, ac.sampleRate * duur, ac.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+      const src = ac.createBufferSource(); src.buffer = buf;
+      const f = ac.createBiquadFilter(); f.type = 'bandpass';
+      f.frequency.setValueAtTime(2400, ac.currentTime);
+      f.frequency.exponentialRampToValueAtTime(300, ac.currentTime + duur);
+      const g = ac.createGain(); g.gain.value = 0.3;
+      src.connect(f); f.connect(g); g.connect(ac.destination); src.start();
+    } catch {}
+  }
+  function zetHorror(aan) {
+    if (aan === horror) return;
+    horror = aan;
+    document.body.classList.toggle('sw-horror', aan);
+    doem.style.display = aan ? 'block' : 'none';
+    banner.style.display = aan ? 'block' : 'none';
+    rol.innerHTML = aan ? HORROR_SVG : SMILES_SVG;
+    knop.innerHTML = aan ? HORROR_SVG : SMILES_SVG;
+    rol.classList.toggle('sw-boos', aan);
+    const naam = document.getElementById('sw-naam');
+    if (naam) naam.textContent = aan ? '😈 SMILES' : '😄 SMILES';
+    document.title = (aan ? '😈 ' : '') + document.title.replace(/^😈 /, '');
+    if (aan) startMuziek(); else stopMuziek();
+  }
+  // check elke 4 sec — dus als de timer afloopt TERWIJL je speelt, slaat hij live toe
+  setInterval(() => zetHorror(horrorActief()), 4000);
+  // muziek mag pas na je eerste klik/toets (browser-regel)
+  document.addEventListener('pointerdown', () => { if (horror) startMuziek(); }, true);
+  document.addEventListener('keydown', () => { if (horror) startMuziek(); }, true);
+  setTimeout(() => zetHorror(horrorActief()), 400);
+
   const HOEK_MIN = -16, HOEK_MAX = 16; // bob-richting beperkt
+
+  let lungeTot = 0, volgendeLunge = performance.now() + 5000, vangCd = 0;
+  let roamX = innerWidth / 2, roamY = innerHeight / 2, roamT = 0;
 
   (function frame() {
     requestAnimationFrame(frame);
-    if (gesloten) {
+    const nu = performance.now();
+    if (horror && !gesloten) {
+      // 😈 HIJ JAAGT OP JE: sluipt langzaam... en STORMT dan ineens op je af
+      if (nu > volgendeLunge) { lungeTot = nu + 650; volgendeLunge = nu + 4200 + Math.random() * 3500; }
+      const snelheid = nu < lungeTot ? 0.22 : 0.028;
+      const dx = mx - px, dy = my - py;
+      px += dx * snelheid; py += dy * snelheid;
+      hoek += dx * 0.4;
+      // GEPAKT? flits + schreeuw, en hij deinst even terug
+      if (Math.hypot(dx, dy) < 36 && nu > vangCd) {
+        vangCd = nu + 9000;
+        flits.style.transition = 'none'; flits.style.opacity = 0.95;
+        requestAnimationFrame(() => { flits.style.transition = 'opacity 0.9s'; flits.style.opacity = 0; });
+        schreeuw();
+        bel.textContent = H_VANG[Math.floor(Math.random() * H_VANG.length)];
+        bel.classList.add('aan'); setTimeout(() => bel.classList.remove('aan'), 2600);
+        px = Math.random() < 0.5 ? -80 : innerWidth + 80; py = Math.random() * innerHeight;
+      }
+    } else if (horror && gesloten) {
+      // pointer-lock (Blokwereld): hij zwerft dreigend over je scherm
+      if (nu > roamT) { roamT = nu + 2600; roamX = 60 + Math.random() * (innerWidth - 120); roamY = 60 + Math.random() * (innerHeight - 120); }
+      px += (roamX - px) * 0.03; py += (roamY - py) * 0.03; hoek += 2.5;
+    } else if (gesloten) {
       // In pointer-lock: Smiles bounct in de linkeronderhoek
       const doelX = 24, doelY = window.innerHeight - 76;
       px += (doelX - px) * 0.06;
@@ -178,6 +365,7 @@
     [/(\d+)\s*([+\-x*])\s*(\d+)/,     'SOM'],
   ];
   function antw(txt) {
+    if (horror) return H_ANTW[Math.floor(Math.random() * H_ANTW.length)];
     for (const [p, u] of ANTW) {
       const m = txt.match(p);
       if (!m) continue;
@@ -212,7 +400,9 @@
       const u = new SpeechSynthesisUtterance(txt);
       const vs = speechSynthesis.getVoices().filter(v => (v.lang || '').startsWith('en'));
       if (vs.length) u.voice = vs[0];
-      u.lang = 'en-US'; u.pitch = 1.5; u.rate = 1.05;
+      u.lang = 'en-US';
+      u.pitch = horror ? 0.35 : 1.5;   // 😈 in horror-stand praat hij LAAG en eng
+      u.rate  = horror ? 0.82 : 1.05;
       speechSynthesis.cancel();
       speechSynthesis.speak(u);
     } catch {}
@@ -248,7 +438,9 @@
   ];
   let bIdx = 0;
   function toonBel() {
-    bel.textContent = BERICHTJES[bIdx++ % BERICHTJES.length];
+    bel.textContent = horror
+      ? H_BERICHTJES[Math.floor(Math.random() * H_BERICHTJES.length)]
+      : BERICHTJES[bIdx++ % BERICHTJES.length];
     bel.style.left = (px + 32) + 'px';
     bel.style.top  = (py - 56) + 'px';
     bel.classList.add('aan');
