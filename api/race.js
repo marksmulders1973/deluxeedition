@@ -50,6 +50,17 @@ async function kamerTik(b, res) {
     oog: Math.max(0.4, Math.min(2, +b.oog || 1.6)),   // laag = bukken/sliden
     tegel: Math.max(0, Math.min(2, parseInt(b.tegel, 10) || 0)),   // op welke duel-tegel je staat
     wereld: b.wereld === 'arena' ? 'arena' : 'lobby',              // lobby of witte map
+    hp: Math.max(0, Math.min(100, Number.isFinite(+b.hp) ? Math.round(+b.hp) : 100)),
+    schild: b.schild === true,
+    // aanvallen op de ander (schade/flits/freeze), launch pads en rookwolken
+    events: Array.isArray(b.events) ? b.events.slice(-8).map(e => ({
+      id: String(e.id || "").slice(0, 48),
+      doel: String(e.doel || "").slice(0, 30),
+      soort: ["schade", "flits", "freeze"].includes(e.soort) ? e.soort : "schade",
+      schade: Math.max(0, Math.min(60, Math.round(+e.schade) || 0)),
+    })) : [],
+    pads: Array.isArray(b.pads) ? b.pads.slice(0, 3).map(p => ({x: +(+p.x || 0).toFixed(1), z: +(+p.z || 0).toFixed(1)})) : [],
+    rook: Array.isArray(b.rook) ? b.rook.slice(0, 3).map(r => ({x: +(+r.x || 0).toFixed(1), z: +(+r.z || 0).toFixed(1), tot: +r.tot || 0})) : [],
     tijd: nu,
   };
   // avatar-plaatje mag mee, maar alleen als het echt een klein SVG'tje is

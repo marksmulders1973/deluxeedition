@@ -39,6 +39,27 @@
   #duelBot{background:linear-gradient(135deg,#1f9d55,#2ecc71)}
   #duelMenu .tip{color:#8892a6;font-size:12px;margin-top:8px}
 
+  /* ⚔️ wapens: kies-scherm, hotbar, hp-balk, effecten */
+  #wapenKeuze{position:fixed;inset:0;display:none;z-index:19;background:rgba(0,0,0,0.78);overflow:auto}
+  .wk-binnen{max-width:720px;margin:24px auto;text-align:center;padding:0 10px}
+  .wk-binnen h2{color:#fff;font-size:26px;margin:10px 0 4px}
+  .wk-binnen p{color:#9aa;font-size:13px;margin:0 0 14px}
+  #wkGrid{display:flex;flex-wrap:wrap;gap:9px;justify-content:center}
+  .wk-tegel{width:100px;padding:9px 4px;background:#1a1a26;border:2px solid #333;border-radius:12px;cursor:pointer;color:#ccc;font-size:11px;font-weight:bold}
+  .wk-tegel .em{font-size:28px}
+  .wk-tegel.goud{background:linear-gradient(135deg,#7a5a00,#c8a020);color:#fff;border-color:#ffd700}
+  .wk-tegel.gekozen{border-color:#2ecc71;box-shadow:0 0 14px rgba(46,204,113,0.7)}
+  #wkKlaar{margin:18px auto 30px;padding:14px 34px;font-size:18px;font-weight:bold;color:#fff;border:none;border-radius:12px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);cursor:pointer}
+  #hotbar{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:13;display:none;gap:8px}
+  .hb-slot{width:54px;height:54px;background:rgba(0,0,0,0.55);border:2px solid #555;border-radius:12px;font-size:25px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .hb-slot.actief{border-color:#ffd700;box-shadow:0 0 12px rgba(255,215,0,0.55)}
+  #hpBalk{position:fixed;top:12px;left:50%;transform:translateX(-50%);width:220px;height:15px;background:rgba(0,0,0,0.5);border-radius:8px;display:none;border:1px solid #444;z-index:13}
+  #hpVul{height:100%;width:100%;background:linear-gradient(90deg,#2ecc71,#a3e635);border-radius:8px;transition:width .2s}
+  #schadeFlits{position:fixed;inset:0;background:radial-gradient(ellipse,transparent 35%,rgba(255,0,0,0.55));opacity:0;pointer-events:none;z-index:16;transition:opacity .35s}
+  #flitsWit{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:17;transition:opacity .25s}
+  #meldingMidden{position:fixed;top:96px;left:50%;transform:translateX(-50%);z-index:14;color:#fff;font-size:20px;font-weight:bold;text-shadow:0 2px 8px #000;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+  #vuurKnop{display:none;position:fixed;right:22px;bottom:150px;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,255,255,0.4);background:rgba(255,59,59,0.38);font-size:34px;z-index:15;align-items:center;justify-content:center}
+
   /* samen spelen: deel-balkje rechtsonder */
   #samenBar{position:fixed;right:14px;bottom:14px;z-index:12;display:none;align-items:center;gap:10px;background:rgba(0,0,0,0.55);padding:8px 12px;border-radius:12px;color:#ddd;font-size:13px;max-width:70vw}
   #samenKnop{padding:8px 14px;font-size:14px;font-weight:bold;color:#fff;border:none;border-radius:10px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);cursor:pointer}
@@ -59,6 +80,20 @@
 <div id="joy" class="touch-ui"><div id="joyStick"></div></div>
 
 <div id="wachtBord">⏳ Wachten tot je vriend op de andere tegel staat...</div>
+
+<div id="hpBalk"><div id="hpVul"></div></div>
+<div id="hotbar"></div>
+<button id="vuurKnop">🎯</button>
+<div id="schadeFlits"></div>
+<div id="flitsWit"></div>
+<div id="meldingMidden"></div>
+
+<div id="wapenKeuze"><div class="wk-binnen">
+  <h2>⚔️ KIES JE 4 WAPENS</h2>
+  <p>gouden wapens met ✨ zijn EXTRA goed!</p>
+  <div id="wkGrid"></div>
+  <button id="wkKlaar">kies 4 wapens</button>
+</div></div>
 
 <div id="duelMenu"><div class="paneel">
   <h2>⚔️ DUEL!</h2>
@@ -268,6 +303,8 @@ function pinchAfstand(){
   return Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y);
 }
 addEventListener('touchstart', e => {
+  // vingers op knoppen zijn geen kijk-vingers
+  if(e.target.closest && e.target.closest('#hotbar,#vuurKnop,#samenBar,#duelMenu,#wapenKeuze,#joy')) return;
   for(const t of e.changedTouches){
     if(t.clientX > innerWidth/2) kijkVingers.set(t.identifier, {x:t.clientX, y:t.clientY});
   }
@@ -374,7 +411,8 @@ function updateLopen(dt){
     if(slide.snelheid <= 1.6) slide = null;
   } else if(beweegt){
     const nvx = vx/Math.max(1,len), nvz = vz/Math.max(1,len);
-    const snelheid = bukt ? BUK_SNELHEID : (sprint ? SPRINT_SNELHEID : LOOP_SNELHEID);
+    // war horn = sneller, bevroren = trager, schild vasthouden = trager
+    const snelheid = (bukt ? BUK_SNELHEID : (sprint ? SPRINT_SNELHEID : LOOP_SNELHEID)) * vaartFactor();
     // W = altijd vooruit waar je kijkt
     camera.position.x += (nvx*cos + nvz*sin) * snelheid * dt;
     camera.position.z += (-nvx*sin + nvz*cos) * snelheid * dt;
@@ -384,11 +422,22 @@ function updateLopen(dt){
   camera.position.x = Math.max(w.cx - w.half + MARGE, Math.min(w.cx + w.half - MARGE, camera.position.x));
   camera.position.z = Math.max(-w.half + MARGE, Math.min(w.half - MARGE, camera.position.z));
 
-  // springen (spatie) + zwaartekracht
-  if(toets['Space'] && opGrond && !slide){ velY = 5.2; opGrond = false; }
+  // springen (spatie) + zwaartekracht — met fists/daggers kun je DUBBEL springen!
+  const springNu = !!toets['Space'];
+  if(springNu && !springWas && !slide){
+    if(opGrond){ velY = 5.2; opGrond = false; }
+    else if(!dubbelGebruikt && wapenGeeftDubbelsprong()){ velY = 5.0; dubbelGebruikt = true; }
+  }
+  springWas = springNu;
   velY -= 14 * dt;
   voetY += velY * dt;
-  if(voetY <= 0){ voetY = 0; velY = 0; opGrond = true; }
+  if(voetY <= 0){ voetY = 0; velY = 0; opGrond = true; dubbelGebruikt = false; }
+  // launch pads: erop stappen = gelanceerd! 🚀
+  if(voetY <= 0.05 && velY <= 0.01){
+    for(const pad of allePads()){
+      if(Math.hypot(camera.position.x - pad.x, camera.position.z - pad.z) < 0.85){ velY = 10; opGrond = false; break; }
+    }
+  }
 
   // ooghoogte: staan 1.6 / bukken 0.95 / sliden 0.65 — glijdt er soepel heen
   const doelOog = slide ? 0.65 : (bukt ? 0.95 : OOG);
@@ -411,6 +460,7 @@ function loop(t){
     updateLamp(t);
     updateAnderen(dt);
     updateDuelMenu();
+    updateWapens(dt, t);
     camera.rotation.set(0,0,0);
     camera.rotateY(yaw);
     camera.rotateX(pitch);
@@ -533,9 +583,15 @@ function maakSpelerBeeld(p){
   naamSprite.scale.set(1.1, 0.28, 1);
   naamSprite.position.y = 2.0;
   groep.add(naamSprite);
+  // hp-balkje boven het hoofd
+  const hpAchter = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.09), new THREE.MeshBasicMaterial({color:0x3a0000, side:THREE.DoubleSide}));
+  hpAchter.position.y = 1.82;
+  const hpVoor = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.09), new THREE.MeshBasicMaterial({color:0x2ecc71, side:THREE.DoubleSide}));
+  hpVoor.position.set(0, 1.82, 0.012);
+  groep.add(hpAchter); groep.add(hpVoor);
   groep.position.set(p.x, p.y, p.z);
   scene.add(groep);
-  return {groep, bord, doel:{x:p.x, y:p.y, z:p.z, oog:p.oog}, heeftAvatar: !!p.avatar};
+  return {groep, bord, doel:{x:p.x, y:p.y, z:p.z, oog:p.oog}, heeftAvatar: !!p.avatar, hpVoor, padMeshes:[], rookMeshes:[], pads:[]};
 }
 
 function verwerkSpelers(lijst){
@@ -546,9 +602,20 @@ function verwerkSpelers(lijst){
     if(!a){ a = maakSpelerBeeld(p); anderen.set(p.sessie, a); }
     if(!a.heeftAvatar && p.avatar){ zetAvatarOpBord(a.bord.material, p.avatar); a.heeftAvatar = true; }
     a.doel = {x:p.x, y:p.y, z:p.z, oog:p.oog};
+    // duel-info: hp-balkje, launch pads, rookwolken + aanvallen op mij
+    if(a.hpVoor) a.hpVoor.scale.x = Math.max(0.02, (typeof p.hp === 'number' ? p.hp : 100) / 100);
+    a.pads = p.pads || [];
+    syncMeshes(a.padMeshes, a.pads, maakPadMesh);
+    syncMeshes(a.rookMeshes, (p.rook || []).filter(r => r.tot > Date.now()), maakRookMesh);
+    verwerkEvents(p.events || []);
   }
   for(const [sessie, a] of anderen){
-    if(!gezien.has(sessie)){ scene.remove(a.groep); anderen.delete(sessie); }
+    if(!gezien.has(sessie)){
+      scene.remove(a.groep);
+      (a.padMeshes||[]).forEach(m => scene.remove(m));
+      (a.rookMeshes||[]).forEach(m => scene.remove(m));
+      anderen.delete(sessie);
+    }
   }
   // sta ik op een tegel en mijn vriend op de ándere (of is hij al in de
   // witte map)? → het duel begint!
@@ -657,7 +724,294 @@ function startDuelArena(mijnTegelNr){
   camera.position.set(ARENA_X + kant*5, OOG, 0);
   yaw = (kant === -1) ? -Math.PI/2 : Math.PI/2;   // kijk richting de ander
   pitch = 0; velY = 0; voetY = 0; oogNu = OOG; slide = null;
+  // vers de strijd in: vol leven + wapens kiezen!
+  mijnSpawnKant = kant;
+  mijnHp = 100; mijnEvents = []; mijnPads = []; mijnRook = [];
+  boostTot = 0; bevrorenTot = 0;
+  toonWapenKeuze();
   document.getElementById('samenInfo').textContent = '⚔️ DUEL! Jullie zijn in de witte map!';
+}
+
+// ═══════════════ WAPENS ⚔️ (alleen in de witte duel-map) ═══════════════
+// Gouden wapens (✨) zijn EXTRA goed — Brian's regel!
+const WAPENS = {
+  flamethrower:   {n:'Flamethrower', e:'🔥', goud:true, soort:'vlam', dmg:3, tempo:90},
+  grenadelauncher:{n:'Grenade Launcher', e:'🧨', goud:true, soort:'schiet', dmg:40, tempo:1500, snel:16, boog:true, straal:3, kleur:0xff8800},
+  medkit:         {n:'Medkit', e:'💊', goud:true, soort:'heal', heal:35, tempo:6000},
+  paintball:      {n:'Paintball Gun', e:'🎨', goud:true, soort:'schiet', dmg:13, tempo:210, snel:28, kleur:0xff44aa},
+  slingshot:      {n:'Slingshot', e:'🪀', goud:true, soort:'schiet', dmg:22, tempo:550, snel:22, boog:true, kleur:0xff3333},
+  assault:  {n:'Assault Rifle', e:'🔫', soort:'schiet', dmg:10, tempo:170, snel:32, kleur:0xffee66},
+  uzi:      {n:'Uzi', e:'⚡', soort:'schiet', dmg:6, tempo:110, snel:30, kleur:0xccff33},
+  sniper:   {n:'Sniper', e:'🎯', soort:'schiet', dmg:55, tempo:1700, snel:60, kleur:0x66ccff},
+  shotgun:  {n:'Shotgun', e:'💥', soort:'schiet', dmg:8, tempo:950, snel:26, spreid:5, kleur:0xffaa44},
+  revolver: {n:'Revolver', e:'🤠', soort:'schiet', dmg:18, tempo:520, snel:34, kleur:0xdddddd},
+  bow:      {n:'Bow', e:'🏹', soort:'schiet', dmg:28, tempo:900, snel:24, boog:true, kleur:0x99ff99},
+  freezeray:{n:'Freeze Ray', e:'❄️', soort:'schiet', dmg:8, tempo:350, snel:26, bevries:true, kleur:0x88eeff},
+  katana:   {n:'Katana', e:'🗡️', soort:'vecht', dmg:24, tempo:450, bereik:2.4},
+  knife:    {n:'Knife', e:'🔪', soort:'vecht', dmg:15, tempo:300, bereik:2.1},
+  daggers:  {n:'Daggers', e:'⚔️', soort:'vecht', dmg:13, tempo:260, bereik:2.1, dubbel:true},
+  fists:    {n:'Fists', e:'👊', soort:'vecht', dmg:11, tempo:260, bereik:1.9, dubbel:true},
+  battleaxe:{n:'Battle Axe', e:'🪓', soort:'vecht', dmg:32, tempo:850, bereik:2.5},
+  grenade:  {n:'Grenade', e:'💣', soort:'gooi', effect:'boem', dmg:35, straal:3, tempo:2500},
+  molotov:  {n:'Molotov', e:'🍾', soort:'gooi', effect:'boem', dmg:24, straal:2.6, tempo:2200},
+  flashbang:{n:'Flashbang', e:'🎇', soort:'gooi', effect:'flits', tempo:5000},
+  smoke:    {n:'Smoke Grenade', e:'💨', soort:'gooi', effect:'rook', tempo:8000},
+  jumppad:  {n:'Launch Pad', e:'⏫', soort:'plaats', tempo:900},
+  warhorn:  {n:'War Horn', e:'📯', soort:'toeter', tempo:12000},
+  riotshield:{n:'Riot Shield', e:'🛡️', soort:'schild', tempo:0},
+  rpg:      {n:'RPG', e:'🚀', soort:'schiet', dmg:45, tempo:2100, snel:18, straal:3.5, kleur:0xff5500},
+};
+
+let mijnWapens = [], wapenActief = 0, wapensGekozen = false;
+let mijnHp = 100, mijnSpawnKant = -1;
+let vuren = false, springWas = false, dubbelGebruikt = false;
+let boostTot = 0, bevrorenTot = 0;
+let mijnPads = [], mijnRook = [], mijnEvents = [], eventTeller = 0;
+let verwerkteEvents = new Set();
+const cooldowns = {};
+const kogels = [], boems = [];
+const mijnPadMeshes = [], mijnRookMeshes = [];
+
+function schildActief(){ return huidigeWereld === 'arena' && wapensGekozen && WAPENS[mijnWapens[wapenActief]]?.soort === 'schild'; }
+function wapenGeeftDubbelsprong(){ return huidigeWereld === 'arena' && wapensGekozen && WAPENS[mijnWapens[wapenActief]]?.dubbel === true; }
+function vaartFactor(){
+  const nu = performance.now();
+  return (boostTot > nu ? 1.55 : 1) * (bevrorenTot > nu ? 0.5 : 1) * (schildActief() ? 0.7 : 1);
+}
+function allePads(){
+  const lijst = [...mijnPads];
+  for(const a of anderen.values()) if(a.pads) lijst.push(...a.pads);
+  return lijst;
+}
+
+// ── kies-scherm: 4 wapens uitzoeken ──
+function toonWapenKeuze(){
+  wapensGekozen = false; mijnWapens = [];
+  const grid = document.getElementById('wkGrid'); grid.innerHTML = '';
+  for(const [key, w] of Object.entries(WAPENS)){
+    const t = document.createElement('div');
+    t.className = 'wk-tegel' + (w.goud ? ' goud' : '');
+    t.innerHTML = '<div class="em">' + w.e + '</div>' + w.n + (w.goud ? ' ✨' : '');
+    t.onclick = () => {
+      const i = mijnWapens.indexOf(key);
+      if(i >= 0){ mijnWapens.splice(i, 1); t.classList.remove('gekozen'); }
+      else if(mijnWapens.length < 4){ mijnWapens.push(key); t.classList.add('gekozen'); }
+      document.getElementById('wkKlaar').textContent =
+        mijnWapens.length === 4 ? '⚔️ START HET DUEL!' : ('kies er nog ' + (4 - mijnWapens.length));
+    };
+    grid.appendChild(t);
+  }
+  document.getElementById('wkKlaar').textContent = 'kies 4 wapens';
+  document.getElementById('wapenKeuze').style.display = 'block';
+  if(document.pointerLockElement) document.exitPointerLock();
+}
+document.getElementById('wkKlaar').addEventListener('click', () => {
+  if(mijnWapens.length !== 4) return;
+  wapensGekozen = true; wapenActief = 0;
+  document.getElementById('wapenKeuze').style.display = 'none';
+  bouwHotbar();
+  document.getElementById('hotbar').style.display = 'flex';
+  document.getElementById('hpBalk').style.display = 'block';
+  if(IS_TOUCH) document.getElementById('vuurKnop').style.display = 'flex';
+  if(!IS_TOUCH) renderer.domElement.requestPointerLock();
+});
+function bouwHotbar(){
+  const hb = document.getElementById('hotbar'); hb.innerHTML = '';
+  mijnWapens.forEach((key, i) => {
+    const s = document.createElement('div');
+    s.className = 'hb-slot' + (i === wapenActief ? ' actief' : '');
+    s.title = WAPENS[key].n;
+    s.textContent = WAPENS[key].e;
+    s.onclick = () => zetWapen(i);
+    hb.appendChild(s);
+  });
+}
+function zetWapen(i){
+  wapenActief = i;
+  [...document.getElementById('hotbar').children].forEach((el, j) => el.classList.toggle('actief', j === i));
+}
+addEventListener('keydown', e => {
+  if(!wapensGekozen || duelMenuOpen) return;
+  const m = {Digit1:0, Digit2:1, Digit3:2, Digit4:3}[e.code];
+  if(m !== undefined && m < mijnWapens.length) zetWapen(m);
+});
+
+// ── vuren: muisknop (pc) of 🎯-knop (telefoon) ──
+addEventListener('mousedown', e => { if(pointerLocked && wapensGekozen && huidigeWereld === 'arena' && e.button === 0) vuren = true; });
+addEventListener('mouseup', e => { if(e.button === 0) vuren = false; });
+const vuurKnopEl = document.getElementById('vuurKnop');
+vuurKnopEl.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); vuren = true; }, {passive:false});
+vuurKnopEl.addEventListener('touchend', () => { vuren = false; });
+
+function gebruikWapen(t){
+  const key = mijnWapens[wapenActief]; if(!key) return;
+  const w = WAPENS[key];
+  if(w.soort === 'schild') return;   // schild werkt door hem vast te houden
+  if(t - (cooldowns[key] || 0) < w.tempo) return;
+  cooldowns[key] = t;
+  const sinY = Math.sin(yaw), cosY = Math.cos(yaw), cosP = Math.cos(pitch), sinP = Math.sin(pitch);
+  const richt = {x: -sinY*cosP, y: sinP, z: -cosY*cosP};
+  if(w.soort === 'schiet' || w.soort === 'gooi' || w.soort === 'vlam'){
+    const n = w.spreid || (w.soort === 'vlam' ? 3 : 1);
+    for(let i = 0; i < n; i++) spawnKogel(richt, w, (w.spreid || w.soort === 'vlam') ? 0.09 : 0);
+  } else if(w.soort === 'vecht'){
+    for(const [sessie, a] of anderen){
+      const dx = a.groep.position.x - camera.position.x, dz = a.groep.position.z - camera.position.z;
+      const afst = Math.hypot(dx, dz);
+      if(afst < (w.bereik || 2) && ((-sinY*dx - cosY*dz) / (afst || 1)) > 0.3) stuurEvent(sessie, 'schade', w.dmg);
+    }
+  } else if(w.soort === 'heal'){
+    mijnHp = Math.min(100, mijnHp + w.heal); melding('💚 +' + w.heal + ' HP!');
+  } else if(w.soort === 'plaats'){
+    mijnPads.push({x: camera.position.x - sinY*1.2, z: camera.position.z - cosY*1.2});
+    if(mijnPads.length > 2) mijnPads.shift();
+    melding('⏫ Launch pad geplaatst!');
+  } else if(w.soort === 'toeter'){
+    boostTot = t + 5000; melding('📯 SNELHEIDS-BOOST!');
+  }
+}
+
+function spawnKogel(richt, w, spreiding){
+  const vlam = w.soort === 'vlam', gooi = w.soort === 'gooi';
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(vlam ? 0.16 : (gooi ? 0.12 : 0.07), 8, 8),
+    new THREE.MeshBasicMaterial({color: w.kleur || (vlam ? 0xff7700 : (gooi ? 0x556655 : 0xffffff)), transparent: vlam, opacity: vlam ? 0.85 : 1})
+  );
+  mesh.position.set(camera.position.x + richt.x*0.5, camera.position.y - 0.15, camera.position.z + richt.z*0.5);
+  scene.add(mesh);
+  const snel = w.snel || (gooi ? 13 : (vlam ? 9 : 25));
+  kogels.push({
+    mesh,
+    vx: (richt.x + (Math.random()-0.5)*spreiding*2) * snel,
+    vy: (richt.y + (Math.random()-0.5)*spreiding) * snel + ((gooi || w.boog) ? 2.5 : 0),
+    vz: (richt.z + (Math.random()-0.5)*spreiding*2) * snel,
+    boog: gooi || !!w.boog, dmg: w.dmg || 0, straal: w.straal, bevries: !!w.bevries,
+    effect: gooi ? w.effect : undefined,
+    ttl: vlam ? 0.4 : ((gooi || w.boog) ? 4 : 2), leeftijd: 0
+  });
+}
+
+function ontplof(x, z, straal, dmg){
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.6, 10, 10), new THREE.MeshBasicMaterial({color: 0xff8800, transparent: true, opacity: 0.7}));
+  mesh.position.set(x, 0.7, z); scene.add(mesh);
+  boems.push({mesh, leeftijd: 0});
+  if(dmg) for(const [sessie, a] of anderen){
+    if(Math.hypot(a.groep.position.x - x, a.groep.position.z - z) < straal + 0.6) stuurEvent(sessie, 'schade', dmg);
+  }
+}
+
+function stuurEvent(doel, soort, schade){
+  mijnEvents.push({id: 'e' + (++eventTeller) + '_' + mijnSessie, doel, soort, schade: schade || 0});
+  if(mijnEvents.length > 8) mijnEvents.shift();
+  if(soort === 'schade') melding('🎯 RAAK!');
+}
+
+function verwerkEvents(lijst){
+  for(const ev of lijst){
+    if(ev.doel !== mijnSessie || verwerkteEvents.has(ev.id)) continue;
+    verwerkteEvents.add(ev.id);
+    if(verwerkteEvents.size > 400) verwerkteEvents = new Set([...verwerkteEvents].slice(-100));
+    if(ev.soort === 'schade' || ev.soort === 'freeze'){
+      if(schildActief()){ melding('🛡️ GEBLOKT!'); continue; }
+      mijnHp -= ev.schade;
+      toonSchadeFlits();
+      if(ev.soort === 'freeze'){ bevrorenTot = performance.now() + 2000; melding('❄️ BEVROREN!'); }
+      if(mijnHp <= 0) dood();
+    }
+    if(ev.soort === 'flits') toonFlitsWit();
+  }
+}
+
+function dood(){
+  mijnHp = 100;
+  camera.position.set(ARENA_X + mijnSpawnKant*5, OOG, 0);
+  velY = 0; voetY = 0;
+  melding('💀 Je bent verslagen! Nieuwe ronde!');
+}
+
+// ── effect-schermpjes + hulpjes ──
+let meldTimer = null;
+function melding(tekst){
+  const el = document.getElementById('meldingMidden');
+  el.textContent = tekst; el.style.opacity = 1;
+  clearTimeout(meldTimer);
+  meldTimer = setTimeout(() => { el.style.opacity = 0; }, 1800);
+}
+function toonSchadeFlits(){
+  const el = document.getElementById('schadeFlits');
+  el.style.opacity = 1; setTimeout(() => { el.style.opacity = 0; }, 260);
+}
+function toonFlitsWit(){
+  const el = document.getElementById('flitsWit');
+  el.style.opacity = 1; melding('🎇 VERBLIND!');
+  setTimeout(() => { el.style.opacity = 0; }, 3000);   // 3 seconden niks zien!
+}
+function maakPadMesh(){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.12, 1.1), new THREE.MeshBasicMaterial({color: 0x33e0ff}));
+  m.userData.hoogte = 0.06; return m;
+}
+function maakRookMesh(){
+  const g = new THREE.Group();
+  for(let i = 0; i < 7; i++){
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.9 + Math.random()*0.6, 8, 8), new THREE.MeshBasicMaterial({color: 0x9aa0a8, transparent: true, opacity: 0.88}));
+    b.position.set((Math.random()-0.5)*2.2, 0.7 + Math.random()*1.6, (Math.random()-0.5)*2.2);
+    g.add(b);
+  }
+  g.userData.hoogte = 0; return g;
+}
+function syncMeshes(arr, data, maak){
+  while(arr.length > data.length) scene.remove(arr.pop());
+  while(arr.length < data.length){ const m = maak(); scene.add(m); arr.push(m); }
+  data.forEach((d, i) => arr[i].position.set(d.x, arr[i].userData.hoogte || 0, d.z));
+}
+
+// ── elke frame: vuren, kogels bewegen, raak-checks, effecten ──
+function updateWapens(dt, t){
+  if(huidigeWereld !== 'arena' || !wapensGekozen) vuren = false;
+  if(vuren) gebruikWapen(t);
+  for(let i = kogels.length - 1; i >= 0; i--){
+    const k = kogels[i];
+    k.leeftijd += dt;
+    if(k.boog) k.vy -= 12 * dt;
+    k.mesh.position.x += k.vx * dt; k.mesh.position.y += k.vy * dt; k.mesh.position.z += k.vz * dt;
+    let weg = k.leeftijd > k.ttl;
+    if(!weg && k.dmg && !k.effect){          // raak ik iemand rechtstreeks?
+      for(const [sessie, a] of anderen){
+        const g = a.groep.position;
+        if(Math.hypot(k.mesh.position.x - g.x, k.mesh.position.z - g.z) < 0.75 && k.mesh.position.y > g.y && k.mesh.position.y < g.y + 2){
+          if(k.straal) ontplof(k.mesh.position.x, k.mesh.position.z, k.straal, k.dmg);
+          else stuurEvent(sessie, k.bevries ? 'freeze' : 'schade', k.dmg);
+          weg = true; break;
+        }
+      }
+    }
+    if(!weg && k.mesh.position.y <= 0.06){   // op de grond geland
+      if(k.effect === 'boem' || (k.straal && !k.effect)) ontplof(k.mesh.position.x, k.mesh.position.z, k.straal || 2.5, k.dmg);
+      if(k.effect === 'rook'){
+        mijnRook.push({x: k.mesh.position.x, z: k.mesh.position.z, tot: Date.now() + 15000});
+        if(mijnRook.length > 2) mijnRook.shift();
+      }
+      if(k.effect === 'flits'){
+        ontplof(k.mesh.position.x, k.mesh.position.z, 0, 0);   // wit-gele knal-visual
+        for(const [sessie, a] of anderen){
+          if(Math.hypot(a.groep.position.x - k.mesh.position.x, a.groep.position.z - k.mesh.position.z) < 6) stuurEvent(sessie, 'flits', 0);
+        }
+      }
+      weg = true;
+    }
+    if(weg){ scene.remove(k.mesh); kogels.splice(i, 1); }
+  }
+  for(let i = boems.length - 1; i >= 0; i--){
+    const b = boems[i];
+    b.leeftijd += dt;
+    b.mesh.scale.setScalar(1 + b.leeftijd * 6);
+    b.mesh.material.opacity = Math.max(0, 0.7 - b.leeftijd * 1.4);
+    if(b.leeftijd > 0.5){ scene.remove(b.mesh); boems.splice(i, 1); }
+  }
+  mijnRook = mijnRook.filter(r => r.tot > Date.now());
+  syncMeshes(mijnPadMeshes, mijnPads, maakPadMesh);
+  syncMeshes(mijnRookMeshes, mijnRook, maakRookMesh);
+  document.getElementById('hpVul').style.width = Math.max(0, mijnHp) + '%';
 }
 
 // ── je eigen poppetje met jouw skin (zichtbaar zodra het spel start) ──
@@ -678,7 +1032,9 @@ async function samenTik(){
     kamer: samenCode, sessie: mijnSessie, naam: mijnNaam,
     x: camera.position.x, z: camera.position.z, y: voetY,
     yaw: yaw, oog: oogNu,
-    tegel: opWelkeTegel() || 0, wereld: huidigeWereld
+    tegel: opWelkeTegel() || 0, wereld: huidigeWereld,
+    hp: mijnHp, schild: schildActief(),
+    events: mijnEvents, pads: mijnPads, rook: mijnRook
   };
   // avatar af en toe meesturen (de server onthoudt hem)
   if(mijnAvatar && (samenTel === 1 || samenTel % 25 === 0)) body.avatar = mijnAvatar;
