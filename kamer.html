@@ -105,7 +105,7 @@ function maakTegel(x, z){
   g.fillStyle = '#cfd4dc'; g.fillRect(6,6,116,116);          // de tegel zelf
   g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(12,12,34,12);  // glansje
   const tegel = new THREE.Mesh(
-    new THREE.BoxGeometry(1.2, 0.06, 1.2),
+    new THREE.BoxGeometry(2.2, 0.06, 2.2),
     new THREE.MeshStandardMaterial({map: new THREE.CanvasTexture(c), roughness: 0.3})
   );
   tegel.position.set(x, 0.03, z);     // ligt net óp het hout
@@ -113,8 +113,9 @@ function maakTegel(x, z){
   scene.add(tegel);
   return tegel;
 }
-const tegel1 = maakTegel(-3, -2);     // linksvoor in de kamer
-const tegel2 = maakTegel(3.5, -4);    // rechtsachter
+// twee grote tegels naast elkaar, met een stukje vloer ertussen
+const tegel1 = maakTegel(-1.7, -2);   // linker tegel
+const tegel2 = maakTegel(1.7, -2);    // rechter tegel
 
 const plafond = new THREE.Mesh(
   new THREE.PlaneGeometry(KAMER, KAMER),
@@ -248,10 +249,10 @@ function updateLopen(dt){
   const len = Math.hypot(vx, vz);
   if(len > 0.01){
     vx /= Math.max(1,len); vz /= Math.max(1,len);
-    // meebewegen met de kijkrichting
+    // meebewegen met de kijkrichting: W = altijd vooruit waar je kijkt
     const sin = Math.sin(yaw), cos = Math.cos(yaw);
-    camera.position.x += (vx*cos - vz*sin) * SNELHEID * dt;
-    camera.position.z += (vx*sin + vz*cos) * SNELHEID * dt;
+    camera.position.x += (vx*cos + vz*sin) * SNELHEID * dt;
+    camera.position.z += (-vx*sin + vz*cos) * SNELHEID * dt;
     // niet door de muren heen!
     const grens = KAMER/2 - MARGE;
     camera.position.x = Math.max(-grens, Math.min(grens, camera.position.x));
