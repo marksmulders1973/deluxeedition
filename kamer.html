@@ -26,6 +26,10 @@
   }
   #joy{position:fixed;left:18px;bottom:22px;width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,0.10);border:2px solid rgba(255,255,255,0.25);z-index:15}
   #joyStick{position:absolute;left:35px;top:35px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.45)}
+
+  /* samen spelen: deel-balkje rechtsonder */
+  #samenBar{position:fixed;right:14px;bottom:14px;z-index:12;display:none;align-items:center;gap:10px;background:rgba(0,0,0,0.55);padding:8px 12px;border-radius:12px;color:#ddd;font-size:13px;max-width:70vw}
+  #samenKnop{padding:8px 14px;font-size:14px;font-weight:bold;color:#fff;border:none;border-radius:10px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);cursor:pointer}
 </style>
 </head>
 <body>
@@ -33,7 +37,7 @@
 <div id="start">
   <h1>🚪 DE KAMER</h1>
   <p><b>Stap 1:</b> een lege kamer. Loop maar eens rond...</p>
-  <p>💻 WASD = lopen · Shift = sprinten · spatie = springen<br>C = bukken (of tijdens het lopen: sliden! 💨) · muis = kijken<br>📱 rondje links = lopen, vegen rechts = kijken</p>
+  <p>💻 WASD = lopen · Shift = sprinten · spatie = springen<br>C = bukken (of tijdens het lopen: sliden! 💨) · muis = kijken<br>📱 rondje links = lopen, vegen rechts = kijken<br>🔗 onderin: deel de link en speel SAMEN met een vriend!</p>
   <button class="knop">▶ GA NAAR BINNEN</button>
 </div>
 
@@ -41,6 +45,11 @@
 <div id="stap">🚪 DE KAMER — stap 1</div>
 
 <div id="joy" class="touch-ui"><div id="joyStick"></div></div>
+
+<div id="samenBar">
+  <button id="samenKnop">🔗 SPEEL SAMEN</button>
+  <span id="samenInfo">kopieer de link, stuur naar een vriend!</span>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -308,6 +317,7 @@ function loop(t){
   if(gestart){
     updateLopen(dt);
     updateLamp(t);
+    updateAnderen(dt);
     camera.rotation.set(0,0,0);
     camera.rotateY(yaw);
     camera.rotateX(pitch);
@@ -328,9 +338,151 @@ document.getElementById('start').addEventListener('click', () => {
   document.getElementById('start').style.display = 'none';
   document.getElementById('hud').style.display = 'block';
   document.getElementById('stap').style.display = 'block';
+  document.getElementById('samenBar').style.display = 'flex';
   gestart = true;
+  if(samenActief) startSamen();   // via een samen-link binnengekomen? meteen verbinden!
   if(!IS_TOUCH) renderer.domElement.requestPointerLock();
 });
+
+// ═══════════════ SAMEN SPELEN 🤝 ═══════════════
+// Deel de link onderin → je vriend opent hem → jullie zien
+// elkaar écht lopen (met je eigen avatar-skin!).
+const mijnNaam = (localStorage.getItem('deluxe-speler') || 'gast').slice(0,20) || 'gast';
+const mijnSessie = mijnNaam.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,20) + '-' + Math.random().toString(36).slice(2,6);
+const mijnAvatar = localStorage.getItem('deluxe-avatar-svg') || '';
+
+function maakSamenCode(){
+  const letters = 'abcdefghjkmnpqrstuvwxyz23456789';
+  let s = ''; for(let i=0;i<6;i++) s += letters[Math.floor(Math.random()*letters.length)];
+  return s;
+}
+const urlSamen = (new URLSearchParams(location.search).get('samen') || '').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,10);
+let samenCode = urlSamen || maakSamenCode();
+let samenActief = urlSamen.length >= 4;   // via de link = meteen meedoen
+
+document.getElementById('samenKnop').addEventListener('click', async () => {
+  const link = location.origin + '/kamer.html?samen=' + samenCode;
+  samenActief = true;
+  startSamen();
+  try{
+    await navigator.clipboard.writeText(link);
+    document.getElementById('samenInfo').textContent = '✅ Link gekopieerd! Stuur hem naar je vriend.';
+  }catch{
+    prompt('Kopieer deze link en stuur hem naar je vriend:', link);
+  }
+});
+
+// ── de andere spelers in 3D ──
+const anderen = new Map();   // sessie → {groep, bord, doel, heeftAvatar}
+
+function zetAvatarOpBord(mat, svg){
+  const teken = (img) => {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 480;
+    const g = c.getContext('2d');
+    if(img){
+      const s = Math.min(256/img.width, 480/img.height);
+      const w = img.width*s, h = img.height*s;
+      g.drawImage(img, (256-w)/2, (480-h)/2, w, h);
+    } else {
+      // geen avatar? dan een simpel rood/blauw poppetje
+      g.fillStyle = '#3b82ff'; g.beginPath(); g.arc(128,90,60,0,7); g.fill();
+      g.fillStyle = '#ff3b3b'; g.fillRect(78,165,100,190);
+      g.fillStyle = '#fff'; g.beginPath(); g.arc(105,78,11,0,7); g.arc(151,78,11,0,7); g.fill();
+      g.fillStyle = '#000'; g.beginPath(); g.arc(105,78,4,0,7); g.arc(151,78,4,0,7); g.fill();
+      g.strokeStyle = '#fff'; g.lineWidth = 5;
+      g.beginPath(); g.arc(128,108,24,0.25,Math.PI-0.25); g.stroke();
+    }
+    mat.map = new THREE.CanvasTexture(c);
+    mat.needsUpdate = true;
+  };
+  if(svg && svg.startsWith('<svg')){
+    const img = new Image();
+    img.onload = () => teken(img);
+    img.onerror = () => teken(null);
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+  } else teken(null);
+}
+
+function maakSpelerBeeld(p){
+  const groep = new THREE.Group();
+  // het lijf: een bordje met de avatar-skin erop (draait altijd naar jou toe)
+  const mat = new THREE.MeshBasicMaterial({transparent:true, side:THREE.DoubleSide});
+  const bord = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 1.75), mat);
+  bord.position.y = 0.875;
+  groep.add(bord);
+  zetAvatarOpBord(mat, p.avatar);
+  // naam boven het hoofd
+  const nc = document.createElement('canvas'); nc.width = 256; nc.height = 64;
+  const ng = nc.getContext('2d');
+  ng.fillStyle = 'rgba(0,0,0,0.6)'; ng.fillRect(0,0,256,64);
+  ng.font = 'bold 34px Arial'; ng.textAlign = 'center'; ng.fillStyle = '#fff';
+  ng.fillText(String(p.naam).slice(0,12), 128, 44);
+  const naamSprite = new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(nc), transparent:true}));
+  naamSprite.scale.set(1.1, 0.28, 1);
+  naamSprite.position.y = 2.0;
+  groep.add(naamSprite);
+  groep.position.set(p.x, p.y, p.z);
+  scene.add(groep);
+  return {groep, bord, doel:{x:p.x, y:p.y, z:p.z, oog:p.oog}, heeftAvatar: !!p.avatar};
+}
+
+function verwerkSpelers(lijst){
+  const gezien = new Set();
+  for(const p of lijst){
+    gezien.add(p.sessie);
+    let a = anderen.get(p.sessie);
+    if(!a){ a = maakSpelerBeeld(p); anderen.set(p.sessie, a); }
+    if(!a.heeftAvatar && p.avatar){ zetAvatarOpBord(a.bord.material, p.avatar); a.heeftAvatar = true; }
+    a.doel = {x:p.x, y:p.y, z:p.z, oog:p.oog};
+  }
+  for(const [sessie, a] of anderen){
+    if(!gezien.has(sessie)){ scene.remove(a.groep); anderen.delete(sessie); }
+  }
+  const n = lijst.length + 1;
+  document.getElementById('samenInfo').textContent =
+    n > 1 ? ('👥 ' + n + ' spelers in de kamer!') : 'wachten op je vriend...';
+}
+
+function updateAnderen(dt){
+  for(const a of anderen.values()){
+    const g = a.groep, f = Math.min(1, 10*dt);   // soepel naar de nieuwste plek glijden
+    g.position.x += (a.doel.x - g.position.x) * f;
+    g.position.y += (a.doel.y - g.position.y) * f;
+    g.position.z += (a.doel.z - g.position.z) * f;
+    const schaal = Math.max(0.4, a.doel.oog / OOG);   // bukken/sliden = kleiner
+    g.scale.y += (schaal - g.scale.y) * f;
+    // altijd met het gezicht naar jou toe
+    g.rotation.y = Math.atan2(camera.position.x - g.position.x, camera.position.z - g.position.z);
+  }
+}
+
+// ── elke 0,4 sec: mijn plek sturen + de anderen ophalen ──
+let samenTimer = null, samenTel = 0;
+function startSamen(){
+  if(samenTimer) return;
+  document.getElementById('samenInfo').textContent = 'wachten op je vriend...';
+  samenTimer = setInterval(samenTik, 400);
+}
+async function samenTik(){
+  if(!gestart) return;
+  samenTel++;
+  const body = {
+    kamer: samenCode, sessie: mijnSessie, naam: mijnNaam,
+    x: camera.position.x, z: camera.position.z, y: voetY,
+    yaw: yaw, oog: oogNu
+  };
+  // avatar af en toe meesturen (de server onthoudt hem)
+  if(mijnAvatar && (samenTel === 1 || samenTel % 25 === 0)) body.avatar = mijnAvatar;
+  try{
+    const r = await fetch('/api/kamer', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if(Array.isArray(j.spelers)) verwerkSpelers(j.spelers);
+  }catch{}
+}
 </script>
 </body>
 </html>
