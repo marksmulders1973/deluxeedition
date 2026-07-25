@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>DE KAMER — DELUXE EDITION</title>
+<title>DUELS — DELUXE EDITION</title>
 <style>
   html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#000;font-family:'Segoe UI',Arial,sans-serif;-webkit-user-select:none;user-select:none;touch-action:none}
   canvas{display:block}
@@ -35,14 +35,14 @@
 <body>
 
 <div id="start">
-  <h1>🚪 DE KAMER</h1>
-  <p><b>Stap 1:</b> een lege kamer. Loop maar eens rond...</p>
+  <h1>⚔️ DUELS</h1>
+  <p>Loop rond, deel de link, speel samen...</p>
   <p>💻 WASD = lopen · Shift = sprinten · spatie = springen<br>C = bukken (of tijdens het lopen: sliden! 💨) · muis = kijken<br>📱 rondje links = lopen, vegen rechts = kijken<br>🔗 onderin: deel de link en speel SAMEN met een vriend!</p>
   <button class="knop">▶ GA NAAR BINNEN</button>
 </div>
 
 <div id="hud"><a href="index.html">← deluxeedition.nl</a></div>
-<div id="stap">🚪 DE KAMER — stap 1</div>
+<div id="stap">⚔️ DUELS</div>
 
 <div id="joy" class="touch-ui"><div id="joyStick"></div></div>
 
@@ -311,6 +311,7 @@ function updateLopen(dt){
 }
 
 // ── game-loop ──
+const CAMERA_AFSTAND = 3.0;   // zo ver hangt de camera achter je poppetje
 function loop(t){
   requestAnimationFrame(loop);
   const dt = Math.min((t - vorigeTijd)/1000, 0.05); vorigeTijd = t;
@@ -321,6 +322,24 @@ function loop(t){
     camera.rotation.set(0,0,0);
     camera.rotateY(yaw);
     camera.rotateX(pitch);
+
+    // ── je eigen skin in beeld: derde persoon, net als Roblox ──
+    // camera.position = waar je poppetje STAAT; voor het renderen
+    // schuift de camera even naar achteren, daarna weer terug.
+    const px = camera.position.x, py = camera.position.y, pz = camera.position.z;
+    mijnBeeld.groep.visible = true;
+    mijnBeeld.groep.position.set(px, voetY, pz);
+    mijnBeeld.groep.scale.y = Math.max(0.4, oogNu / OOG);   // bukken/sliden zie je aan jezelf!
+    const grensC = KAMER/2 - 0.25;
+    const cx = Math.max(-grensC, Math.min(grensC, px + Math.sin(yaw)*Math.cos(pitch)*CAMERA_AFSTAND));
+    const cz = Math.max(-grensC, Math.min(grensC, pz + Math.cos(yaw)*Math.cos(pitch)*CAMERA_AFSTAND));
+    const cy = Math.max(0.35, Math.min(HOOG-0.25, py - Math.sin(pitch)*CAMERA_AFSTAND + 0.35));
+    camera.position.set(cx, cy, cz);
+    camera.lookAt(px, py, pz);
+    mijnBeeld.groep.rotation.y = Math.atan2(cx - px, cz - pz);   // skin naar de camera toe
+    renderer.render(scene, camera);
+    camera.position.set(px, py, pz);   // terug naar de speler-plek (physics + netwerk)
+    return;
   }
   renderer.render(scene, camera);
 }
@@ -455,6 +474,10 @@ function updateAnderen(dt){
     g.rotation.y = Math.atan2(camera.position.x - g.position.x, camera.position.z - g.position.z);
   }
 }
+
+// ── je eigen poppetje met jouw skin (zichtbaar zodra het spel start) ──
+const mijnBeeld = maakSpelerBeeld({sessie:'ik', naam:mijnNaam, x:0, y:0, z:0, oog:OOG, avatar:mijnAvatar});
+mijnBeeld.groep.visible = false;
 
 // ── elke 0,4 sec: mijn plek sturen + de anderen ophalen ──
 let samenTimer = null, samenTel = 0;
