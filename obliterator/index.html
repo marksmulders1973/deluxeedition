@@ -145,10 +145,25 @@
         try {
           const vibe = await fetch("/api/vibes?naam=" + encodeURIComponent(naam)).then(r => r.json());
           if (vibe && vibe.naam) {
-            document.getElementById("vibe-emoji").textContent = vibe.emoji || "✨";
-            document.getElementById("vibe-naam").textContent  = vibe.naam;
+            if (Array.isArray(vibe.meerdere) && vibe.meerdere.length) {
+              // 🎁 ALLE VIBES in één keer — dubbelen overslaan
+              const kast = JSON.parse(localStorage.getItem("deluxe-mijn-vibes") || "[]");
+              let nieuw = 0;
+              vibe.meerdere.forEach(v => {
+                if (!kast.some(k => k.naam === v.naam)) {
+                  kast.unshift({ emoji: v.emoji, naam: v.naam, wanneer: new Date().toLocaleString("nl") });
+                  nieuw++;
+                }
+              });
+              localStorage.setItem("deluxe-mijn-vibes", JSON.stringify(kast.slice(0, 60)));
+              document.getElementById("vibe-emoji").textContent = "🎁";
+              document.getElementById("vibe-naam").textContent  = "ALLE VIBES! (+" + nieuw + ")";
+            } else {
+              document.getElementById("vibe-emoji").textContent = vibe.emoji || "✨";
+              document.getElementById("vibe-naam").textContent  = vibe.naam;
+              aanVibekast(vibe);
+            }
             document.getElementById("vibe-popup").style.display = "flex";
-            aanVibekast(vibe);
             fetch("/api/vibes?naam=" + encodeURIComponent(naam), { method:"DELETE" }).catch(()=>{});
           }
         } catch {}

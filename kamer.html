@@ -39,6 +39,17 @@
   #duelBot{background:linear-gradient(135deg,#1f9d55,#2ecc71)}
   #duelMenu .tip{color:#8892a6;font-size:12px;margin-top:8px}
 
+  /* 🤝 vriend-paneel: code delen of intypen (werkt op 2 computers!) */
+  #vriendPaneel{display:none;border-top:1px solid #2a2a3a;margin-top:12px;padding-top:12px}
+  .vp-kop{color:#8892a6;font-size:11px;font-weight:bold;letter-spacing:2px}
+  #vpCode{color:#ffd700;font-size:34px;font-weight:900;letter-spacing:7px;margin:6px 0;text-shadow:0 0 14px rgba(255,215,0,0.5);user-select:all}
+  .vp-uitleg{color:#aab;font-size:12px;line-height:1.5;margin-bottom:8px}
+  #vpWacht{background:linear-gradient(135deg,#1f9d55,#2ecc71)}
+  .vp-of{color:#556;font-size:11px;font-weight:bold;margin:8px 0 2px}
+  #vpInvoer{display:block;width:240px;margin:8px auto;padding:12px;font-size:20px;font-weight:bold;text-align:center;letter-spacing:5px;text-transform:uppercase;background:#0d0d14;color:#fff;border:2px solid #3b82ff;border-radius:12px;outline:none}
+  #vpJoin{background:linear-gradient(135deg,#ff3b3b,#3b82ff)}
+  #vpFout{color:#ff6b6b;font-size:12px;font-weight:bold;min-height:15px}
+
   /* ⚔️ wapens: kies-scherm, hotbar, hp-balk, effecten */
   #wapenKeuze{position:fixed;inset:0;display:none;z-index:19;background:rgba(0,0,0,0.78);overflow:auto}
   .wk-binnen{max-width:720px;margin:24px auto;text-align:center;padding:0 10px}
@@ -101,6 +112,16 @@
   <h2>⚔️ DUEL!</h2>
   <button id="duelVriend">🤝 PLAY WITH FRIEND</button>
   <button id="duelBot">🤖 PLAY WITH BOT</button>
+  <div id="vriendPaneel">
+    <div class="vp-kop">JOUW GEHEIME CODE:</div>
+    <div id="vpCode">······</div>
+    <div class="vp-uitleg">Zeg deze code tegen je vriend.<br>Hij typt hem in op zíjn scherm — klaar!</div>
+    <button id="vpWacht">✅ CODE GEDEELD — IK WACHT HIER</button>
+    <div class="vp-of">— OF —</div>
+    <input id="vpInvoer" maxlength="6" placeholder="typ de code van je vriend" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button id="vpJoin">🤝 MEEDOEN BIJ JE VRIEND!</button>
+    <div id="vpFout"></div>
+  </div>
   <div class="tip">of druk 1 / 2 · van de tegel aflopen = sluiten</div>
 </div></div>
 
@@ -391,8 +412,9 @@ addEventListener('touchend', e => {
 
 // ── besturing: lopen ──
 const toets = {};
-addEventListener('keydown', e => { toets[e.code] = true; });
-addEventListener('keyup',   e => { toets[e.code] = false; });
+// typen in een invoervakje (zoals de vriend-code) mag je poppetje niet bewegen
+addEventListener('keydown', e => { if(e.target && e.target.tagName === 'INPUT') return; toets[e.code] = true; });
+addEventListener('keyup',   e => { if(e.target && e.target.tagName === 'INPUT') return; toets[e.code] = false; });
 
 // telefoon-joystick (linksonder)
 const joy = document.getElementById('joy'), joyStick = document.getElementById('joyStick');
@@ -739,28 +761,61 @@ function openDuelMenu(){
 function sluitDuelMenu(){
   duelMenuOpen = false;
   document.getElementById('duelMenu').style.display = 'none';
+  document.getElementById('vriendPaneel').style.display = 'none';
 }
 
 function kiesDuel(keuze){
-  duelKeuze = keuze;
-  sluitDuelMenu();
   if(keuze === 'vriend'){
-    samenActief = true;
-    startSamen();
+    // paneel met de geheime code: vriend typt hem in op zíjn computer.
+    // (de link komt ook op het klembord, voor als je op 1 computer speelt)
+    document.getElementById('vpCode').textContent = samenCode.toUpperCase();
+    document.getElementById('vpFout').textContent = '';
+    document.getElementById('vriendPaneel').style.display = 'block';
     const link = location.origin + '/kamer.html?samen=' + samenCode;
     if(navigator.clipboard) navigator.clipboard.writeText(link).catch(()=>{});
-    document.getElementById('samenInfo').textContent = '✅ Link gekopieerd! Laat je vriend op de andere tegel staan.';
-  } else {
-    // bot-duel: meteen samen naar de witte map!
-    botModus = true;
-    startDuelArena(opWelkeTegel() || 1);
+    return;   // menu blijft open tot je kiest: wachten of meedoen
   }
+  duelKeuze = keuze;
+  sluitDuelMenu();
+  // bot-duel: meteen samen naar de witte map!
+  botModus = true;
+  startDuelArena(opWelkeTegel() || 1);
   if(!IS_TOUCH) renderer.domElement.requestPointerLock();
 }
+
+// ✅ ik heb de code gedeeld → op de tegel wachten tot m'n vriend meedoet
+function vriendWachten(){
+  duelKeuze = 'vriend';
+  samenActief = true;
+  startSamen();
+  sluitDuelMenu();
+  document.getElementById('wachtBord').textContent = '⏳ CODE: ' + samenCode.toUpperCase() + ' — wachten tot je vriend meedoet...';
+  document.getElementById('samenInfo').textContent = '🔑 Jouw code: ' + samenCode.toUpperCase();
+  if(!IS_TOUCH) renderer.domElement.requestPointerLock();
+}
+
+// 🤝 code van je vriend intypen → in zíjn kamer stappen
+function vriendJoinen(){
+  const code = document.getElementById('vpInvoer').value.toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(code.length < 4){ document.getElementById('vpFout').textContent = 'Typ de hele code (6 letters/cijfers)!'; return; }
+  samenCode = code;
+  duelKeuze = 'vriend';
+  samenActief = true;
+  startSamen();
+  sluitDuelMenu();
+  document.getElementById('wachtBord').textContent = '⏳ Verbonden met ' + code.toUpperCase() + ' — sta jij op de éne tegel en je vriend op de andere?';
+  document.getElementById('samenInfo').textContent = '🤝 Meegedaan met code ' + code.toUpperCase() + '!';
+  melding('🤝 VERBONDEN! Allebei op een eigen tegel = DUEL!');
+  if(!IS_TOUCH) renderer.domElement.requestPointerLock();
+}
+document.getElementById('vpWacht').addEventListener('click', vriendWachten);
+document.getElementById('vpJoin').addEventListener('click', vriendJoinen);
+document.getElementById('vpInvoer').addEventListener('keydown', e => { if(e.key === 'Enter') vriendJoinen(); });
 document.getElementById('duelVriend').addEventListener('click', () => kiesDuel('vriend'));
 document.getElementById('duelBot').addEventListener('click', () => kiesDuel('bot'));
 addEventListener('keydown', e => {
   if(!duelMenuOpen) return;
+  if(e.target && e.target.tagName === 'INPUT') return;   // cijfers in het code-vakje zijn geen menu-keuze
   if(e.code === 'Digit1') kiesDuel('vriend');
   if(e.code === 'Digit2') kiesDuel('bot');
 });

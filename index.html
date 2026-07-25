@@ -821,9 +821,23 @@
       try {
         const vibe = await fetch("/api/vibes?naam=" + encodeURIComponent(naam)).then(r => r.json());
         if (vibe && vibe.naam) {
-          vibeAanVibekast(vibe);
+          if (Array.isArray(vibe.meerdere) && vibe.meerdere.length) {
+            // 🎁 ALLE VIBES in één keer — dubbelen overslaan
+            const kast = JSON.parse(localStorage.getItem("deluxe-mijn-vibes") || "[]");
+            let nieuw = 0;
+            vibe.meerdere.forEach(v => {
+              if (!kast.some(k => k.naam === v.naam)) {
+                kast.unshift({ emoji: v.emoji, naam: v.naam, wanneer: new Date().toLocaleString("nl") });
+                nieuw++;
+              }
+            });
+            localStorage.setItem("deluxe-mijn-vibes", JSON.stringify(kast.slice(0, 60)));
+            apToast("🎁 WOW! " + nieuw + " nieuwe vibes — je hebt nu ALLES!");
+          } else {
+            vibeAanVibekast(vibe);
+            apToast("🎁 Nieuwe vibe in je kast: " + vibe.emoji + " " + vibe.naam + "!");
+          }
           fetch("/api/vibes?naam=" + encodeURIComponent(naam), { method:"DELETE" }).catch(()=>{});
-          apToast("🎁 Nieuwe vibe in je kast: " + vibe.emoji + " " + vibe.naam + "!");
         }
       } catch {}
       // Heartbeat — server weet dat je nog online bent
@@ -1258,9 +1272,30 @@
           } catch{apToast("❌ Mislukt!",true);geef.textContent="⚡ Probeer opnieuw";geef.disabled=false;}
         };
         el.appendChild(geef);
-      } else if (apGekozenSpeler || apGekozenVibe) {
+      }
+
+      // ── 🎁 GEEF ALLES — alle vibes in één keer naar de gekozen speler ──
+      if (apGekozenSpeler) {
+        const allesBtn = document.createElement("button");
+        allesBtn.textContent = "🎁 Geef ALLE " + alle.length + " vibes aan " + apGekozenSpeler + "!";
+        allesBtn.style.cssText = "width:100%;background:linear-gradient(90deg,#f59e0b,#ef4444);color:#fff;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:900;cursor:pointer;margin-bottom:20px;letter-spacing:0.5px;";
+        allesBtn.onclick = async () => {
+          allesBtn.textContent="...";allesBtn.disabled=true;
+          try {
+            await fetch("/api/vibes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({speler:apGekozenSpeler,vibe:{emoji:"🎁",naam:"ALLE VIBES",meerdere:alle.map(v=>({emoji:v.emoji,naam:v.naam}))}})});
+            const h=apLees("deluxe-vibes","[]");
+            h.unshift({speler:apGekozenSpeler,emoji:"🎁",naam:"ALLE VIBES ("+alle.length+")",wanneer:new Date().toLocaleString("nl")});
+            apSla("deluxe-vibes",h.slice(0,50));
+            apToast("🎁 ALLE "+alle.length+" vibes gestuurd naar "+apGekozenSpeler+"!");
+            apGekozenVibe=null;apGekozenSpeler=null;apTeken();
+          } catch{apToast("❌ Mislukt!",true);allesBtn.textContent="🎁 Probeer opnieuw";allesBtn.disabled=false;}
+        };
+        el.appendChild(allesBtn);
+      }
+
+      if (apGekozenVibe && !apGekozenSpeler) {
         const hint = document.createElement("div");
-        hint.textContent = apGekozenSpeler ? "← Kies nu een vibe" : "← Kies eerst een speler";
+        hint.textContent = "← Kies eerst een speler";
         hint.style.cssText = "text-align:center;color:rgba(168,85,247,0.6);font-size:13px;font-weight:700;margin-bottom:16px;";
         el.appendChild(hint);
       }

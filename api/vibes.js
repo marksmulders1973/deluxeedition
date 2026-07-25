@@ -22,11 +22,22 @@ export default async function handler(req, res) {
       const { speler, vibe } = req.body || {};
       if (!speler || !vibe?.naam) return res.status(400).json({ fout: "missende velden" });
       const data = await laad();
-      data[String(speler).trim().slice(0, 16)] = {
+      const item = {
         emoji: String(vibe.emoji || "✨").slice(0, 8),
         naam: String(vibe.naam).slice(0, 30),
         wanneer: new Date().toISOString(),
       };
+      // 🎁 GEEF ALLES — NovaX stuurt een hele lijst vibes in één keer
+      if (Array.isArray(vibe.meerdere)) {
+        item.meerdere = vibe.meerdere
+          .slice(0, 60)
+          .map((v) => ({
+            emoji: String(v?.emoji || "✨").slice(0, 8),
+            naam: String(v?.naam || "").slice(0, 30),
+          }))
+          .filter((v) => v.naam);
+      }
+      data[String(speler).trim().slice(0, 16)] = item;
       await sla(data);
       return res.status(200).json({ ok: true });
     }
