@@ -461,6 +461,7 @@ function loop(t){
     updateAnderen(dt);
     updateDuelMenu();
     updateWapens(dt, t);
+    updateBot(dt, t);
     camera.rotation.set(0,0,0);
     camera.rotateY(yaw);
     camera.rotateX(pitch);
@@ -676,11 +677,9 @@ function kiesDuel(keuze){
     if(navigator.clipboard) navigator.clipboard.writeText(link).catch(()=>{});
     document.getElementById('samenInfo').textContent = '✅ Link gekopieerd! Laat je vriend op de andere tegel staan.';
   } else {
-    // de bot komt op de ÁNDERE tegel staan
-    const bx = (opWelkeTegel() === 2) ? tegel1.position.x : tegel2.position.x;
-    if(!botBeeld) botBeeld = maakSpelerBeeld({sessie:'bot', naam:'BOT 🤖', x:bx, y:0, z:-2, oog:OOG, avatar:''});
-    botBeeld.groep.position.set(bx, 0, -2);
-    botBeeld.groep.visible = true;
+    // bot-duel: meteen samen naar de witte map!
+    botModus = true;
+    startDuelArena(opWelkeTegel() || 1);
   }
   if(!IS_TOUCH) renderer.domElement.requestPointerLock();
 }
@@ -729,7 +728,21 @@ function startDuelArena(mijnTegelNr){
   mijnHp = 100; mijnEvents = []; mijnPads = []; mijnRook = [];
   boostTot = 0; bevrorenTot = 0;
   toonWapenKeuze();
-  document.getElementById('samenInfo').textContent = '⚔️ DUEL! Jullie zijn in de witte map!';
+  if(botModus){
+    // de bot verschijnt aan de overkant, kiest een wapen en vecht terug!
+    if(!botBeeld) botBeeld = maakSpelerBeeld({sessie:'bot', naam:'BOT 🤖', x:0, y:0, z:0, oog:OOG, avatar:''});
+    botBeeld.groep.visible = true;
+    botBeeld.groep.position.set(ARENA_X - kant*5, 0, 0);
+    botBeeld.doel = {x: ARENA_X - kant*5, y: 0, z: 0, oog: OOG};
+    if(botBeeld.hpVoor) botBeeld.hpVoor.scale.x = 1;
+    botHp = 100; botBlindTot = 0; botTraagTot = 0; botDoodTot = 0;
+    botVolgendeAanval = 0; botVolgendeGooi = performance.now() + 6000;
+    botWapen = BOT_WAPENS[Math.floor(Math.random() * BOT_WAPENS.length)];
+    melding('🤖 De bot vecht met een ' + botWapen.naam + '!');
+    document.getElementById('samenInfo').textContent = '🤖 BOT-DUEL in de witte map!';
+  } else {
+    document.getElementById('samenInfo').textContent = '⚔️ DUEL! Jullie zijn in de witte map!';
+  }
 }
 
 // ═══════════════ WAPENS ⚔️ (alleen in de witte duel-map) ═══════════════
@@ -782,6 +795,106 @@ function allePads(){
   const lijst = [...mijnPads];
   for(const a of anderen.values()) if(a.pads) lijst.push(...a.pads);
   return lijst;
+}
+
+// ── 🤖 DE VECHT-BOT ──────────────────────────────────
+let botModus = false, botHp = 100, botWapen = null;
+let botBlindTot = 0, botTraagTot = 0, botDoodTot = 0;
+let botVolgendeAanval = 0, botVolgendeGooi = 0;
+const BOT_WAPENS = [
+  {naam: 'Paintball Gun', dmg: 8,  snel: 24, kleur: 0xff44aa},
+  {naam: 'Assault Rifle', dmg: 7,  snel: 28, kleur: 0xffee66},
+  {naam: 'Revolver',      dmg: 12, snel: 30, kleur: 0xdddddd},
+  {naam: 'Freeze Ray',    dmg: 5,  snel: 24, kleur: 0x88eeff, bevries: true},
+];
+
+// alles waar je op kunt mikken: echte spelers + de bot
+function alleDoelwitten(){
+  const l = [...anderen.entries()];
+  if(botModus && huidigeWereld === 'arena' && botBeeld && botBeeld.groep.visible) l.push(['__bot__', botBeeld]);
+  return l;
+}
+
+function botRaaktMij(dmg, soort){
+  if(schildActief()){ melding('🛡️ GEBLOKT!'); return; }
+  mijnHp -= dmg; toonSchadeFlits();
+  if(soort === 'freeze'){ bevrorenTot = performance.now() + 2000; melding('❄️ BEVROREN!'); }
+  if(mijnHp <= 0) dood();
+}
+
+function afstTotMij(k){ return Math.hypot(k.mesh.position.x - camera.position.x, k.mesh.position.z - camera.position.z); }
+
+function botSchiet(){
+  const g = botBeeld.groep.position;
+  const dx = camera.position.x - g.x, dy = (camera.position.y - 0.25) - 1.4, dz = camera.position.z - g.z;
+  const lengte = Math.hypot(dx, dy, dz) || 1;
+  const mis = 0.12;   // hij mikt nét niet perfect — ontwijken kan!
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), new THREE.MeshBasicMaterial({color: botWapen.kleur}));
+  mesh.position.set(g.x, 1.4, g.z);
+  scene.add(mesh);
+  kogels.push({mesh, vanBot: true,
+    vx: (dx/lengte + (Math.random()-0.5)*mis) * botWapen.snel,
+    vy: (dy/lengte + (Math.random()-0.5)*mis*0.5) * botWapen.snel,
+    vz: (dz/lengte + (Math.random()-0.5)*mis) * botWapen.snel,
+    boog: false, dmg: botWapen.dmg, bevries: !!botWapen.bevries, ttl: 2.5, leeftijd: 0});
+}
+
+function botGooi(){
+  const g = botBeeld.groep.position;
+  const soort = Math.random() < 0.55 ? 'boem' : 'flits';
+  const dx = camera.position.x - g.x, dz = camera.position.z - g.z;
+  const afst = Math.hypot(dx, dz) || 1;
+  const snel = Math.min(16, 6 + afst * 0.9);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshBasicMaterial({color: soort === 'flits' ? 0xffffcc : 0x556655}));
+  mesh.position.set(g.x, 1.4, g.z);
+  scene.add(mesh);
+  kogels.push({mesh, vanBot: true, gooiEffect: soort, vx: dx/afst*snel, vy: 3.5, vz: dz/afst*snel,
+    boog: true, dmg: soort === 'boem' ? 20 : 0, straal: 3, ttl: 4, leeftijd: 0});
+}
+
+function botDood(){
+  botDoodTot = performance.now() + 3000;
+  botBeeld.groep.visible = false;
+  ontplof(botBeeld.groep.position.x, botBeeld.groep.position.z, 0, 0);
+  melding('🏆 JE HEBT DE BOT VERSLAGEN!');
+}
+
+function updateBot(dt, t){
+  if(!botModus || huidigeWereld !== 'arena' || !botBeeld) return;
+  const nu = performance.now();
+  if(botHp <= 0){
+    if(nu > botDoodTot && botDoodTot){
+      botHp = 100; botDoodTot = 0;
+      botBeeld.groep.visible = true;
+      botBeeld.groep.position.set(ARENA_X - mijnSpawnKant*5, 0, (Math.random()-0.5)*16);
+      melding('🤖 De bot is terug — ronde 2!');
+    } else return;
+  }
+  const g = botBeeld.groep.position;
+  const dx = camera.position.x - g.x, dz = camera.position.z - g.z;
+  const afst = Math.hypot(dx, dz) || 0.01;
+  const traag = botTraagTot > nu ? 0.5 : 1;
+  // slim bewegen: dichterbij als je ver bent, wegstappen als je te dichtbij komt,
+  // en altijd een beetje zijwaarts dansen zodat hij lastig te raken is
+  let mx = 0, mz = 0;
+  if(afst > 8){ mx += dx/afst; mz += dz/afst; }
+  else if(afst < 5){ mx -= dx/afst; mz -= dz/afst; }
+  mx += (-dz/afst) * Math.sin(t/900) * 0.8;
+  mz += ( dx/afst) * Math.sin(t/900) * 0.8;
+  g.x += mx * 3.0 * traag * dt;
+  g.z += mz * 3.0 * traag * dt;
+  g.x = Math.max(ARENA_X - ARENA_MAAT/2 + 1, Math.min(ARENA_X + ARENA_MAAT/2 - 1, g.x));
+  g.z = Math.max(-ARENA_MAAT/2 + 1, Math.min(ARENA_MAAT/2 - 1, g.z));
+  botBeeld.doel = {x: g.x, y: 0, z: g.z, oog: OOG};
+  botBeeld.groep.rotation.y = Math.atan2(camera.position.x - g.x, camera.position.z - g.z);
+  if(botBeeld.hpVoor) botBeeld.hpVoor.scale.x = Math.max(0.02, botHp/100);
+  // aanvallen! (niet zolang hij verblind is, en pas als jij je wapens hebt)
+  if(nu > botBlindTot && nu > botVolgendeAanval && wapensGekozen){
+    botVolgendeAanval = nu + 900 + Math.random()*700;
+    if(afst < 2.4){ botRaaktMij(10, 'schade'); melding('🤖 MEP!'); }
+    else if(nu > botVolgendeGooi){ botVolgendeGooi = nu + 8000; botGooi(); }
+    else botSchiet();
+  }
 }
 
 // ── kies-scherm: 4 wapens uitzoeken ──
@@ -855,7 +968,7 @@ function gebruikWapen(t){
     const n = w.spreid || (w.soort === 'vlam' ? 3 : 1);
     for(let i = 0; i < n; i++) spawnKogel(richt, w, (w.spreid || w.soort === 'vlam') ? 0.09 : 0);
   } else if(w.soort === 'vecht'){
-    for(const [sessie, a] of anderen){
+    for(const [sessie, a] of alleDoelwitten()){
       // a.doel = de échte plek van de speler (het poppetje loopt iets achter)
       const dx = a.doel.x - camera.position.x, dz = a.doel.z - camera.position.z;
       const afst = Math.hypot(dx, dz);
@@ -896,12 +1009,23 @@ function ontplof(x, z, straal, dmg){
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.6, 10, 10), new THREE.MeshBasicMaterial({color: 0xff8800, transparent: true, opacity: 0.7}));
   mesh.position.set(x, 0.7, z); scene.add(mesh);
   boems.push({mesh, leeftijd: 0});
-  if(dmg) for(const [sessie, a] of anderen){
+  if(dmg) for(const [sessie, a] of alleDoelwitten()){
     if(Math.hypot(a.doel.x - x, a.doel.z - z) < straal + 0.6) stuurEvent(sessie, 'schade', dmg);
   }
 }
 
 function stuurEvent(doel, soort, schade){
+  if(doel === '__bot__'){
+    // de bot zit niet op het netwerk — klappen komen direct aan
+    if(soort === 'flits'){ botBlindTot = performance.now() + 3000; melding('🎇 Bot verblind!'); }
+    else {
+      botHp -= schade || 0;
+      if(soort === 'freeze'){ botTraagTot = performance.now() + 2000; }
+      melding('🎯 RAAK!');
+      if(botHp <= 0 && !botDoodTot) botDood();
+    }
+    return;
+  }
   mijnEvents.push({id: 'e' + (++eventTeller) + '_' + mijnSessie, doel, soort, schade: schade || 0});
   if(mijnEvents.length > 8) mijnEvents.shift();
   if(soort === 'schade') melding('🎯 RAAK!');
@@ -976,8 +1100,15 @@ function updateWapens(dt, t){
     if(k.boog) k.vy -= 12 * dt;
     k.mesh.position.x += k.vx * dt; k.mesh.position.y += k.vy * dt; k.mesh.position.z += k.vz * dt;
     let weg = k.leeftijd > k.ttl;
-    if(!weg && k.dmg && !k.effect){          // raak ik iemand rechtstreeks?
-      for(const [sessie, a] of anderen){
+    if(!weg && k.vanBot && !k.gooiEffect && k.dmg){   // raakt de bot MIJ?
+      const basis = camera.position.y - oogNu;
+      if(afstTotMij(k) < 0.8 && k.mesh.position.y > basis && k.mesh.position.y < basis + 2.1){
+        botRaaktMij(k.dmg, k.bevries ? 'freeze' : 'schade');
+        weg = true;
+      }
+    }
+    if(!weg && !k.vanBot && k.dmg && !k.effect){      // raak ik iemand rechtstreeks?
+      for(const [sessie, a] of alleDoelwitten()){
         const g = a.doel;   // échte positie, niet het na-lopende poppetje
         if(Math.hypot(k.mesh.position.x - g.x, k.mesh.position.z - g.z) < 0.8 && k.mesh.position.y > g.y && k.mesh.position.y < g.y + 2.1){
           if(k.straal) ontplof(k.mesh.position.x, k.mesh.position.z, k.straal, k.dmg);
@@ -987,15 +1118,22 @@ function updateWapens(dt, t){
       }
     }
     if(!weg && k.mesh.position.y <= 0.06){   // op de grond geland
-      if(k.effect === 'boem' || (k.straal && !k.effect)) ontplof(k.mesh.position.x, k.mesh.position.z, k.straal || 2.5, k.dmg);
-      if(k.effect === 'rook'){
-        mijnRook.push({x: k.mesh.position.x, z: k.mesh.position.z, tot: Date.now() + 15000});
-        if(mijnRook.length > 2) mijnRook.shift();
-      }
-      if(k.effect === 'flits'){
-        ontplof(k.mesh.position.x, k.mesh.position.z, 0, 0);   // wit-gele knal-visual
-        for(const [sessie, a] of anderen){
-          if(Math.hypot(a.doel.x - k.mesh.position.x, a.doel.z - k.mesh.position.z) < 7) stuurEvent(sessie, 'flits', 0);
+      if(k.vanBot){
+        // granaat of flashbang van de bot
+        ontplof(k.mesh.position.x, k.mesh.position.z, 0, 0);
+        if(k.gooiEffect === 'boem' && afstTotMij(k) < (k.straal || 3) + 0.6) botRaaktMij(k.dmg, 'schade');
+        if(k.gooiEffect === 'flits' && afstTotMij(k) < 7) toonFlitsWit();
+      } else {
+        if(k.effect === 'boem' || (k.straal && !k.effect)) ontplof(k.mesh.position.x, k.mesh.position.z, k.straal || 2.5, k.dmg);
+        if(k.effect === 'rook'){
+          mijnRook.push({x: k.mesh.position.x, z: k.mesh.position.z, tot: Date.now() + 15000});
+          if(mijnRook.length > 2) mijnRook.shift();
+        }
+        if(k.effect === 'flits'){
+          ontplof(k.mesh.position.x, k.mesh.position.z, 0, 0);   // wit-gele knal-visual
+          for(const [sessie, a] of alleDoelwitten()){
+            if(Math.hypot(a.doel.x - k.mesh.position.x, a.doel.z - k.mesh.position.z) < 7) stuurEvent(sessie, 'flits', 0);
+          }
         }
       }
       weg = true;
