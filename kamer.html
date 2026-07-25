@@ -33,7 +33,7 @@
 <div id="start">
   <h1>🚪 DE KAMER</h1>
   <p><b>Stap 1:</b> een lege kamer. Loop maar eens rond...</p>
-  <p>💻 WASD of pijltjes = lopen, muis = kijken<br>📱 rondje links = lopen, vegen rechts = kijken</p>
+  <p>💻 WASD = lopen · Shift = sprinten · spatie = springen<br>C = bukken (of tijdens het lopen: sliden! 💨) · muis = kijken<br>📱 rondje links = lopen, vegen rechts = kijken</p>
   <button class="knop">▶ GA NAAR BINNEN</button>
 </div>
 
@@ -235,9 +235,17 @@ addEventListener('touchend', e => {
   }
 });
 
-const SNELHEID = 3.2;  // meter per seconde
-const MARGE = 0.4;     // zo dicht mag je bij de muur komen
+const LOOP_SNELHEID   = 3.2;   // gewoon lopen
+const SPRINT_SNELHEID = 5.8;   // rennen met Shift
+const BUK_SNELHEID    = 1.5;   // gebukt sluipen
+const MARGE = 0.4;             // zo dicht mag je bij de muur komen
 let vorigeTijd = 0;
+
+// springen + bukken + sliden
+let velY = 0, voetY = 0, opGrond = true;
+let oogNu = OOG;               // huidige ooghoogte (glijdt soepel naar het doel)
+let slide = null;              // {dx, dz, snelheid} zolang je aan het sliden bent
+let cWasIngedrukt = false;     // om te merken wanneer C nét wordt ingedrukt
 
 function updateLopen(dt){
   let vx = 0, vz = 0;
@@ -247,17 +255,50 @@ function updateLopen(dt){
   if(toets['KeyD'] || toets['ArrowRight']) vx += 1;
   vx += joyVec.x; vz += joyVec.y;
   const len = Math.hypot(vx, vz);
-  if(len > 0.01){
-    vx /= Math.max(1,len); vz /= Math.max(1,len);
-    // meebewegen met de kijkrichting: W = altijd vooruit waar je kijkt
-    const sin = Math.sin(yaw), cos = Math.cos(yaw);
-    camera.position.x += (vx*cos + vz*sin) * SNELHEID * dt;
-    camera.position.z += (-vx*sin + vz*cos) * SNELHEID * dt;
-    // niet door de muren heen!
-    const grens = KAMER/2 - MARGE;
-    camera.position.x = Math.max(-grens, Math.min(grens, camera.position.x));
-    camera.position.z = Math.max(-grens, Math.min(grens, camera.position.z));
+  const beweegt = len > 0.01;
+  const sprint = toets['ShiftLeft'] || toets['ShiftRight'];
+  const bukt = toets['KeyC'] && !slide;
+  const sin = Math.sin(yaw), cos = Math.cos(yaw);
+
+  // C nét ingedrukt terwijl je loopt of rent → SLIDE! 💨
+  if(toets['KeyC'] && !cWasIngedrukt && beweegt && opGrond && !slide){
+    const dx = vx/len, dz = vz/len;
+    slide = {
+      dx: dx*cos + dz*sin,             // glij-richting in de wereld
+      dz: -dx*sin + dz*cos,
+      snelheid: sprint ? 8.5 : 6       // rennend slide je verder
+    };
   }
+  cWasIngedrukt = !!toets['KeyC'];
+
+  if(slide){
+    // uitglijden: je remt vanzelf af tot de slide klaar is
+    camera.position.x += slide.dx * slide.snelheid * dt;
+    camera.position.z += slide.dz * slide.snelheid * dt;
+    slide.snelheid -= 9 * dt;
+    if(slide.snelheid <= 1.6) slide = null;
+  } else if(beweegt){
+    const nvx = vx/Math.max(1,len), nvz = vz/Math.max(1,len);
+    const snelheid = bukt ? BUK_SNELHEID : (sprint ? SPRINT_SNELHEID : LOOP_SNELHEID);
+    // W = altijd vooruit waar je kijkt
+    camera.position.x += (nvx*cos + nvz*sin) * snelheid * dt;
+    camera.position.z += (-nvx*sin + nvz*cos) * snelheid * dt;
+  }
+  // niet door de muren heen!
+  const grens = KAMER/2 - MARGE;
+  camera.position.x = Math.max(-grens, Math.min(grens, camera.position.x));
+  camera.position.z = Math.max(-grens, Math.min(grens, camera.position.z));
+
+  // springen (spatie) + zwaartekracht
+  if(toets['Space'] && opGrond && !slide){ velY = 5.2; opGrond = false; }
+  velY -= 14 * dt;
+  voetY += velY * dt;
+  if(voetY <= 0){ voetY = 0; velY = 0; opGrond = true; }
+
+  // ooghoogte: staan 1.6 / bukken 0.95 / sliden 0.65 — glijdt er soepel heen
+  const doelOog = slide ? 0.65 : (bukt ? 0.95 : OOG);
+  oogNu += (doelOog - oogNu) * Math.min(1, 12*dt);
+  camera.position.y = voetY + oogNu;
 }
 
 // ── game-loop ──
