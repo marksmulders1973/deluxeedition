@@ -141,9 +141,28 @@
           localStorage.setItem("deluxe-mijn-vibes", JSON.stringify(kast.slice(0, 50)));
         } catch {}
       }
+      // 📣 omroep-banner (admin typt iets → iedereen ziet het, ook tijdens het spelen)
+      let omroepEl = null;
+      async function omroepCheck() {
+        try {
+          const b = await fetch("/api/admin?bericht=1").then(r => r.json());
+          if (b && b.tekst) {
+            if (!omroepEl) {
+              omroepEl = document.createElement("div");
+              omroepEl.style.cssText = "position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:9999;max-width:min(92vw,640px);background:linear-gradient(135deg,#2a1a00,#4a3000);border:2px solid #ffd54f;border-radius:14px;padding:10px 18px;color:#fff;font-family:sans-serif;font-size:14px;font-weight:700;text-align:center;box-shadow:0 6px 30px rgba(255,213,79,0.45);pointer-events:none;";
+              document.body.appendChild(omroepEl);
+            }
+            omroepEl.innerHTML = "<div style='color:#ffd54f;font-size:10px;letter-spacing:2px;font-weight:900'>📣 " + String(b.van || "ADMIN").toUpperCase().replace(/[<>]/g,"") + " ZEGT:</div>" + String(b.tekst).replace(/[<>]/g,"");
+            omroepEl.style.display = "block";
+          } else if (omroepEl) {
+            omroepEl.style.display = "none";
+          }
+        } catch {}
+      }
       async function check() {
         // ook tijdens het spelen zichtbaar blijven in de "wie is online"-lijst
         fetch("/api/online", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({naam}) }).catch(()=>{});
+        omroepCheck();
         try {
           const vibe = await fetch("/api/vibes?naam=" + encodeURIComponent(naam)).then(r => r.json());
           if (vibe && vibe.naam) {

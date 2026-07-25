@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     if (req.method === "POST" && cadeauModus) {
       const { speler, cadeau } = req.body || {};
       const soort = String(cadeau?.soort || "");
-      if (!speler || !["sprite", "level", "reset"].includes(soort)) return res.status(400).json({ fout: "missende velden" });
+      if (!speler || !["sprite", "sprite-alles", "level", "reset"].includes(soort)) return res.status(400).json({ fout: "missende velden" });
       const item = { soort, wanneer: new Date().toISOString() };
       if (soort === "sprite") item.sprite = String(cadeau.sprite || "").replace(/[^a-z0-9_-]/gi, "").slice(0, 30);
       if (soort === "level") item.level = Math.max(1, Math.min(500, Math.floor(Number(cadeau.level) || 0)));

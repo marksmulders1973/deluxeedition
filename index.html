@@ -312,6 +312,27 @@
       transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
     }
     #chat-knop:hover { transform: scale(1.06); border-color: var(--rood); box-shadow: 0 4px 24px rgba(255, 59, 59, 0.4); }
+
+    /* 📣 OMROEP-knop (linksboven, onder chat) — alleen voor admins (NovaX + Arthur) */
+    #omroep-knop {
+      position: fixed; top: 112px; left: 16px; z-index: 50; display: none;
+      background: rgba(255, 213, 79, 0.12); color: #ffd54f;
+      border: 1px solid rgba(255, 213, 79, 0.6); border-radius: 999px;
+      padding: 11px 20px; font-size: 14px; font-weight: 900; letter-spacing: 1px;
+      cursor: pointer; align-items: center; gap: 8px;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    #omroep-knop:hover { transform: scale(1.06); box-shadow: 0 4px 24px rgba(255, 213, 79, 0.4); }
+    /* 📣 de omroep-banner die iedereen ziet */
+    #omroep-banner {
+      position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+      z-index: 300; display: none; max-width: min(92vw, 640px);
+      background: linear-gradient(135deg, #2a1a00, #4a3000);
+      border: 2px solid #ffd54f; border-radius: 14px; padding: 12px 20px;
+      color: #fff; font-size: 15px; font-weight: 700; text-align: center;
+      box-shadow: 0 6px 30px rgba(255, 213, 79, 0.45);
+    }
+    #omroep-banner .van { color: #ffd54f; font-size: 11px; letter-spacing: 2px; font-weight: 900; }
     #avatar-knop .mini, #speler-balk .mini {
       width: 30px; height: 30px; border-radius: 999px; overflow: hidden;
       border: 1px solid rgba(255, 255, 255, 0.3); flex-shrink: 0;
@@ -539,6 +560,8 @@
   <a id="maak-knop" href="maak.html">✨ CREATE A GAME</a>
   <a id="avatar-knop" href="avatar.html"><span id="avatar-mini-knop">🧑‍🎨</span> MAAK EEN AVATAR</a>
   <a id="chat-knop" href="chat.html">💬 CHAT</a>
+  <button id="omroep-knop">📣 OMROEP</button>
+  <div id="omroep-banner"><span class="van"></span><br><span class="tekst"></span></div>
 
   <div id="speler-balk">
     <span id="avatar-mini-balk">👤</span> <span class="naam" id="speler-naam"></span>
@@ -847,6 +870,39 @@
     }
     pollingCheck();
     setInterval(pollingCheck, 8000);
+
+    // ── 📣 OMROEPER — admins (NovaX + Arthur) typen wat ze willen, iedereen ziet het ──
+    function isOmroeper() {
+      const n = (ingelogdeNaam() || "").toLowerCase();
+      return n === "novax" || n.includes("arthur");
+    }
+    document.getElementById("omroep-knop").addEventListener("click", async () => {
+      const tekst = prompt("📣 Wat wil je omroepen? (iedereen op de site ziet het ~1,5 minuut)");
+      if (!tekst || !tekst.trim()) return;
+      try {
+        await fetch("/api/admin?bericht=1", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bericht: { tekst: tekst.trim(), van: ingelogdeNaam() || "Admin" } })
+        });
+        omroepTik();
+      } catch {}
+    });
+    async function omroepTik() {
+      document.getElementById("omroep-knop").style.display = isOmroeper() ? "inline-flex" : "none";
+      try {
+        const b = await fetch("/api/admin?bericht=1").then(r => r.json());
+        const el = document.getElementById("omroep-banner");
+        if (b && b.tekst) {
+          el.querySelector(".van").textContent = "📣 " + (b.van || "ADMIN").toUpperCase() + " ZEGT:";
+          el.querySelector(".tekst").textContent = b.tekst;
+          el.style.display = "block";
+        } else {
+          el.style.display = "none";
+        }
+      } catch {}
+    }
+    omroepTik();
+    setInterval(omroepTik, 8000);
 
     // ── 📊 GAME-KLIK TELLEN ──────────────────────────────
     function spelKlik(spelNaam, actie) {
