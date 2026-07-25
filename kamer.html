@@ -384,7 +384,7 @@ function pinchAfstand(){
 }
 addEventListener('touchstart', e => {
   // vingers op knoppen zijn geen kijk-vingers
-  if(e.target.closest && e.target.closest('#hotbar,#vuurKnop,#samenBar,#duelMenu,#wapenKeuze,#joy')) return;
+  if(e.target.closest && e.target.closest('#hotbar,#vuurKnop,#samenBar,#duelMenu,#wapenKeuze,#joy,#samenDuelKnop')) return;
   for(const t of e.changedTouches){
     if(t.clientX > innerWidth/2) kijkVingers.set(t.identifier, {x:t.clientX, y:t.clientY});
   }
@@ -733,7 +733,7 @@ function verwerkSpelers(lijst){
   const vriendInArena = lijst.find(p => p.wereld === 'arena');
   const sdKnop = document.getElementById('samenDuelKnop');
   if(huidigeWereld === 'arena' && botModus && vriendInArena){
-    sdKnop.textContent = '🤝 ' + (vriendInArena.naam || 'JE VRIEND').toUpperCase() + ' IS ER OOK — SAMEN DUELLEN? ✅ JA! (druk J)';
+    sdKnop.textContent = '🤝 ' + (vriendInArena.naam || 'JE VRIEND').toUpperCase() + ' IS ER OOK — SAMEN DUELLEN? ✅ JA!' + (IS_TOUCH ? ' (TIK HIER)' : ' (druk J)');
     sdKnop.style.display = 'block';
   } else {
     sdKnop.style.display = 'none';
@@ -837,6 +837,8 @@ function samenDuelJa(){
   melding('⚔️ SAMEN DUEL — EERSTE TOT 5!');
 }
 document.getElementById('samenDuelKnop').addEventListener('click', samenDuelJa);
+// telefoon: tik = meteen JA (en niet per ongeluk gaan rondkijken)
+document.getElementById('samenDuelKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); samenDuelJa(); }, {passive:false});
 addEventListener('keydown', e => {
   if(e.target && e.target.tagName === 'INPUT') return;
   if(e.code === 'KeyJ' && document.getElementById('samenDuelKnop').style.display === 'block') samenDuelJa();
