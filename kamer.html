@@ -62,27 +62,59 @@ const KAMER = 14;      // breedte/diepte in meters
 const HOOG  = 4;       // plafond-hoogte
 const OOG   = 1.6;     // ooghoogte van je personage
 
-// vloer met precies 2 GROTE vierkanten naast elkaar (Brian's ontwerp):
-// links een licht vlak, rechts een donker vlak, met een groef ertussen
-function grootVierkantTexture(){
-  const c = document.createElement('canvas'); c.width = 512; c.height = 512;
+// houten vloer (Brian's ontwerp): bruine planken met naden en nerven
+function houtTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 512;
   const g = c.getContext('2d');
-  g.fillStyle = '#2b2f38';            // rand om de vloer + groef in het midden
-  g.fillRect(0,0,512,512);
-  g.fillStyle = '#d5dae2';            // groot vierkant 1 (licht)
-  g.fillRect(8, 8, 240, 496);
-  g.fillStyle = '#4a515e';            // groot vierkant 2 (donker)
-  g.fillRect(264, 8, 240, 496);
+  const PLANK = 64;                   // 8 planken per plaatje
+  const tinten = ['#8a5a33','#7a4f2c','#93613a','#815430','#8d5d36','#774d2b','#8f5f38','#7d512e'];
+  for(let p=0;p<8;p++){
+    g.fillStyle = tinten[p];
+    g.fillRect(0, p*PLANK, 512, PLANK);
+    // donkere naad tussen de planken
+    g.fillStyle = '#4a3018';
+    g.fillRect(0, p*PLANK, 512, 3);
+    // nerven: dunne golvende lijntjes over de plank
+    g.strokeStyle = 'rgba(60,35,15,0.35)'; g.lineWidth = 1.5;
+    for(let n=0;n<4;n++){
+      const y = p*PLANK + 12 + n*13;
+      g.beginPath(); g.moveTo(0, y);
+      for(let x=0;x<=512;x+=32) g.lineTo(x, y + Math.sin(x/50 + p*3 + n)*3);
+      g.stroke();
+    }
+    // af en toe een dwarsnaad (kortere planken)
+    g.fillStyle = '#4a3018';
+    g.fillRect(((p*197)%460)+20, p*PLANK, 3, PLANK);
+  }
   const t = new THREE.CanvasTexture(c);
-  t.repeat.set(1, 1);                 // 1 plaatje over de hele vloer = 2 grote vlakken
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(KAMER/4, KAMER/4);
   return t;
 }
 const vloer = new THREE.Mesh(
   new THREE.PlaneGeometry(KAMER, KAMER),
-  new THREE.MeshStandardMaterial({map: grootVierkantTexture(), roughness: 0.35})
+  new THREE.MeshStandardMaterial({map: houtTexture(), roughness: 0.7})
 );
 vloer.rotation.x = -Math.PI/2; vloer.receiveShadow = true;
 scene.add(vloer);
+
+// ── 2 losse tegels ergens op de houten vloer (geheimzinnig...) ──
+function maakTegel(x, z){
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#3a3f4a'; g.fillRect(0,0,128,128);          // donkere rand
+  g.fillStyle = '#cfd4dc'; g.fillRect(6,6,116,116);          // de tegel zelf
+  g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(12,12,34,12);  // glansje
+  const tegel = new THREE.Mesh(
+    new THREE.BoxGeometry(1.2, 0.06, 1.2),
+    new THREE.MeshStandardMaterial({map: new THREE.CanvasTexture(c), roughness: 0.3})
+  );
+  tegel.position.set(x, 0.03, z);     // ligt net óp het hout
+  tegel.receiveShadow = true; tegel.castShadow = true;
+  scene.add(tegel);
+  return tegel;
+}
+const tegel1 = maakTegel(-3, -2);     // linksvoor in de kamer
+const tegel2 = maakTegel(3.5, -4);    // rechtsachter
 
 const plafond = new THREE.Mesh(
   new THREE.PlaneGeometry(KAMER, KAMER),
