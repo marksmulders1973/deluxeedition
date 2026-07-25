@@ -52,6 +52,8 @@ async function kamerTik(b, res) {
     wereld: b.wereld === 'arena' ? 'arena' : 'lobby',              // lobby of witte map
     hp: Math.max(0, Math.min(100, Number.isFinite(+b.hp) ? Math.round(+b.hp) : 100)),
     schild: b.schild === true,
+    doden: Math.max(0, Math.min(99, parseInt(b.doden, 10) || 0)),   // score: hun doden = jouw punten
+
     // aanvallen op de ander (schade/flits/freeze), launch pads en rookwolken
     events: Array.isArray(b.events) ? b.events.slice(-8).map(e => ({
       id: String(e.id || "").slice(0, 48),

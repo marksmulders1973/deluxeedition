@@ -53,6 +53,7 @@
   #hotbar{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:13;display:none;gap:8px}
   .hb-slot{width:54px;height:54px;background:rgba(0,0,0,0.55);border:2px solid #555;border-radius:12px;font-size:25px;display:flex;align-items:center;justify-content:center;cursor:pointer}
   .hb-slot.actief{border-color:#ffd700;box-shadow:0 0 12px rgba(255,215,0,0.55)}
+  #scoreBord{position:fixed;top:34px;left:50%;transform:translateX(-50%);z-index:13;color:#fff;font-weight:bold;font-size:18px;background:rgba(0,0,0,0.5);padding:5px 16px;border-radius:10px;display:none}
   #hpBalk{position:fixed;top:12px;left:50%;transform:translateX(-50%);width:220px;height:15px;background:rgba(0,0,0,0.5);border-radius:8px;display:none;border:1px solid #444;z-index:13}
   #hpVul{height:100%;width:100%;background:linear-gradient(90deg,#2ecc71,#a3e635);border-radius:8px;transition:width .2s}
   #schadeFlits{position:fixed;inset:0;background:radial-gradient(ellipse,transparent 35%,rgba(255,0,0,0.55));opacity:0;pointer-events:none;z-index:16;transition:opacity .35s}
@@ -82,6 +83,7 @@
 <div id="wachtBord">⏳ Wachten tot je vriend op de andere tegel staat...</div>
 
 <div id="hpBalk"><div id="hpVul"></div></div>
+<div id="scoreBord"></div>
 <div id="hotbar"></div>
 <button id="vuurKnop">🎯</button>
 <div id="schadeFlits"></div>
@@ -229,6 +231,58 @@ function wereldInfo(){
   const alicht = new THREE.PointLight(0xffffff, 1.4, 220, 1.2);
   alicht.position.set(ARENA_X, ARENA_HOOG - 0.5, 0);
   scene.add(alicht);
+}
+
+// ── 🌉 dingen in de map: een brug, een trap-toren en schuil-blokken ──
+const platforms = [];   // {x1,x2,z1,z2,h0,h} — bovenkant h = loopvlak
+function bouwBlok(x1, x2, z1, z2, h0, h1, kleur){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(x2-x1, h1-h0, z2-z1),
+    new THREE.MeshStandardMaterial({color: kleur || 0xdde2ec, roughness: 0.55}));
+  m.position.set((x1+x2)/2, (h0+h1)/2, (z1+z2)/2);
+  scene.add(m);
+  platforms.push({x1, x2, z1, z2, h0, h: h1});
+  return m;
+}
+// DE BRUG: loopdek dwars door het midden, met een trap aan allebei de kanten
+bouwBlok(ARENA_X-1.5, ARENA_X+1.5, -7, 7, 2.0, 2.2, 0xc9d2e2);
+bouwBlok(ARENA_X-0.6, ARENA_X+0.6, -5.2, -4.8, 0, 2.0);       // pilaar
+bouwBlok(ARENA_X-0.6, ARENA_X+0.6, 4.8, 5.2, 0, 2.0);         // pilaar
+for(let i=0;i<4;i++){
+  const h = 1.76 - i*0.44;
+  bouwBlok(ARENA_X-1.5, ARENA_X+1.5, 7 + i*0.9, 7 + (i+1)*0.9, 0, h);     // trap noord
+  bouwBlok(ARENA_X-1.5, ARENA_X+1.5, -7 - (i+1)*0.9, -7 - i*0.9, 0, h);   // trap zuid
+}
+// DE TRAP-TOREN: uitkijkplatform — vanaf hier kun je mooi sniperen 🎯
+bouwBlok(ARENA_X-16, ARENA_X-12, 4, 8, 0, 2.2, 0xc9d2e2);
+for(let i=0;i<4;i++){
+  bouwBlok(ARENA_X-16, ARENA_X-12, 8 + i*0.9, 8 + (i+1)*0.9, 0, 1.76 - i*0.44);
+}
+// lage blokken om achter te schuilen (en bovenop te springen!)
+bouwBlok(ARENA_X+7, ARENA_X+9, -1, 1, 0, 0.9);
+bouwBlok(ARENA_X-6, ARENA_X-4, 9, 11, 0, 0.9);
+bouwBlok(ARENA_X+5, ARENA_X+7, -11, -9, 0, 0.9);
+
+// waar is de grond onder je voeten? (vloer, trede, brug of blok)
+function grondHoogte(x, z){
+  let beste = 0;
+  for(const p of platforms){
+    if(x > p.x1 && x < p.x2 && z > p.z1 && z < p.z2 && p.h > beste && p.h <= voetY + 0.56) beste = p.h;
+  }
+  return beste;
+}
+function kogelGrond(x, z, y){
+  let beste = 0;
+  for(const p of platforms){
+    if(x > p.x1 && x < p.x2 && z > p.z1 && z < p.z2 && p.h <= y + 0.2 && p.h > beste) beste = p.h;
+  }
+  return beste;
+}
+// te hoge blokken zijn muren: daar loop je niet doorheen (onder de brug door mag wél)
+function botstMuur(x, z, voeten){
+  for(const p of platforms){
+    if(x > p.x1 && x < p.x2 && z > p.z1 && z < p.z2 && voeten + 1.6 > p.h0 + 0.1 && p.h - voeten > 0.55) return true;
+  }
+  return false;
 }
 
 const plafond = new THREE.Mesh(
@@ -403,10 +457,11 @@ function updateLopen(dt){
   }
   cWasIngedrukt = !!toets['KeyC'];
 
+  let stapX = 0, stapZ = 0;
   if(slide){
     // uitglijden: je remt vanzelf af tot de slide klaar is
-    camera.position.x += slide.dx * slide.snelheid * dt;
-    camera.position.z += slide.dz * slide.snelheid * dt;
+    stapX = slide.dx * slide.snelheid * dt;
+    stapZ = slide.dz * slide.snelheid * dt;
     slide.snelheid -= 9 * dt;
     if(slide.snelheid <= 1.6) slide = null;
   } else if(beweegt){
@@ -414,9 +469,15 @@ function updateLopen(dt){
     // war horn = sneller, bevroren = trager, schild vasthouden = trager
     const snelheid = (bukt ? BUK_SNELHEID : (sprint ? SPRINT_SNELHEID : LOOP_SNELHEID)) * vaartFactor();
     // W = altijd vooruit waar je kijkt
-    camera.position.x += (nvx*cos + nvz*sin) * snelheid * dt;
-    camera.position.z += (-nvx*sin + nvz*cos) * snelheid * dt;
+    stapX = (nvx*cos + nvz*sin) * snelheid * dt;
+    stapZ = (-nvx*sin + nvz*cos) * snelheid * dt;
   }
+  // stap zetten — maar niet dwars door blokken heen (per as checken)
+  const oudX = camera.position.x, oudZ = camera.position.z;
+  camera.position.x += stapX;
+  if(botstMuur(camera.position.x, oudZ, voetY)) camera.position.x = oudX;
+  camera.position.z += stapZ;
+  if(botstMuur(camera.position.x, camera.position.z, voetY)) camera.position.z = oudZ;
   // niet door de muren heen! (lobby óf witte map)
   const w = wereldInfo();
   camera.position.x = Math.max(w.cx - w.half + MARGE, Math.min(w.cx + w.half - MARGE, camera.position.x));
@@ -429,9 +490,15 @@ function updateLopen(dt){
     else if(!dubbelGebruikt && wapenGeeftDubbelsprong()){ velY = 5.0; dubbelGebruikt = true; }
   }
   springWas = springNu;
+  // op welke hoogte ligt de grond hier? (vloer, trap, brug of blok)
+  const grond = grondHoogte(camera.position.x, camera.position.z);
+  if(opGrond){
+    if(grond > voetY && grond - voetY <= 0.55) voetY = grond;   // trapje op!
+    else if(grond < voetY - 0.02) opGrond = false;              // van de rand gelopen
+  }
   velY -= 14 * dt;
   voetY += velY * dt;
-  if(voetY <= 0){ voetY = 0; velY = 0; opGrond = true; dubbelGebruikt = false; }
+  if(voetY <= grond && velY <= 0){ voetY = grond; velY = 0; opGrond = true; dubbelGebruikt = false; }
   // launch pads: erop stappen = gelanceerd! 🚀
   if(voetY <= 0.05 && velY <= 0.01){
     for(const pad of allePads()){
@@ -609,6 +676,13 @@ function verwerkSpelers(lijst){
     syncMeshes(a.padMeshes, a.pads, maakPadMesh);
     syncMeshes(a.rookMeshes, (p.rook || []).filter(r => r.tot > Date.now()), maakRookMesh);
     verwerkEvents(p.events || []);
+    // score: hun doden = mijn punten (eerste tot 5!)
+    laatsteAnderDoden = p.doden || 0;
+    if(!botModus && huidigeWereld === 'arena' && laatsteAnderDoden >= 5 && performance.now() > winMeldTot){
+      winMeldTot = performance.now() + 8000;
+      melding('🏆 JIJ WINT DE MATCH MET 5-' + mijnDoden + '!');
+      setTimeout(() => { mijnDoden = 0; laatsteAnderDoden = 0; }, 3000);
+    }
   }
   for(const [sessie, a] of anderen){
     if(!gezien.has(sessie)){
@@ -727,6 +801,7 @@ function startDuelArena(mijnTegelNr){
   mijnSpawnKant = kant;
   mijnHp = 100; mijnEvents = []; mijnPads = []; mijnRook = [];
   boostTot = 0; bevrorenTot = 0;
+  mijnPunten = 0; mijnDoden = 0; laatsteAnderDoden = 0;   // verse match: 0-0
   toonWapenKeuze();
   if(botModus){
     // de bot verschijnt aan de overkant, kiest een wapen en vecht terug!
@@ -777,6 +852,7 @@ const WAPENS = {
 
 let mijnWapens = [], wapenActief = 0, wapensGekozen = false;
 let mijnHp = 100, mijnSpawnKant = -1;
+let mijnPunten = 0, mijnDoden = 0, laatsteAnderDoden = 0, winMeldTot = 0;   // eerste tot 5!
 let vuren = false, springWas = false, dubbelGebruikt = false;
 let boostTot = 0, bevrorenTot = 0;
 let mijnPads = [], mijnRook = [], mijnEvents = [], eventTeller = 0;
@@ -801,6 +877,7 @@ function allePads(){
 let botModus = false, botHp = 100, botWapen = null;
 let botBlindTot = 0, botTraagTot = 0, botDoodTot = 0;
 let botVolgendeAanval = 0, botVolgendeGooi = 0;
+let botDoelPunt = null, botVolgendeZwerf = 0, botY = 0, botVy = 0, botVolgendeSprong = 0;
 const BOT_WAPENS = [
   {naam: 'Paintball Gun', dmg: 8,  snel: 24, kleur: 0xff44aa},
   {naam: 'Assault Rifle', dmg: 7,  snel: 28, kleur: 0xffee66},
@@ -856,7 +933,11 @@ function botDood(){
   botDoodTot = performance.now() + 3000;
   botBeeld.groep.visible = false;
   ontplof(botBeeld.groep.position.x, botBeeld.groep.position.z, 0, 0);
-  melding('🏆 JE HEBT DE BOT VERSLAGEN!');
+  mijnPunten++;
+  if(mijnPunten >= 5){
+    melding('🏆 JIJ WINT DE MATCH MET 5-' + mijnDoden + '!');
+    mijnPunten = 0; mijnDoden = 0;
+  } else melding('🏆 PUNT! Stand: jij ' + mijnPunten + ' — ' + mijnDoden + ' bot');
 }
 
 function updateBot(dt, t){
@@ -874,18 +955,37 @@ function updateBot(dt, t){
   const dx = camera.position.x - g.x, dz = camera.position.z - g.z;
   const afst = Math.hypot(dx, dz) || 0.01;
   const traag = botTraagTot > nu ? 0.5 : 1;
-  // slim bewegen: dichterbij als je ver bent, wegstappen als je te dichtbij komt,
-  // en altijd een beetje zijwaarts dansen zodat hij lastig te raken is
+  // levendig bewegen: elke paar seconden een nieuw zwerf-plekje in de buurt
+  if(!botDoelPunt || nu > botVolgendeZwerf){
+    botVolgendeZwerf = nu + 2200 + Math.random()*2000;
+    botDoelPunt = {x: camera.position.x + (Math.random()-0.5)*18, z: camera.position.z + (Math.random()-0.5)*18};
+  }
   let mx = 0, mz = 0;
-  if(afst > 8){ mx += dx/afst; mz += dz/afst; }
-  else if(afst < 5){ mx -= dx/afst; mz -= dz/afst; }
-  mx += (-dz/afst) * Math.sin(t/900) * 0.8;
-  mz += ( dx/afst) * Math.sin(t/900) * 0.8;
-  g.x += mx * 3.0 * traag * dt;
-  g.z += mz * 3.0 * traag * dt;
+  const zx = botDoelPunt.x - g.x, zz = botDoelPunt.z - g.z;
+  const zAfst = Math.hypot(zx, zz);
+  if(zAfst > 1){ mx += zx/zAfst; mz += zz/zAfst; }              // naar het zwerf-plekje
+  if(afst > 10){ mx += dx/afst; mz += dz/afst; }                // te ver weg? dichterbij!
+  else if(afst < 3.5){ mx -= (dx/afst)*1.3; mz -= (dz/afst)*1.3; }  // te dichtbij? wegstappen
+  mx += (-dz/afst) * Math.sin(t/800) * 0.7;                     // zijwaarts dansen
+  mz += ( dx/afst) * Math.sin(t/800) * 0.7;
+  const mLen = Math.hypot(mx, mz) || 1;
+  const bOudX = g.x, bOudZ = g.z;
+  g.x += (mx/mLen) * 3.4 * traag * dt;
+  if(botstMuur(g.x, bOudZ, botY)) g.x = bOudX;                  // niet door blokken heen
+  g.z += (mz/mLen) * 3.4 * traag * dt;
+  if(botstMuur(g.x, g.z, botY)) g.z = bOudZ;
   g.x = Math.max(ARENA_X - ARENA_MAAT/2 + 1, Math.min(ARENA_X + ARENA_MAAT/2 - 1, g.x));
   g.z = Math.max(-ARENA_MAAT/2 + 1, Math.min(ARENA_MAAT/2 - 1, g.z));
-  botBeeld.doel = {x: g.x, y: 0, z: g.z, oog: OOG};
+  // af en toe een sprongetje 🦘
+  if(botY === 0 && nu > botVolgendeSprong){
+    botVolgendeSprong = nu + 2500 + Math.random()*3500;
+    botVy = 5;
+  }
+  botVy -= 14 * dt;
+  botY = Math.max(0, botY + botVy * dt);
+  if(botY === 0 && botVy < 0) botVy = 0;
+  g.y = botY;
+  botBeeld.doel = {x: g.x, y: botY, z: g.z, oog: OOG};
   botBeeld.groep.rotation.y = Math.atan2(camera.position.x - g.x, camera.position.z - g.z);
   if(botBeeld.hpVoor) botBeeld.hpVoor.scale.x = Math.max(0.02, botHp/100);
   // aanvallen! (niet zolang hij verblind is, en pas als jij je wapens hebt)
@@ -925,6 +1025,7 @@ document.getElementById('wkKlaar').addEventListener('click', () => {
   bouwHotbar();
   document.getElementById('hotbar').style.display = 'flex';
   document.getElementById('hpBalk').style.display = 'block';
+  document.getElementById('scoreBord').style.display = 'block';
   if(IS_TOUCH) document.getElementById('vuurKnop').style.display = 'flex';
   if(!IS_TOUCH) renderer.domElement.requestPointerLock();
 });
@@ -1051,7 +1152,18 @@ function dood(){
   mijnHp = 100;
   camera.position.set(ARENA_X + mijnSpawnKant*5, OOG, 0);
   velY = 0; voetY = 0;
-  melding('💀 Je bent verslagen! Nieuwe ronde!');
+  mijnDoden++;
+  if(botModus){
+    if(mijnDoden >= 5){
+      melding('🤖 DE BOT WINT MET 5-' + mijnPunten + '! Nieuwe match!');
+      mijnDoden = 0; mijnPunten = 0;
+    } else melding('💀 Au! Stand: jij ' + mijnPunten + ' — ' + mijnDoden + ' bot');
+  } else {
+    if(mijnDoden >= 5){
+      melding('💀 Je vriend wint de match met 5! Nieuwe match!');
+      setTimeout(() => { mijnDoden = 0; }, 3000);   // even laten staan zodat de winnaar het ziet
+    } else melding('💀 Je bent verslagen!');
+  }
 }
 
 // ── effect-schermpjes + hulpjes ──
@@ -1117,7 +1229,7 @@ function updateWapens(dt, t){
         }
       }
     }
-    if(!weg && k.mesh.position.y <= 0.06){   // op de grond geland
+    if(!weg && k.mesh.position.y <= kogelGrond(k.mesh.position.x, k.mesh.position.z, k.mesh.position.y) + 0.06){   // geland (vloer, brug of blok)
       if(k.vanBot){
         // granaat of flashbang van de bot
         ontplof(k.mesh.position.x, k.mesh.position.z, 0, 0);
@@ -1151,6 +1263,12 @@ function updateWapens(dt, t){
   syncMeshes(mijnPadMeshes, mijnPads, maakPadMesh);
   syncMeshes(mijnRookMeshes, mijnRook, maakRookMesh);
   document.getElementById('hpVul').style.width = Math.max(0, mijnHp) + '%';
+  // scorebord: eerste tot 5 punten wint de match
+  if(wapensGekozen){
+    document.getElementById('scoreBord').textContent = botModus
+      ? ('⚔️ JIJ ' + mijnPunten + ' — ' + mijnDoden + ' BOT 🤖 (tot 5)')
+      : ('⚔️ JIJ ' + laatsteAnderDoden + ' — ' + mijnDoden + ' VRIEND (tot 5)');
+  }
 }
 
 // ── je eigen poppetje met jouw skin (zichtbaar zodra het spel start) ──
@@ -1172,7 +1290,7 @@ async function samenTik(){
     x: camera.position.x, z: camera.position.z, y: voetY,
     yaw: yaw, oog: oogNu,
     tegel: opWelkeTegel() || 0, wereld: huidigeWereld,
-    hp: mijnHp, schild: schildActief(),
+    hp: mijnHp, schild: schildActief(), doden: mijnDoden,
     events: mijnEvents, pads: mijnPads, rook: mijnRook
   };
   // avatar af en toe meesturen (de server onthoudt hem)
