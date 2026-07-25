@@ -856,7 +856,8 @@ function gebruikWapen(t){
     for(let i = 0; i < n; i++) spawnKogel(richt, w, (w.spreid || w.soort === 'vlam') ? 0.09 : 0);
   } else if(w.soort === 'vecht'){
     for(const [sessie, a] of anderen){
-      const dx = a.groep.position.x - camera.position.x, dz = a.groep.position.z - camera.position.z;
+      // a.doel = de échte plek van de speler (het poppetje loopt iets achter)
+      const dx = a.doel.x - camera.position.x, dz = a.doel.z - camera.position.z;
       const afst = Math.hypot(dx, dz);
       if(afst < (w.bereik || 2) && ((-sinY*dx - cosY*dz) / (afst || 1)) > 0.3) stuurEvent(sessie, 'schade', w.dmg);
     }
@@ -896,7 +897,7 @@ function ontplof(x, z, straal, dmg){
   mesh.position.set(x, 0.7, z); scene.add(mesh);
   boems.push({mesh, leeftijd: 0});
   if(dmg) for(const [sessie, a] of anderen){
-    if(Math.hypot(a.groep.position.x - x, a.groep.position.z - z) < straal + 0.6) stuurEvent(sessie, 'schade', dmg);
+    if(Math.hypot(a.doel.x - x, a.doel.z - z) < straal + 0.6) stuurEvent(sessie, 'schade', dmg);
   }
 }
 
@@ -977,8 +978,8 @@ function updateWapens(dt, t){
     let weg = k.leeftijd > k.ttl;
     if(!weg && k.dmg && !k.effect){          // raak ik iemand rechtstreeks?
       for(const [sessie, a] of anderen){
-        const g = a.groep.position;
-        if(Math.hypot(k.mesh.position.x - g.x, k.mesh.position.z - g.z) < 0.75 && k.mesh.position.y > g.y && k.mesh.position.y < g.y + 2){
+        const g = a.doel;   // échte positie, niet het na-lopende poppetje
+        if(Math.hypot(k.mesh.position.x - g.x, k.mesh.position.z - g.z) < 0.8 && k.mesh.position.y > g.y && k.mesh.position.y < g.y + 2.1){
           if(k.straal) ontplof(k.mesh.position.x, k.mesh.position.z, k.straal, k.dmg);
           else stuurEvent(sessie, k.bevries ? 'freeze' : 'schade', k.dmg);
           weg = true; break;
@@ -994,7 +995,7 @@ function updateWapens(dt, t){
       if(k.effect === 'flits'){
         ontplof(k.mesh.position.x, k.mesh.position.z, 0, 0);   // wit-gele knal-visual
         for(const [sessie, a] of anderen){
-          if(Math.hypot(a.groep.position.x - k.mesh.position.x, a.groep.position.z - k.mesh.position.z) < 6) stuurEvent(sessie, 'flits', 0);
+          if(Math.hypot(a.doel.x - k.mesh.position.x, a.doel.z - k.mesh.position.z) < 7) stuurEvent(sessie, 'flits', 0);
         }
       }
       weg = true;
