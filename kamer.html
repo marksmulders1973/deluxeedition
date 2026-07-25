@@ -30,6 +30,10 @@
   /* wacht-bordje tijdens het wachten op je vriend */
   #wachtBord{position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:14;display:none;background:rgba(0,0,0,0.6);color:#ffd700;font-size:15px;font-weight:bold;padding:10px 18px;border-radius:12px;border:1px solid rgba(255,215,0,0.4)}
 
+  /* 🤝 allebei in de witte map? → grote JA-knop om samen te duellen */
+  #samenDuelKnop{position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:15;display:none;background:linear-gradient(135deg,#1f9d55,#2ecc71);color:#fff;font-size:16px;font-weight:900;padding:14px 22px;border-radius:14px;border:2px solid rgba(255,255,255,0.5);cursor:pointer;box-shadow:0 0 26px rgba(46,204,113,0.6);animation:samenPuls 1.2s infinite alternate}
+  @keyframes samenPuls{from{transform:translateX(-50%) scale(1)}to{transform:translateX(-50%) scale(1.05)}}
+
   /* duel-menu: verschijnt als je op een tegel staat */
   #duelMenu{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:18;background:rgba(0,0,0,0.45)}
   #duelMenu .paneel{background:#14141c;border:2px solid #3b82ff;border-radius:16px;padding:22px 30px;text-align:center;box-shadow:0 0 34px rgba(59,130,255,0.4)}
@@ -92,6 +96,7 @@
 <div id="joy" class="touch-ui"><div id="joyStick"></div></div>
 
 <div id="wachtBord">⏳ Wachten tot je vriend op de andere tegel staat...</div>
+<button id="samenDuelKnop">🤝 JE VRIEND IS ER OOK — SAMEN DUELLEN? ✅ JA!</button>
 
 <div id="hpBalk"><div id="hpVul"></div></div>
 <div id="scoreBord"></div>
@@ -723,6 +728,16 @@ function verwerkSpelers(lijst){
       if(ander) startDuelArena(mijnT);
     }
   }
+  // 🤝 zit je vriend óók in de witte map terwijl jij tegen de bot vecht?
+  // → grote JA-knop: bot weg, samen één écht duel! (Brian 25 jul)
+  const vriendInArena = lijst.find(p => p.wereld === 'arena');
+  const sdKnop = document.getElementById('samenDuelKnop');
+  if(huidigeWereld === 'arena' && botModus && vriendInArena){
+    sdKnop.textContent = '🤝 ' + (vriendInArena.naam || 'JE VRIEND').toUpperCase() + ' IS ER OOK — SAMEN DUELLEN? ✅ JA! (druk J)';
+    sdKnop.style.display = 'block';
+  } else {
+    sdKnop.style.display = 'none';
+  }
   const n = lijst.length + 1;
   document.getElementById('samenInfo').textContent =
     n > 1 ? ('👥 ' + n + ' spelers in de kamer!') : 'wachten op je vriend...';
@@ -811,6 +826,21 @@ function vriendJoinen(){
 document.getElementById('vpWacht').addEventListener('click', vriendWachten);
 document.getElementById('vpJoin').addEventListener('click', vriendJoinen);
 document.getElementById('vpInvoer').addEventListener('keydown', e => { if(e.key === 'Enter') vriendJoinen(); });
+
+// 🤝 JA — bot weg, samen één écht duel (verse match, eerste tot 5)
+function samenDuelJa(){
+  if(!(huidigeWereld === 'arena' && botModus)) return;
+  botModus = false;
+  if(botBeeld) botBeeld.groep.visible = false;
+  mijnHp = 100; mijnPunten = 0; mijnDoden = 0; laatsteAnderDoden = 0;
+  document.getElementById('samenDuelKnop').style.display = 'none';
+  melding('⚔️ SAMEN DUEL — EERSTE TOT 5!');
+}
+document.getElementById('samenDuelKnop').addEventListener('click', samenDuelJa);
+addEventListener('keydown', e => {
+  if(e.target && e.target.tagName === 'INPUT') return;
+  if(e.code === 'KeyJ' && document.getElementById('samenDuelKnop').style.display === 'block') samenDuelJa();
+});
 document.getElementById('duelVriend').addEventListener('click', () => kiesDuel('vriend'));
 document.getElementById('duelBot').addEventListener('click', () => kiesDuel('bot'));
 addEventListener('keydown', e => {
