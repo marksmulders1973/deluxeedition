@@ -27,6 +27,15 @@
   #joy{position:fixed;left:18px;bottom:22px;width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,0.10);border:2px solid rgba(255,255,255,0.25);z-index:15}
   #joyStick{position:absolute;left:35px;top:35px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.45)}
 
+  /* duel-menu: verschijnt als je op een tegel staat */
+  #duelMenu{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:18;background:rgba(0,0,0,0.45)}
+  #duelMenu .paneel{background:#14141c;border:2px solid #3b82ff;border-radius:16px;padding:22px 30px;text-align:center;box-shadow:0 0 34px rgba(59,130,255,0.4)}
+  #duelMenu h2{color:#fff;margin:0 0 14px;font-size:26px}
+  #duelMenu button{display:block;width:270px;margin:10px auto;padding:14px;font-size:17px;font-weight:bold;border:none;border-radius:12px;cursor:pointer;color:#fff}
+  #duelVriend{background:linear-gradient(135deg,#ff3b3b,#3b82ff)}
+  #duelBot{background:linear-gradient(135deg,#1f9d55,#2ecc71)}
+  #duelMenu .tip{color:#8892a6;font-size:12px;margin-top:8px}
+
   /* samen spelen: deel-balkje rechtsonder */
   #samenBar{position:fixed;right:14px;bottom:14px;z-index:12;display:none;align-items:center;gap:10px;background:rgba(0,0,0,0.55);padding:8px 12px;border-radius:12px;color:#ddd;font-size:13px;max-width:70vw}
   #samenKnop{padding:8px 14px;font-size:14px;font-weight:bold;color:#fff;border:none;border-radius:10px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);cursor:pointer}
@@ -45,6 +54,13 @@
 <div id="stap">⚔️ DUELS</div>
 
 <div id="joy" class="touch-ui"><div id="joyStick"></div></div>
+
+<div id="duelMenu"><div class="paneel">
+  <h2>⚔️ DUEL!</h2>
+  <button id="duelVriend">🤝 PLAY WITH FRIEND</button>
+  <button id="duelBot">🤖 PLAY WITH BOT</button>
+  <div class="tip">of druk 1 / 2 · van de tegel aflopen = sluiten</div>
+</div></div>
 
 <div id="samenBar">
   <button id="samenKnop">🔗 SPEEL SAMEN</button>
@@ -340,6 +356,7 @@ function loop(t){
     updateLopen(dt);
     updateLamp(t);
     updateAnderen(dt);
+    updateDuelMenu();
     camera.rotation.set(0,0,0);
     camera.rotateY(yaw);
     camera.rotateX(pitch);
@@ -493,6 +510,70 @@ function updateAnderen(dt){
     const schaal = Math.max(0.4, a.doel.oog / OOG);   // bukken/sliden = kleiner
     g.scale.y += (schaal - g.scale.y) * f;
     // altijd met het gezicht naar jou toe
+    g.rotation.y = Math.atan2(camera.position.x - g.position.x, camera.position.z - g.position.z);
+  }
+}
+
+// ═══════════════ DUEL-MENU ⚔️ ═══════════════
+// Ga op een van de twee tegels staan → kies je tegenstander.
+let duelMenuOpen = false, duelKeuze = null, botBeeld = null;
+
+function opWelkeTegel(){
+  if(voetY > 0.2) return null;   // in de lucht telt niet
+  const px = camera.position.x, pz = camera.position.z;
+  if(Math.abs(px - tegel1.position.x) < 1.1 && Math.abs(pz - tegel1.position.z) < 1.1) return 1;
+  if(Math.abs(px - tegel2.position.x) < 1.1 && Math.abs(pz - tegel2.position.z) < 1.1) return 2;
+  return null;
+}
+
+function openDuelMenu(){
+  duelMenuOpen = true;
+  document.getElementById('duelMenu').style.display = 'flex';
+  if(document.pointerLockElement) document.exitPointerLock();   // muis vrij om te klikken
+}
+function sluitDuelMenu(){
+  duelMenuOpen = false;
+  document.getElementById('duelMenu').style.display = 'none';
+}
+
+function kiesDuel(keuze){
+  duelKeuze = keuze;
+  sluitDuelMenu();
+  if(keuze === 'vriend'){
+    samenActief = true;
+    startSamen();
+    const link = location.origin + '/kamer.html?samen=' + samenCode;
+    if(navigator.clipboard) navigator.clipboard.writeText(link).catch(()=>{});
+    document.getElementById('samenInfo').textContent = '✅ Link gekopieerd! Laat je vriend op de andere tegel staan.';
+  } else {
+    // de bot komt op de ÁNDERE tegel staan
+    const bx = (opWelkeTegel() === 2) ? tegel1.position.x : tegel2.position.x;
+    if(!botBeeld) botBeeld = maakSpelerBeeld({sessie:'bot', naam:'BOT 🤖', x:bx, y:0, z:-2, oog:OOG, avatar:''});
+    botBeeld.groep.position.set(bx, 0, -2);
+    botBeeld.groep.visible = true;
+  }
+  if(!IS_TOUCH) renderer.domElement.requestPointerLock();
+}
+document.getElementById('duelVriend').addEventListener('click', () => kiesDuel('vriend'));
+document.getElementById('duelBot').addEventListener('click', () => kiesDuel('bot'));
+addEventListener('keydown', e => {
+  if(!duelMenuOpen) return;
+  if(e.code === 'Digit1') kiesDuel('vriend');
+  if(e.code === 'Digit2') kiesDuel('bot');
+});
+
+function updateDuelMenu(){
+  const tegelNu = opWelkeTegel();
+  if(tegelNu && !duelMenuOpen && !duelKeuze) openDuelMenu();
+  if(!tegelNu){
+    if(duelMenuOpen) sluitDuelMenu();
+    if(duelKeuze){
+      duelKeuze = null;                                   // opnieuw op de tegel = opnieuw kiezen
+      if(botBeeld) botBeeld.groep.visible = false;        // bot gaat weg
+    }
+  }
+  if(botBeeld && botBeeld.groep.visible){
+    const g = botBeeld.groep;   // bot kijkt altijd naar jou
     g.rotation.y = Math.atan2(camera.position.x - g.position.x, camera.position.z - g.position.z);
   }
 }
