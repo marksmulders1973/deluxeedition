@@ -27,6 +27,9 @@
   #joy{position:fixed;left:18px;bottom:22px;width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,0.10);border:2px solid rgba(255,255,255,0.25);z-index:15}
   #joyStick{position:absolute;left:35px;top:35px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.45)}
 
+  /* wacht-bordje tijdens het wachten op je vriend */
+  #wachtBord{position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:14;display:none;background:rgba(0,0,0,0.6);color:#ffd700;font-size:15px;font-weight:bold;padding:10px 18px;border-radius:12px;border:1px solid rgba(255,215,0,0.4)}
+
   /* duel-menu: verschijnt als je op een tegel staat */
   #duelMenu{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:18;background:rgba(0,0,0,0.45)}
   #duelMenu .paneel{background:#14141c;border:2px solid #3b82ff;border-radius:16px;padding:22px 30px;text-align:center;box-shadow:0 0 34px rgba(59,130,255,0.4)}
@@ -54,6 +57,8 @@
 <div id="stap">⚔️ DUELS</div>
 
 <div id="joy" class="touch-ui"><div id="joyStick"></div></div>
+
+<div id="wachtBord">⏳ Wachten tot je vriend op de andere tegel staat...</div>
 
 <div id="duelMenu"><div class="paneel">
   <h2>⚔️ DUEL!</h2>
@@ -141,6 +146,55 @@ function maakTegel(x, z){
 // twee grote tegels naast elkaar, met een stukje vloer ertussen
 const tegel1 = maakTegel(-1.7, -2);   // linker tegel
 const tegel2 = maakTegel(1.7, -2);    // rechter tegel
+
+// ═══════════════ DE WITTE DUEL-MAP ⚔️ ═══════════════
+// 5× zo groot als de lobby, spierwit, ver weg gebouwd
+// (zelfde trucje als het ruimte-platform in Blokwereld)
+const ARENA_X = 500;                  // hier ligt de witte map
+const ARENA_MAAT = KAMER * 5;         // 70×70 meter!
+const ARENA_HOOG = 6;
+let huidigeWereld = 'lobby';          // 'lobby' of 'arena'
+
+function wereldInfo(){
+  return huidigeWereld === 'arena'
+    ? {cx: ARENA_X, half: ARENA_MAAT/2, hoog: ARENA_HOOG}
+    : {cx: 0, half: KAMER/2, hoog: HOOG};
+}
+
+{
+  // witte vloer met heel lichte vakjes (anders zie je niet dat je beweegt)
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0,0,256,256);
+  g.strokeStyle = '#e3e7ef'; g.lineWidth = 2;
+  for(let i=0;i<=256;i+=32){ g.beginPath();g.moveTo(i,0);g.lineTo(i,256);g.stroke(); g.beginPath();g.moveTo(0,i);g.lineTo(256,i);g.stroke(); }
+  const vt = new THREE.CanvasTexture(c);
+  vt.wrapS = vt.wrapT = THREE.RepeatWrapping; vt.repeat.set(ARENA_MAAT/8, ARENA_MAAT/8);
+  const avloer = new THREE.Mesh(new THREE.PlaneGeometry(ARENA_MAAT, ARENA_MAAT),
+    new THREE.MeshStandardMaterial({map: vt, roughness: 0.6}));
+  avloer.rotation.x = -Math.PI/2; avloer.position.set(ARENA_X, 0, 0);
+  scene.add(avloer);
+
+  const aplafond = new THREE.Mesh(new THREE.PlaneGeometry(ARENA_MAAT, ARENA_MAAT),
+    new THREE.MeshStandardMaterial({color: 0xffffff}));
+  aplafond.rotation.x = Math.PI/2; aplafond.position.set(ARENA_X, ARENA_HOOG, 0);
+  scene.add(aplafond);
+
+  const amuurMat = new THREE.MeshStandardMaterial({color: 0xf4f6fa});
+  for(let i=0;i<4;i++){
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(ARENA_MAAT, ARENA_HOOG), amuurMat);
+    m.position.y = ARENA_HOOG/2;
+    if(i===0){ m.position.set(ARENA_X, ARENA_HOOG/2, -ARENA_MAAT/2); }
+    if(i===1){ m.position.set(ARENA_X, ARENA_HOOG/2,  ARENA_MAAT/2); m.rotation.y = Math.PI; }
+    if(i===2){ m.position.set(ARENA_X - ARENA_MAAT/2, ARENA_HOOG/2, 0); m.rotation.y =  Math.PI/2; }
+    if(i===3){ m.position.set(ARENA_X + ARENA_MAAT/2, ARENA_HOOG/2, 0); m.rotation.y = -Math.PI/2; }
+    scene.add(m);
+  }
+  // lekker licht daarbinnen
+  const alicht = new THREE.PointLight(0xffffff, 1.4, 220, 1.2);
+  alicht.position.set(ARENA_X, ARENA_HOOG - 0.5, 0);
+  scene.add(alicht);
+}
 
 const plafond = new THREE.Mesh(
   new THREE.PlaneGeometry(KAMER, KAMER),
@@ -325,10 +379,10 @@ function updateLopen(dt){
     camera.position.x += (nvx*cos + nvz*sin) * snelheid * dt;
     camera.position.z += (-nvx*sin + nvz*cos) * snelheid * dt;
   }
-  // niet door de muren heen!
-  const grens = KAMER/2 - MARGE;
-  camera.position.x = Math.max(-grens, Math.min(grens, camera.position.x));
-  camera.position.z = Math.max(-grens, Math.min(grens, camera.position.z));
+  // niet door de muren heen! (lobby óf witte map)
+  const w = wereldInfo();
+  camera.position.x = Math.max(w.cx - w.half + MARGE, Math.min(w.cx + w.half - MARGE, camera.position.x));
+  camera.position.z = Math.max(-w.half + MARGE, Math.min(w.half - MARGE, camera.position.z));
 
   // springen (spatie) + zwaartekracht
   if(toets['Space'] && opGrond && !slide){ velY = 5.2; opGrond = false; }
@@ -369,10 +423,10 @@ function loop(t){
     mijnBeeld.groep.visible = cameraAfstand > 0.7;   // helemaal ingezoomd = door je eigen ogen
     mijnBeeld.groep.position.set(px, voetY, pz);
     mijnBeeld.groep.scale.y = Math.max(0.4, oogNu / OOG);   // bukken/sliden zie je aan jezelf!
-    const grensC = KAMER/2 - 0.25;
-    const cx = Math.max(-grensC, Math.min(grensC, px + Math.sin(yaw)*Math.cos(pitch)*cameraAfstand));
-    const cz = Math.max(-grensC, Math.min(grensC, pz + Math.cos(yaw)*Math.cos(pitch)*cameraAfstand));
-    const cy = Math.max(0.35, Math.min(HOOG-0.25, py - Math.sin(pitch)*cameraAfstand + 0.12*cameraAfstand));
+    const wc = wereldInfo();
+    const cx = Math.max(wc.cx - wc.half + 0.25, Math.min(wc.cx + wc.half - 0.25, px + Math.sin(yaw)*Math.cos(pitch)*cameraAfstand));
+    const cz = Math.max(-wc.half + 0.25, Math.min(wc.half - 0.25, pz + Math.cos(yaw)*Math.cos(pitch)*cameraAfstand));
+    const cy = Math.max(0.35, Math.min(wc.hoog-0.25, py - Math.sin(pitch)*cameraAfstand + 0.12*cameraAfstand));
     camera.position.set(cx, cy, cz);
     camera.lookAt(px, py, pz);
     mijnBeeld.groep.rotation.y = Math.atan2(cx - px, cz - pz);   // skin naar de camera toe
@@ -496,6 +550,15 @@ function verwerkSpelers(lijst){
   for(const [sessie, a] of anderen){
     if(!gezien.has(sessie)){ scene.remove(a.groep); anderen.delete(sessie); }
   }
+  // sta ik op een tegel en mijn vriend op de ándere (of is hij al in de
+  // witte map)? → het duel begint!
+  if(huidigeWereld === 'lobby'){
+    const mijnT = opWelkeTegel();
+    if(mijnT){
+      const ander = lijst.find(p => (p.wereld === 'lobby' && p.tegel && p.tegel !== mijnT) || p.wereld === 'arena');
+      if(ander) startDuelArena(mijnT);
+    }
+  }
   const n = lijst.length + 1;
   document.getElementById('samenInfo').textContent =
     n > 1 ? ('👥 ' + n + ' spelers in de kamer!') : 'wachten op je vriend...';
@@ -563,6 +626,7 @@ addEventListener('keydown', e => {
 });
 
 function updateDuelMenu(){
+  if(huidigeWereld !== 'lobby') return;   // in de witte map geen tegel-menu
   const tegelNu = opWelkeTegel();
   if(tegelNu && !duelMenuOpen && !duelKeuze) openDuelMenu();
   if(!tegelNu){
@@ -572,10 +636,28 @@ function updateDuelMenu(){
       if(botBeeld) botBeeld.groep.visible = false;        // bot gaat weg
     }
   }
+  // wacht-bordje: alleen zolang je op je tegel op je vriend wacht
+  document.getElementById('wachtBord').style.display =
+    (duelKeuze === 'vriend' && tegelNu) ? 'block' : 'none';
   if(botBeeld && botBeeld.groep.visible){
     const g = botBeeld.groep;   // bot kijkt altijd naar jou
     g.rotation.y = Math.atan2(camera.position.x - g.position.x, camera.position.z - g.position.z);
   }
+}
+
+// ── het duel begint: allebei naar de witte map! ──
+function startDuelArena(mijnTegelNr){
+  huidigeWereld = 'arena';
+  sluitDuelMenu();
+  duelKeuze = null;
+  document.getElementById('wachtBord').style.display = 'none';
+  if(botBeeld) botBeeld.groep.visible = false;
+  // tegel 1 = links spawnen, tegel 2 = rechts — met je gezicht naar elkaar toe
+  const kant = (mijnTegelNr === 2) ? 1 : -1;
+  camera.position.set(ARENA_X + kant*5, OOG, 0);
+  yaw = (kant === -1) ? -Math.PI/2 : Math.PI/2;   // kijk richting de ander
+  pitch = 0; velY = 0; voetY = 0; oogNu = OOG; slide = null;
+  document.getElementById('samenInfo').textContent = '⚔️ DUEL! Jullie zijn in de witte map!';
 }
 
 // ── je eigen poppetje met jouw skin (zichtbaar zodra het spel start) ──
@@ -595,7 +677,8 @@ async function samenTik(){
   const body = {
     kamer: samenCode, sessie: mijnSessie, naam: mijnNaam,
     x: camera.position.x, z: camera.position.z, y: voetY,
-    yaw: yaw, oog: oogNu
+    yaw: yaw, oog: oogNu,
+    tegel: opWelkeTegel() || 0, wereld: huidigeWereld
   };
   // avatar af en toe meesturen (de server onthoudt hem)
   if(mijnAvatar && (samenTel === 1 || samenTel % 25 === 0)) body.avatar = mijnAvatar;

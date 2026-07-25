@@ -48,6 +48,8 @@ async function kamerTik(b, res) {
     y: +(+b.y || 0).toFixed(2),                       // voeten-hoogte (springen!)
     yaw: +(+b.yaw || 0).toFixed(2),
     oog: Math.max(0.4, Math.min(2, +b.oog || 1.6)),   // laag = bukken/sliden
+    tegel: Math.max(0, Math.min(2, parseInt(b.tegel, 10) || 0)),   // op welke duel-tegel je staat
+    wereld: b.wereld === 'arena' ? 'arena' : 'lobby',              // lobby of witte map
     tijd: nu,
   };
   // avatar-plaatje mag mee, maar alleen als het echt een klein SVG'tje is
