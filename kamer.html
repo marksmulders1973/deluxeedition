@@ -62,28 +62,24 @@ const KAMER = 14;      // breedte/diepte in meters
 const HOOG  = 4;       // plafond-hoogte
 const OOG   = 1.6;     // ooghoogte van je personage
 
-// vloer met échte tegels (canvas-texture, geen plaatjes nodig):
-// blokjes van 2 kleuren om en om (schaakbord) + donkere voegen ertussen
-function tegelTexture(){
-  const c = document.createElement('canvas'); c.width = c.height = 256;
+// vloer met precies 2 GROTE vierkanten naast elkaar (Brian's ontwerp):
+// links een licht vlak, rechts een donker vlak, met een groef ertussen
+function grootVierkantTexture(){
+  const c = document.createElement('canvas'); c.width = 512; c.height = 512;
   const g = c.getContext('2d');
-  const T = 64;                       // 4×4 tegels per plaatje
-  g.fillStyle = '#3a3f4a';            // de voegen (randjes tussen de tegels)
-  g.fillRect(0,0,256,256);
-  for(let ry=0;ry<4;ry++) for(let rx=0;rx<4;rx++){
-    g.fillStyle = (rx+ry)%2===0 ? '#cfd4dc' : '#9aa3b0';   // licht/donker om en om
-    g.fillRect(rx*T+3, ry*T+3, T-6, T-6);
-    // klein glans-hoekje op elke tegel
-    g.fillStyle = 'rgba(255,255,255,0.18)';
-    g.fillRect(rx*T+6, ry*T+6, 14, 6);
-  }
+  g.fillStyle = '#2b2f38';            // rand om de vloer + groef in het midden
+  g.fillRect(0,0,512,512);
+  g.fillStyle = '#d5dae2';            // groot vierkant 1 (licht)
+  g.fillRect(8, 8, 240, 496);
+  g.fillStyle = '#7d8695';            // groot vierkant 2 (donker)
+  g.fillRect(264, 8, 240, 496);
   const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(KAMER/4, KAMER/4);
+  t.repeat.set(1, 1);                 // 1 plaatje over de hele vloer = 2 grote vlakken
   return t;
 }
 const vloer = new THREE.Mesh(
   new THREE.PlaneGeometry(KAMER, KAMER),
-  new THREE.MeshStandardMaterial({map: tegelTexture(), roughness: 0.35})
+  new THREE.MeshStandardMaterial({map: grootVierkantTexture(), roughness: 0.35})
 );
 vloer.rotation.x = -Math.PI/2; vloer.receiveShadow = true;
 scene.add(vloer);
