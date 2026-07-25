@@ -474,7 +474,7 @@ async function samenTik(){
   // avatar af en toe meesturen (de server onthoudt hem)
   if(mijnAvatar && (samenTel === 1 || samenTel % 25 === 0)) body.avatar = mijnAvatar;
   try{
-    const r = await fetch('/api/kamer', {
+    const r = await fetch('/api/race', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body)
