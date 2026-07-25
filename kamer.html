@@ -62,32 +62,40 @@ const KAMER = 14;      // breedte/diepte in meters
 const HOOG  = 4;       // plafond-hoogte
 const OOG   = 1.6;     // ooghoogte van je personage
 
-// vloer met subtiel ruitjes-patroon (canvas-texture, geen plaatjes nodig)
-function ruitTexture(kleurA, kleurB){
+// vloer met échte tegels (canvas-texture, geen plaatjes nodig):
+// blokjes van 2 kleuren om en om (schaakbord) + donkere voegen ertussen
+function tegelTexture(){
   const c = document.createElement('canvas'); c.width = c.height = 256;
   const g = c.getContext('2d');
-  g.fillStyle = kleurA; g.fillRect(0,0,256,256);
-  g.strokeStyle = kleurB; g.lineWidth = 2;
-  for(let i=0;i<=256;i+=32){ g.beginPath();g.moveTo(i,0);g.lineTo(i,256);g.stroke(); g.beginPath();g.moveTo(0,i);g.lineTo(256,i);g.stroke(); }
+  const T = 64;                       // 4×4 tegels per plaatje
+  g.fillStyle = '#3a3f4a';            // de voegen (randjes tussen de tegels)
+  g.fillRect(0,0,256,256);
+  for(let ry=0;ry<4;ry++) for(let rx=0;rx<4;rx++){
+    g.fillStyle = (rx+ry)%2===0 ? '#cfd4dc' : '#9aa3b0';   // licht/donker om en om
+    g.fillRect(rx*T+3, ry*T+3, T-6, T-6);
+    // klein glans-hoekje op elke tegel
+    g.fillStyle = 'rgba(255,255,255,0.18)';
+    g.fillRect(rx*T+6, ry*T+6, 14, 6);
+  }
   const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(KAMER/2, KAMER/2);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(KAMER/4, KAMER/4);
   return t;
 }
 const vloer = new THREE.Mesh(
   new THREE.PlaneGeometry(KAMER, KAMER),
-  new THREE.MeshStandardMaterial({map: ruitTexture('#23232e', '#2e2e3c')})
+  new THREE.MeshStandardMaterial({map: tegelTexture(), roughness: 0.35})
 );
 vloer.rotation.x = -Math.PI/2; vloer.receiveShadow = true;
 scene.add(vloer);
 
 const plafond = new THREE.Mesh(
   new THREE.PlaneGeometry(KAMER, KAMER),
-  new THREE.MeshStandardMaterial({color: 0x15151d})
+  new THREE.MeshStandardMaterial({color: 0x8a8f9a})
 );
 plafond.rotation.x = Math.PI/2; plafond.position.y = HOOG;
 scene.add(plafond);
 
-const muurMat = new THREE.MeshStandardMaterial({color: 0x1d1d28});
+const muurMat = new THREE.MeshStandardMaterial({color: 0x6e7484});
 for(let i=0;i<4;i++){
   const muur = new THREE.Mesh(new THREE.PlaneGeometry(KAMER, HOOG), muurMat);
   muur.position.y = HOOG/2;
@@ -113,17 +121,18 @@ const snoer = new THREE.Mesh(
 snoer.position.set(0, HOOG-0.175, 0);
 scene.add(snoer);
 
-const lamp = new THREE.PointLight(0xffe6b3, 1.1, 22, 1.6);
+const lamp = new THREE.PointLight(0xfff1cc, 2.4, 40, 1.2);
 lamp.position.set(0, HOOG-0.4, 0);
 lamp.castShadow = true;
 scene.add(lamp);
-scene.add(new THREE.AmbientLight(0x404050, 0.5));
+scene.add(new THREE.AmbientLight(0x9aa0b5, 1.0));
+scene.add(new THREE.HemisphereLight(0xffffff, 0x555566, 0.45));
 
 // heel zacht flakkeren van de lamp — net echt
 let flakker = 0;
 function updateLamp(t){
   flakker += 0.05;
-  lamp.intensity = 1.1 + Math.sin(flakker*1.7)*0.04 + Math.sin(flakker*5.3)*0.02;
+  lamp.intensity = 2.4 + Math.sin(flakker*1.7)*0.07 + Math.sin(flakker*5.3)*0.03;
 }
 
 // ── besturing: kijken ──
