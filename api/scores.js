@@ -55,7 +55,18 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    res.setHeader("Allow", "GET, POST");
+    // 🧹 score-reset (NovaX-paneel): alle runs van één speler weghalen
+    if (req.method === "DELETE") {
+      const naam = String(req.query.naam || "").trim().toLowerCase();
+      if (!naam) return res.status(400).json({ fout: "geen naam" });
+      const scores = await laad();
+      const over = scores.filter(s => String(s.naam || "").trim().toLowerCase() !== naam);
+      const verwijderd = scores.length - over.length;
+      await sla(over);
+      return res.status(200).json({ ok: true, verwijderd });
+    }
+
+    res.setHeader("Allow", "GET, POST, DELETE");
     return res.status(405).end();
   } catch (e) {
     return res.status(500).json({ fout: String(e.message || e).slice(0, 200) });
