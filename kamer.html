@@ -37,7 +37,7 @@
 <div id="start">
   <h1>⚔️ DUELS</h1>
   <p>Loop rond, deel de link, speel samen...</p>
-  <p>💻 WASD = lopen · Shift = sprinten · spatie = springen<br>C = bukken (of tijdens het lopen: sliden! 💨) · muis = kijken<br>📱 rondje links = lopen, vegen rechts = kijken<br>🔗 onderin: deel de link en speel SAMEN met een vriend!</p>
+  <p>💻 WASD = lopen · Shift = sprinten · spatie = springen<br>C = bukken (of tijdens het lopen: sliden! 💨) · muis = kijken · scrollen = zoomen<br>📱 rondje links = lopen, vegen rechts = kijken, knijpen = zoomen<br>🔗 onderin: deel de link en speel SAMEN met een vriend!</p>
   <button class="knop">▶ GA NAAR BINNEN</button>
 </div>
 
@@ -190,26 +190,42 @@ document.addEventListener('mousemove', e => {
   pitch = Math.max(-1.45, Math.min(1.45, pitch));
 });
 
-// telefoon: vegen op de rechterhelft = kijken
-let veeg = null;
+// telefoon: 1 vinger vegen (rechterhelft) = kijken, 2 vingers knijpen = zoomen
+const kijkVingers = new Map();
+let vorigePinch = 0;
+function pinchAfstand(){
+  const v = [...kijkVingers.values()];
+  return Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y);
+}
 addEventListener('touchstart', e => {
   for(const t of e.changedTouches){
-    if(t.clientX > innerWidth/2 && !veeg) veeg = {id:t.identifier, x:t.clientX, y:t.clientY};
+    if(t.clientX > innerWidth/2) kijkVingers.set(t.identifier, {x:t.clientX, y:t.clientY});
   }
+  if(kijkVingers.size === 2) vorigePinch = pinchAfstand();
 }, {passive:false});
 addEventListener('touchmove', e => {
+  let geraakt = false;
   for(const t of e.changedTouches){
-    if(veeg && t.identifier === veeg.id){
-      yaw   -= (t.clientX - veeg.x) * 0.005;
-      pitch -= (t.clientY - veeg.y) * 0.005;
+    const v = kijkVingers.get(t.identifier);
+    if(!v) continue;
+    if(kijkVingers.size === 1){
+      yaw   -= (t.clientX - v.x) * 0.005;
+      pitch -= (t.clientY - v.y) * 0.005;
       pitch = Math.max(-1.45, Math.min(1.45, pitch));
-      veeg.x = t.clientX; veeg.y = t.clientY;
     }
+    v.x = t.clientX; v.y = t.clientY; geraakt = true;
+  }
+  // twee vingers = knijp-zoomen
+  if(kijkVingers.size >= 2 && geraakt){
+    const nu = pinchAfstand();
+    zoomDoel = Math.max(0.35, Math.min(6, zoomDoel - (nu - vorigePinch) * 0.02));
+    vorigePinch = nu;
   }
   e.preventDefault();
 }, {passive:false});
 addEventListener('touchend', e => {
-  for(const t of e.changedTouches){ if(veeg && t.identifier === veeg.id) veeg = null; }
+  for(const t of e.changedTouches) kijkVingers.delete(t.identifier);
+  if(kijkVingers.size === 2) vorigePinch = pinchAfstand();
 });
 
 // ── besturing: lopen ──
@@ -311,7 +327,12 @@ function updateLopen(dt){
 }
 
 // ── game-loop ──
-const CAMERA_AFSTAND = 3.0;   // zo ver hangt de camera achter je poppetje
+// zoomen: scrollwiel (computer) of knijpen (telefoon)
+let zoomDoel = 3.0;        // gewenste camera-afstand
+let cameraAfstand = 3.0;   // echte afstand — glijdt soepel naar zoomDoel
+addEventListener('wheel', e => {
+  zoomDoel = Math.max(0.35, Math.min(6, zoomDoel + e.deltaY * 0.003));
+}, {passive:true});
 function loop(t){
   requestAnimationFrame(loop);
   const dt = Math.min((t - vorigeTijd)/1000, 0.05); vorigeTijd = t;
@@ -327,13 +348,14 @@ function loop(t){
     // camera.position = waar je poppetje STAAT; voor het renderen
     // schuift de camera even naar achteren, daarna weer terug.
     const px = camera.position.x, py = camera.position.y, pz = camera.position.z;
-    mijnBeeld.groep.visible = true;
+    cameraAfstand += (zoomDoel - cameraAfstand) * Math.min(1, 10*dt);
+    mijnBeeld.groep.visible = cameraAfstand > 0.7;   // helemaal ingezoomd = door je eigen ogen
     mijnBeeld.groep.position.set(px, voetY, pz);
     mijnBeeld.groep.scale.y = Math.max(0.4, oogNu / OOG);   // bukken/sliden zie je aan jezelf!
     const grensC = KAMER/2 - 0.25;
-    const cx = Math.max(-grensC, Math.min(grensC, px + Math.sin(yaw)*Math.cos(pitch)*CAMERA_AFSTAND));
-    const cz = Math.max(-grensC, Math.min(grensC, pz + Math.cos(yaw)*Math.cos(pitch)*CAMERA_AFSTAND));
-    const cy = Math.max(0.35, Math.min(HOOG-0.25, py - Math.sin(pitch)*CAMERA_AFSTAND + 0.35));
+    const cx = Math.max(-grensC, Math.min(grensC, px + Math.sin(yaw)*Math.cos(pitch)*cameraAfstand));
+    const cz = Math.max(-grensC, Math.min(grensC, pz + Math.cos(yaw)*Math.cos(pitch)*cameraAfstand));
+    const cy = Math.max(0.35, Math.min(HOOG-0.25, py - Math.sin(pitch)*cameraAfstand + 0.12*cameraAfstand));
     camera.position.set(cx, cy, cz);
     camera.lookAt(px, py, pz);
     mijnBeeld.groep.rotation.y = Math.atan2(cx - px, cz - pz);   // skin naar de camera toe
