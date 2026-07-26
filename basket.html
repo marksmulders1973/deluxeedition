@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🏀 BASKET-HELD — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<canvas id="c"></canvas>
+
+<div class="paneel" id="startPaneel">
+  <h1>🏀 BASKET-HELD</h1>
+  <div class="sub">een spel van Claude 🤖 — voor de site van Brian</div>
+  <div class="uitleg">
+    <b>Veeg omhoog</b> (of sleep met de muis) om de bal richting de basket te gooien.<br>
+    De basket beweegt heen en weer — mik goed vooruit! Je hebt <b>10 ballen</b>.<br>
+    Raak = 2 punten = 2 🗝️ keys. Alles raak = +5 bonus!
+  </div>
+  <button class="knop" id="startKnop">🏀 START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b> raak</div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)" id="doodTitel"></h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+
+let stand = "start", worpen, raak, bal, hoep, sleep, melding, meldTijd;
+
+function reset() {
+  worpen = 0; raak = 0;
+  hoep = { x: m.W / 2, richting: 1, snel: 120 + Math.random() * 60 };
+  nieuweBal();
+}
+function nieuweBal() {
+  bal = { x: m.W / 2, y: m.H - 90, vx: 0, vy: 0, r: 20, vliegt: false };
+  sleep = null; melding = null;
+  hud();
+}
+function hud() {
+  document.getElementById("hud").innerHTML = "🏀 " + raak + " raak &nbsp;<span style='font-size:15px;color:#9aa4c7'>bal " + Math.min(worpen + 1, 10) + "/10</span>";
+}
+
+// ── slepen en loslaten = gooien ──
+function startSleep(x, y) { if (stand === "spel" && !bal.vliegt) sleep = { x1: x, y1: y, x2: x, y2: y }; }
+function trekSleep(x, y) { if (sleep) { sleep.x2 = x; sleep.y2 = y; } }
+function eindSleep() {
+  if (!sleep || stand !== "spel" || bal.vliegt) { sleep = null; return; }
+  const dx = sleep.x2 - sleep.x1, dy = sleep.y2 - sleep.y1;
+  sleep = null;
+  if (dy > -30) return;           // je moet echt omhoog vegen
+  bal.vliegt = true;
+  bal.vx = Math.max(-520, Math.min(520, dx * 3.4));
+  bal.vy = Math.max(-1450, dy * 3.6);
+}
+window.addEventListener("pointerdown", e => {
+  if (e.target.closest(".paneel") || e.target.closest("a")) return;
+  startSleep(e.clientX, e.clientY);
+});
+window.addEventListener("pointermove", e => trekSleep(e.clientX, e.clientY));
+window.addEventListener("pointerup", eindSleep);
+window.addEventListener("touchmove", e => { if (stand === "spel") e.preventDefault(); }, { passive: false });
+
+function hoepY() { return m.H * 0.22; }
+
+function stap(dt) {
+  hoep.x += hoep.richting * hoep.snel * dt;
+  if (hoep.x > m.W - 90) { hoep.x = m.W - 90; hoep.richting = -1; }
+  if (hoep.x < 90) { hoep.x = 90; hoep.richting = 1; }
+
+  if (bal.vliegt) {
+    const yVoor = bal.y;
+    bal.x += bal.vx * dt; bal.y += bal.vy * dt; bal.vy += 1350 * dt;
+    if (bal.x - bal.r < 0) { bal.x = bal.r; bal.vx = Math.abs(bal.vx) * 0.7; }
+    if (bal.x + bal.r > m.W) { bal.x = m.W - bal.r; bal.vx = -Math.abs(bal.vx) * 0.7; }
+    // door de ring? (op weg naar beneden, langs de hoepel-hoogte, binnen de ring)
+    const hy = hoepY();
+    if (bal.vy > 0 && yVoor <= hy && bal.y > hy) {
+      if (Math.abs(bal.x - hoep.x) < 34) {
+        raak++;
+        melding = { tekst: "🏀 RAAK!", kleur: "#2ecc71" };
+      } else if (Math.abs(bal.x - hoep.x) < 58) {
+        // net op de rand: stuiter
+        bal.vx += (bal.x > hoep.x ? 140 : -140);
+        bal.vy = -Math.abs(bal.vy) * 0.45;
+      }
+    }
+    if (bal.y - bal.r > m.H) {
+      worpen++;
+      if (!melding) melding = { tekst: "MIS…", kleur: "#9aa4c7" };
+      meldTijd = 0.8;
+      bal.vliegt = false;
+      bal.wacht = true;
+    }
+  }
+  if (bal.wacht) {
+    meldTijd -= dt;
+    if (meldTijd <= 0) {
+      if (worpen >= 10) return klaar();
+      hud();
+      nieuweBal();
+    }
+  }
+}
+
+function klaar() {
+  stand = "dood";
+  const alles = raak === 10;
+  const best = zetRecord("deluxe-basket-best", raak);
+  const keys = geefKeys(raak * 2 + (alles ? 5 : 0), "basket");
+  document.getElementById("doodTitel").textContent = alles ? "🏆 PERFECT — 10 UIT 10!" : raak >= 6 ? "🎉 LEKKER GEGOOID!" : "🏀 AFGELOPEN!";
+  document.getElementById("doodScore").textContent = raak + " / 10";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (raak >= best && raak > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+}
+
+function teken() {
+  const lucht = ctx.createLinearGradient(0, 0, 0, m.H);
+  lucht.addColorStop(0, "#0a1030"); lucht.addColorStop(1, "#1a1030");
+  ctx.fillStyle = lucht; ctx.fillRect(0, 0, m.W, m.H);
+  const hy = hoepY();
+  // bord
+  ctx.fillStyle = "rgba(255,255,255,0.15)";
+  ctx.fillRect(hoep.x - 46, hy - 74, 92, 60);
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+  ctx.strokeRect(hoep.x - 46, hy - 74, 92, 60);
+  // ring
+  ctx.strokeStyle = "#ff3b3b"; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(hoep.x - 36, hy); ctx.lineTo(hoep.x + 36, hy); ctx.stroke();
+  // netje
+  ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 1.5;
+  for (let i = -3; i <= 3; i++) {
+    ctx.beginPath(); ctx.moveTo(hoep.x + i * 11, hy); ctx.lineTo(hoep.x + i * 7, hy + 30); ctx.stroke();
+  }
+  // mik-pijl tijdens het slepen
+  if (sleep) {
+    ctx.strokeStyle = "rgba(255,215,0,0.8)"; ctx.lineWidth = 4; ctx.setLineDash([8, 8]);
+    ctx.beginPath(); ctx.moveTo(bal.x, bal.y);
+    ctx.lineTo(bal.x + (sleep.x2 - sleep.x1) * 1.4, bal.y + (sleep.y2 - sleep.y1) * 1.4);
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  // bal
+  ctx.font = (bal.r * 2.3) + "px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("🏀", bal.x, bal.y);
+  if (!bal.vliegt && !bal.wacht && stand === "spel") {
+    ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.font = "700 16px sans-serif";
+    ctx.fillText("👆 veeg omhoog om te gooien!", m.W / 2, m.H - 40);
+  }
+  if (melding && bal.wacht) {
+    ctx.font = "900 44px sans-serif"; ctx.fillStyle = melding.kleur;
+    ctx.fillText(melding.tekst, m.W / 2, m.H * 0.5);
+  }
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+}
+document.getElementById("startKnop").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("nogEenKeer").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-basket-best") || "0";
+</script>
+</body>
+</html>

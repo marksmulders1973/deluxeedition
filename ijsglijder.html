@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🐧 IJS-GLIJDER — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+<style>
+  #pijlen { position:fixed; right:14px; bottom:14px; z-index:6; display:none;
+    grid-template-columns:repeat(3,54px); grid-template-rows:repeat(2,54px); gap:6px; }
+  #pijlen button { font-size:22px; border:none; border-radius:12px; color:#fff; background:rgba(59,130,246,0.28); }
+  #pijlen button:active { background:rgba(255,59,59,0.5); }
+  @media (pointer:coarse) { #pijlen { display:grid; } }
+</style>
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<canvas id="c"></canvas>
+
+<div id="pijlen">
+  <span></span><button data-r="0,-1">⬆️</button><span></span>
+  <button data-r="-1,0">⬅️</button><button data-r="0,1">⬇️</button><button data-r="1,0">➡️</button>
+</div>
+
+<div class="paneel" id="startPaneel">
+  <h1>🐧 IJS-GLIJDER</h1>
+  <div class="sub">een spel van Claude 🤖 — voor de site van Brian</div>
+  <div class="uitleg">
+    De pinguïn <b>glijdt door</b> tot hij ergens tegenaan botst — zo werkt ijs! 🧊<br>
+    Glij precies zó dat je bij de vis 🐟 stopt. <b>8 puzzel-levels</b>, steeds slimmer nadenken.<br>
+    Stuur met pijltjes, vegen of de knopjes. Elk level = 3 🗝️ keys!
+  </div>
+  <button class="knop" id="startKnop">🐧 START</button>
+  <div class="rij" style="margin-top:16px">Beste level ooit: <b id="bestStart">0</b>/8</div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">🎉 ALLE VISSEN OP!</h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+// ── de 8 levels: . = ijs, # = rots, P = start, V = vis ──
+// (met de terug-knop ↺ kun je altijd opnieuw beginnen aan een level)
+const LEVELS = [
+  [ "......",
+    ".....#",
+    "..#...",
+    "P....V",
+    "......" ],
+  [ ".#....",
+    "......",
+    "...#..",
+    "P.....",
+    "....V#" ],
+  [ "..#...",
+    "......",
+    "#.....",
+    "...#..",
+    "P...V." ],
+  [ ".......",
+    "..#....",
+    ".....#.",
+    ".#.....",
+    "P....V." ],
+  [ "...#...",
+    ".......",
+    "#..V...",
+    ".......",
+    "P...#.." ],
+  [ "....#..",
+    ".......",
+    ".#...V.",
+    ".......",
+    "..#....",
+    "P......" ],
+  [ ".....#.",
+    ".......",
+    "..#....",
+    "....V#.",
+    ".......",
+    "P.#...." ],
+  [ "#.....#",
+    ".......",
+    "...#...",
+    ".V.....",
+    "....#..",
+    ".......",
+    "P......" ],
+];
+
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+
+let stand = "start", level, grid, KB, KH, CEL, BX, BY, pinguin, vis, glijdt, glijDoel, glijRicht, zetten, totaalZetten;
+
+function laadLevel(nr) {
+  const rows = LEVELS[nr];
+  KH = rows.length; KB = rows[0].length;
+  grid = rows.map(r => r.split(""));
+  for (let y = 0; y < KH; y++) for (let x = 0; x < KB; x++) {
+    if (grid[y][x] === "P") { pinguin = { x, y }; grid[y][x] = "."; }
+    if (grid[y][x] === "V") { vis = { x, y }; grid[y][x] = "V"; }
+  }
+  CEL = Math.floor(Math.min((m.W - 30) / KB, (m.H - 130) / KH));
+  BX = Math.floor((m.W - CEL * KB) / 2);
+  BY = Math.floor((m.H - CEL * KH) / 2) + 20;
+  glijdt = false; zetten = 0;
+  hud();
+}
+function hud() {
+  document.getElementById("hud").innerHTML = "🐧 level " + (level + 1) + "/8 &nbsp;<span style='font-size:15px;color:#9aa4c7'>" + zetten + " zetten</span>";
+}
+
+function isRots(x, y) { return x < 0 || y < 0 || x >= KB || y >= KH || grid[y][x] === "#"; }
+
+function glij(dx, dy) {
+  if (stand !== "spel" || glijdt) return;
+  let x = pinguin.x, y = pinguin.y, gestopt = false;
+  while (!gestopt) {
+    const nx = x + dx, ny = y + dy;
+    if (isRots(nx, ny)) { gestopt = true; break; }
+    x = nx; y = ny;
+    if (grid[y][x] === "V") { gestopt = true; break; }   // bij de vis stop je (om te smullen)
+  }
+  if (x === pinguin.x && y === pinguin.y) return;   // kon niet bewegen
+  zetten++; totaalZetten++;
+  glijdt = true; glijDoel = { x, y }; glijRicht = { dx, dy };
+  hud();
+}
+
+const RICHTINGEN = { ArrowUp:[0,-1], ArrowDown:[0,1], ArrowLeft:[-1,0], ArrowRight:[1,0], KeyW:[0,-1], KeyS:[0,1], KeyA:[-1,0], KeyD:[1,0] };
+window.addEventListener("keydown", e => {
+  const r = RICHTINGEN[e.code];
+  if (r) { e.preventDefault(); glij(r[0], r[1]); }
+});
+let veegStart = null;
+window.addEventListener("touchstart", e => { if (!e.target.closest("#pijlen")) veegStart = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }, { passive: true });
+window.addEventListener("touchend", e => {
+  if (!veegStart) return;
+  const dx = e.changedTouches[0].clientX - veegStart.x;
+  const dy = e.changedTouches[0].clientY - veegStart.y;
+  veegStart = null;
+  if (Math.abs(dx) < 22 && Math.abs(dy) < 22) return;
+  if (Math.abs(dx) > Math.abs(dy)) glij(Math.sign(dx), 0); else glij(0, Math.sign(dy));
+}, { passive: true });
+document.querySelectorAll("#pijlen button").forEach(b => {
+  b.addEventListener("touchstart", e => { e.preventDefault(); const [x, y] = b.dataset.r.split(",").map(Number); glij(x, y); });
+  b.addEventListener("click", () => { const [x, y] = b.dataset.r.split(",").map(Number); glij(x, y); });
+});
+
+// vloeiend glijden in beeld
+let glijPlek = null;
+function stap(dt) {
+  if (!glijdt) return;
+  glijPlek = glijPlek || { x: pinguin.x, y: pinguin.y };
+  const snel = 14;
+  glijPlek.x += glijRicht.dx * snel * dt;
+  glijPlek.y += glijRicht.dy * snel * dt;
+  const klaar_x = glijRicht.dx !== 0 && (glijRicht.dx > 0 ? glijPlek.x >= glijDoel.x : glijPlek.x <= glijDoel.x);
+  const klaar_y = glijRicht.dy !== 0 && (glijRicht.dy > 0 ? glijPlek.y >= glijDoel.y : glijPlek.y <= glijDoel.y);
+  if (klaar_x || klaar_y) {
+    pinguin = { x: glijDoel.x, y: glijDoel.y };
+    glijPlek = null; glijdt = false;
+    if (pinguin.x === vis.x && pinguin.y === vis.y) {
+      level++;
+      if (level >= LEVELS.length) return klaar();
+      laadLevel(level);
+    }
+  }
+}
+
+function klaar() {
+  stand = "dood";
+  const best = zetRecord("deluxe-ijsglijder-best", LEVELS.length);
+  const keys = geefKeys(LEVELS.length * 3, "ijsglijder");
+  document.getElementById("doodScore").textContent = "8/8 levels";
+  document.getElementById("doodBest").innerHTML = "In totaal <b>" + totaalZetten + " zetten</b> — kan jij het in minder?";
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+}
+
+function teken() {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, m.W, m.H);
+  if (!grid) return;
+  for (let y = 0; y < KH; y++) for (let x = 0; x < KB; x++) {
+    const px = BX + x * CEL, py = BY + y * CEL;
+    if (grid[y][x] === "#") {
+      ctx.fillStyle = "#2a2f4a";
+      ctx.beginPath(); ctx.roundRect(px + 2, py + 2, CEL - 4, CEL - 4, 8); ctx.fill();
+      ctx.font = Math.floor(CEL * 0.6) + "px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("🧊", px + CEL / 2, py + CEL / 2);
+    } else {
+      ctx.fillStyle = (x + y) % 2 === 0 ? "#0e1e3a" : "#0b1830";
+      ctx.fillRect(px + 1, py + 1, CEL - 2, CEL - 2);
+    }
+  }
+  ctx.strokeStyle = "rgba(95,215,255,0.6)"; ctx.lineWidth = 3;
+  ctx.strokeRect(BX - 2, BY - 2, CEL * KB + 4, CEL * KH + 4);
+  ctx.font = Math.floor(CEL * 0.68) + "px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("🐟", BX + vis.x * CEL + CEL / 2, BY + vis.y * CEL + CEL / 2);
+  const p = glijPlek || pinguin;
+  ctx.fillText("🐧", BX + p.x * CEL + CEL / 2, BY + p.y * CEL + CEL / 2);
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function startSpel() {
+  level = 0; totaalZetten = 0;
+  laadLevel(0);
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+}
+document.getElementById("startKnop").addEventListener("click", startSpel);
+document.getElementById("nogEenKeer").addEventListener("click", startSpel);
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-ijsglijder-best") || "0";
+</script>
+</body>
+</html>

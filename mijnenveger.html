@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🧨 MIJNENVEGER JUNIOR — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+<style>
+  html,body { overflow:auto; }
+  #veld { position:fixed; inset:64px 8px 8px 8px; display:grid; place-content:center; gap:3px; }
+  .vak {
+    width:var(--vw); height:var(--vw); border-radius:7px; cursor:pointer; user-select:none; -webkit-user-select:none;
+    background:linear-gradient(135deg,#20264d,#131735); border:1px solid rgba(59,130,246,0.4);
+    display:flex; align-items:center; justify-content:center;
+    font-size:calc(var(--vw) * 0.55); font-weight:900; color:#fff;
+  }
+  .vak.open { background:#0b0e21; border-color:rgba(255,255,255,0.12); cursor:default; }
+  .vak.boem { background:#5a1010; }
+  .n1{color:#6fa8ff} .n2{color:#5ad17f} .n3{color:#ff7b7b} .n4{color:#c98fff} .n5{color:#ffd700} .n6{color:#5fd7ff} .n7{color:#ff8fd7} .n8{color:#fff}
+  #vlagKnop {
+    position:fixed; bottom:14px; right:14px; z-index:6; font-size:17px; font-weight:800; color:#fff;
+    border:2px solid rgba(255,215,0,0.5); background:rgba(20,16,2,0.85); border-radius:12px; padding:12px 18px; cursor:pointer;
+  }
+  #vlagKnop.aan { background:#7a5a00; }
+</style>
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<div id="veld"></div>
+<button id="vlagKnop" class="verborgen">🚩 vlag-stand: UIT</button>
+
+<div class="paneel" id="startPaneel">
+  <h1>🧨 MIJNENVEGER JR.</h1>
+  <div class="sub">een spel van Claude 🤖 — ✏️ afstelbaar door Arthur</div>
+  <div class="uitleg" id="uitlegTekst"></div>
+  <button class="knop" id="startKnop">🧨 START</button>
+  <div class="rij" style="margin-top:16px">Gewonnen potjes: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)" id="doodTitel"></h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const STANDAARD = { veld: 8, bommenPct: 12 };
+let INSTEL = { ...STANDAARD };
+function uitleg() {
+  const totaal = INSTEL.veld * INSTEL.veld;
+  const bommen = Math.max(2, Math.round(totaal * INSTEL.bommenPct / 100));
+  document.getElementById("uitlegTekst").innerHTML =
+    "Tik een vakje open. Het getal vertelt hoeveel bommen er náást liggen.<br>" +
+    "Denk je dat er een bom ligt? Zet er een 🚩 op (vlag-knop rechtsonder, of rechtermuisklik).<br>" +
+    "Veld: <b>" + INSTEL.veld + "×" + INSTEL.veld + "</b> met <b>" + bommen + " bommen</b>. " +
+    "Alles veilig open = gewonnen = 1 key per open vakje (max 25)!<br>Je eerste tik is altijd veilig. 😉";
+}
+editorKlaar("mijnenveger", [
+  { sleutel: "veld", label: "🔲 Veld-grootte", soort: "keuze", keuzes: [
+    { w: 6, label: "6 × 6 (makkelijk)" }, { w: 8, label: "8 × 8 (normaal)" }, { w: 10, label: "10 × 10 (pittig)" }] },
+  { sleutel: "bommenPct", label: "💣 Bommen (% van het veld)", soort: "schuif", min: 8, max: 22, stap: 1 },
+], STANDAARD, (waarden) => { INSTEL = waarden; uitleg(); });
+uitleg();
+
+const veldEl = document.getElementById("veld");
+let stand = "start", N, cellen, bommenTotaal, eersteKlik, openTeller, vlagStand = false;
+
+function bouw() {
+  N = INSTEL.veld;
+  bommenTotaal = Math.max(2, Math.round(N * N * INSTEL.bommenPct / 100));
+  eersteKlik = true; openTeller = 0;
+  veldEl.innerHTML = "";
+  const vw = Math.floor(Math.min((window.innerWidth - 30) / N, (window.innerHeight - 120) / N) - 3);
+  veldEl.style.gridTemplateColumns = "repeat(" + N + ", " + vw + "px)";
+  veldEl.style.setProperty("--vw", vw + "px");
+  cellen = [];
+  for (let i = 0; i < N * N; i++) {
+    const el = document.createElement("div");
+    el.className = "vak";
+    veldEl.appendChild(el);
+    const cel = { el, bom: false, open: false, vlag: false, i };
+    el.addEventListener("pointerdown", e => {
+      if (e.button === 2) return;
+      klik(cel, vlagStand);
+    });
+    el.addEventListener("contextmenu", e => { e.preventDefault(); klik(cel, true); });
+    cellen.push(cel);
+  }
+  hud();
+}
+function buren(i) {
+  const uit = [], x = i % N, y = Math.floor(i / N);
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dy) continue;
+    const nx = x + dx, ny = y + dy;
+    if (nx >= 0 && ny >= 0 && nx < N && ny < N) uit.push(cellen[ny * N + nx]);
+  }
+  return uit;
+}
+function legBommen(veiligI) {
+  const verboden = new Set([veiligI, ...buren(veiligI).map(c => c.i)]);
+  let over = bommenTotaal;
+  while (over > 0) {
+    const i = Math.floor(Math.random() * N * N);
+    if (verboden.has(i) || cellen[i].bom) continue;
+    cellen[i].bom = true; over--;
+  }
+}
+function telRondom(cel) { return buren(cel.i).filter(c => c.bom).length; }
+
+function klik(cel, alsVlag) {
+  if (stand !== "spel" || cel.open) return;
+  if (alsVlag) {
+    cel.vlag = !cel.vlag;
+    cel.el.textContent = cel.vlag ? "🚩" : "";
+    hud();
+    return;
+  }
+  if (cel.vlag) return;
+  if (eersteKlik) { legBommen(cel.i); eersteKlik = false; }
+  if (cel.bom) return boem(cel);
+  maakOpen(cel);
+  hud();
+  if (openTeller >= N * N - bommenTotaal) klaar(true);
+}
+function maakOpen(cel) {
+  if (cel.open || cel.vlag) return;
+  cel.open = true; openTeller++;
+  cel.el.classList.add("open");
+  const n = telRondom(cel);
+  if (n > 0) {
+    cel.el.textContent = n;
+    cel.el.classList.add("n" + n);
+  } else {
+    cel.el.textContent = "";
+    buren(cel.i).forEach(maakOpen);   // leeg vakje = buren vanzelf open (flood fill)
+  }
+}
+function hud() {
+  const vlaggen = cellen.filter(c => c.vlag).length;
+  document.getElementById("hud").innerHTML = "💣 " + bommenTotaal + " &nbsp;🚩 " + vlaggen + " &nbsp;<span style='font-size:15px;color:#9aa4c7'>" + openTeller + "/" + (N * N - bommenTotaal) + " open</span>";
+}
+
+function boem(cel) {
+  cel.el.classList.add("open", "boem");
+  cel.el.textContent = "💥";
+  cellen.filter(c => c.bom && c !== cel).forEach(c => { c.el.classList.add("open"); c.el.textContent = "💣"; });
+  klaar(false);
+}
+function klaar(gewonnen) {
+  stand = "dood";
+  let potjes = parseInt(localStorage.getItem("deluxe-mijnenveger-potjes") || "0", 10) || 0;
+  if (gewonnen) { potjes++; localStorage.setItem("deluxe-mijnenveger-potjes", String(potjes)); }
+  const keys = geefKeys(gewonnen ? openTeller : Math.floor(openTeller / 4), "mijnenveger");
+  document.getElementById("doodTitel").textContent = gewonnen ? "🎉 VELD VEILIG!" : "💥 BOEM!";
+  document.getElementById("doodScore").textContent = openTeller + " vakjes open";
+  document.getElementById("doodBest").innerHTML = "Gewonnen potjes: <b>" + potjes + "</b>";
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  setTimeout(() => {
+    document.getElementById("doodPaneel").classList.remove("verborgen");
+    document.getElementById("hud").classList.add("verborgen");
+    document.getElementById("vlagKnop").classList.add("verborgen");
+  }, gewonnen ? 300 : 1200);
+}
+
+document.getElementById("vlagKnop").addEventListener("click", () => {
+  vlagStand = !vlagStand;
+  const k = document.getElementById("vlagKnop");
+  k.textContent = vlagStand ? "🚩 vlag-stand: AAN" : "🚩 vlag-stand: UIT";
+  k.classList.toggle("aan", vlagStand);
+});
+
+function startSpel() {
+  stand = "spel";
+  vlagStand = false;
+  document.getElementById("vlagKnop").textContent = "🚩 vlag-stand: UIT";
+  document.getElementById("vlagKnop").classList.remove("aan");
+  bouw();
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  document.getElementById("vlagKnop").classList.remove("verborgen");
+}
+document.getElementById("startKnop").addEventListener("click", startSpel);
+document.getElementById("nogEenKeer").addEventListener("click", startSpel);
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-mijnenveger-potjes") || "0";
+</script>
+</body>
+</html>

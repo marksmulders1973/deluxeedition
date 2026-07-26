@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🚦 SNELSTE VINGER — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+<style>
+  #veld { position:fixed; inset:0; display:flex; flex-direction:column; }
+  .helft {
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-weight:900; user-select:none; -webkit-user-select:none; cursor:pointer;
+    background:#0b0e21; transition:background 0.1s; gap:10px;
+  }
+  .helft .groot { font-size:clamp(28px,7vw,52px); }
+  .helft .punten { font-size:20px; color:rgba(255,255,255,0.8); }
+  #boven { transform:rotate(180deg); border-bottom:3px solid rgba(255,255,255,0.25); }
+  .wacht { background:#3a0a0a !important; }
+  .nu { background:#0a5a2a !important; }
+  .winnaar { background:#7a5a00 !important; }
+</style>
+</head>
+<body>
+<a class="home" href="index.html" style="z-index:30">← deluxeedition.nl</a>
+<div id="veld">
+  <div class="helft" id="boven"><div class="groot" id="bovenTekst"></div><div class="punten" id="bovenPunten"></div></div>
+  <div class="helft" id="onder"><div class="groot" id="onderTekst"></div><div class="punten" id="onderPunten"></div></div>
+</div>
+
+<div class="paneel" id="startPaneel">
+  <h1>🚦 SNELSTE VINGER</h1>
+  <div class="sub">een spel van Claude 🤖 — voor 2 spelers op één scherm!</div>
+  <div class="uitleg">
+    Speler 1 pakt de <b>bovenkant</b>, speler 2 de <b>onderkant</b> (perfect voor jou tegen Arthur 😄).<br>
+    Wordt het scherm <b>rood</b>: WACHTEN. Wordt het <b>groen</b>: TIK ZO SNEL JE KAN!<br>
+    Te vroeg tikken = punt voor de ander. Wie het eerst <b>5 punten</b> heeft wint (+5 keys)!
+  </div>
+  <button class="knop" id="startKnop">🚦 START</button>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)" id="doodTitel"></h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+let stand = "start", fase, punten, groenTimer, rondeKlaar;
+// fase: "wacht" (rood) | "nu" (groen) | "tussen"
+
+const boven = document.getElementById("boven"), onder = document.getElementById("onder");
+
+function zetTekst(bovenT, onderT) {
+  document.getElementById("bovenTekst").textContent = bovenT;
+  document.getElementById("onderTekst").textContent = onderT;
+}
+function zetPunten() {
+  document.getElementById("bovenPunten").textContent = "⭐ " + punten.boven + " — eerste tot 5";
+  document.getElementById("onderPunten").textContent = "⭐ " + punten.onder + " — eerste tot 5";
+}
+
+function nieuweRonde() {
+  fase = "wacht"; rondeKlaar = false;
+  boven.className = "helft wacht"; onder.className = "helft wacht";
+  boven.id = "boven";
+  zetTekst("🔴 wachten…", "🔴 wachten…");
+  clearTimeout(groenTimer);
+  groenTimer = setTimeout(() => {
+    fase = "nu";
+    boven.classList.remove("wacht"); onder.classList.remove("wacht");
+    boven.classList.add("nu"); onder.classList.add("nu");
+    zetTekst("🟢 TIK NU!", "🟢 TIK NU!");
+  }, 1200 + Math.random() * 2800);
+}
+
+function tik(wie) {
+  if (stand !== "spel" || rondeKlaar) return;
+  const ander = wie === "boven" ? "onder" : "boven";
+  if (fase === "wacht") {
+    // te vroeg! punt voor de ander
+    rondeKlaar = true;
+    clearTimeout(groenTimer);
+    punten[ander]++;
+    zetTekst(wie === "boven" ? "😅 TE VROEG!" : "✅ punt voor jou!", wie === "onder" ? "😅 TE VROEG!" : "✅ punt voor jou!");
+  } else if (fase === "nu") {
+    rondeKlaar = true;
+    punten[wie]++;
+    zetTekst(wie === "boven" ? "⚡ GEWONNEN!" : "🐌 net te laat…", wie === "onder" ? "⚡ GEWONNEN!" : "🐌 net te laat…");
+    (wie === "boven" ? boven : onder).classList.add("winnaar");
+  } else return;
+  zetPunten();
+  if (punten.boven >= 5 || punten.onder >= 5) { setTimeout(einde, 1100); return; }
+  setTimeout(nieuweRonde, 1300);
+}
+
+boven.addEventListener("pointerdown", e => { e.preventDefault(); tik("boven"); });
+onder.addEventListener("pointerdown", e => { e.preventDefault(); tik("onder"); });
+
+function einde() {
+  stand = "dood";
+  const winnaar = punten.boven >= 5 ? "SPELER 1 (boven)" : "SPELER 2 (onder)";
+  const keys = geefKeys(5, "snelstevinger");
+  document.getElementById("doodTitel").textContent = "🏆 " + winnaar + " WINT!";
+  document.getElementById("doodScore").textContent = punten.boven + " — " + punten.onder;
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys) + "<br><span style='font-size:13px'>(voor de spaarpot op dit apparaat)</span>";
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+}
+
+function startSpel() {
+  stand = "spel";
+  punten = { boven: 0, onder: 0 };
+  zetPunten();
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  nieuweRonde();
+}
+document.getElementById("startKnop").addEventListener("click", startSpel);
+document.getElementById("nogEenKeer").addEventListener("click", startSpel);
+</script>
+</body>
+</html>

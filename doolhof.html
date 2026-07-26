@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🌀 DOOLHOF-RACE — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+<style>
+  #pijlen { position:fixed; right:14px; bottom:14px; z-index:6; display:none;
+    grid-template-columns:repeat(3,54px); grid-template-rows:repeat(2,54px); gap:6px; }
+  #pijlen button { font-size:22px; border:none; border-radius:12px; color:#fff; background:rgba(59,130,246,0.28); }
+  #pijlen button:active { background:rgba(255,59,59,0.5); }
+  @media (pointer:coarse) { #pijlen { display:grid; } }
+</style>
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<canvas id="c"></canvas>
+
+<div id="pijlen">
+  <span></span><button data-r="0,-1">⬆️</button><span></span>
+  <button data-r="-1,0">⬅️</button><button data-r="0,1">⬇️</button><button data-r="1,0">➡️</button>
+</div>
+
+<div class="paneel" id="startPaneel">
+  <h1>🌀 DOOLHOF-RACE</h1>
+  <div class="sub">een spel van Claude 🤖 — voor de site van Brian</div>
+  <div class="uitleg">
+    Help de muis 🐭 naar de kaas 🧀! Elke keer een <b>gloednieuw doolhof</b>.<br>
+    Stuur met pijltjes, vegen of de knopjes. Je speelt <b>3 doolhoven</b> —<br>
+    hoe sneller je bent, hoe meer punten (en keys)! Elk doolhof wordt groter…
+  </div>
+  <button class="knop" id="startKnop">🌀 START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">🧀 ALLE KAAS GEVONDEN!</h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+
+let stand = "start", KB, KH, CEL, BX, BY, muren, muis, kaas, doolhofNr, score, tikken, startTijd;
+
+// ── doolhof maken met een graaf-robot (DFS) — altijd oplosbaar! ──
+function maakDoolhof(kolommen, rijen) {
+  KB = kolommen; KH = rijen;
+  // elk vakje: [boven, rechts, onder, links] muren
+  muren = Array.from({ length: KB * KH }, () => [true, true, true, true]);
+  const bezocht = new Array(KB * KH).fill(false);
+  const stapel = [0];
+  bezocht[0] = true;
+  const RICHT = [[0, -1, 0, 2], [1, 0, 1, 3], [0, 1, 2, 0], [-1, 0, 3, 1]];
+  while (stapel.length) {
+    const hier = stapel[stapel.length - 1];
+    const x = hier % KB, y = Math.floor(hier / KB);
+    const opties = RICHT.filter(([dx, dy]) => {
+      const nx = x + dx, ny = y + dy;
+      return nx >= 0 && ny >= 0 && nx < KB && ny < KH && !bezocht[ny * KB + nx];
+    });
+    if (!opties.length) { stapel.pop(); continue; }
+    const [dx, dy, mijnMuur, hunMuur] = opties[Math.floor(Math.random() * opties.length)];
+    const daar = (y + dy) * KB + (x + dx);
+    muren[hier][mijnMuur] = false;
+    muren[daar][hunMuur] = false;
+    bezocht[daar] = true;
+    stapel.push(daar);
+  }
+  CEL = Math.floor(Math.min((m.W - 24) / KB, (m.H - 110) / KH));
+  BX = Math.floor((m.W - CEL * KB) / 2);
+  BY = Math.floor((m.H - CEL * KH) / 2) + 22;
+  muis = { x: 0, y: 0 };
+  kaas = { x: KB - 1, y: KH - 1 };
+  startTijd = performance.now();
+}
+
+function beweeg(dx, dy) {
+  if (stand !== "spel") return;
+  const i = muis.y * KB + muis.x;
+  const kant = dy === -1 ? 0 : dx === 1 ? 1 : dy === 1 ? 2 : 3;
+  if (muren[i][kant]) return;          // muur — kan niet
+  muis.x += dx; muis.y += dy;
+  tikken++;
+  if (muis.x === kaas.x && muis.y === kaas.y) {
+    const seconden = (performance.now() - startTijd) / 1000;
+    const punten = Math.max(3, 20 - Math.floor(seconden));   // sneller = meer
+    score += punten;
+    doolhofNr++;
+    hud();
+    if (doolhofNr > 3) return klaar();
+    maakDoolhof(7 + doolhofNr * 2, 5 + doolhofNr * 2);
+  }
+}
+function hud() {
+  document.getElementById("hud").innerHTML = "⭐ " + score + " &nbsp;<span style='font-size:15px;color:#9aa4c7'>doolhof " + Math.min(doolhofNr, 3) + "/3</span>";
+}
+
+const RICHTINGEN = { ArrowUp:[0,-1], ArrowDown:[0,1], ArrowLeft:[-1,0], ArrowRight:[1,0], KeyW:[0,-1], KeyS:[0,1], KeyA:[-1,0], KeyD:[1,0] };
+window.addEventListener("keydown", e => {
+  const r = RICHTINGEN[e.code];
+  if (r) { e.preventDefault(); beweeg(r[0], r[1]); }
+});
+let veegStart = null;
+window.addEventListener("touchstart", e => { if (!e.target.closest("#pijlen")) veegStart = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }, { passive: true });
+window.addEventListener("touchend", e => {
+  if (!veegStart) return;
+  const dx = e.changedTouches[0].clientX - veegStart.x;
+  const dy = e.changedTouches[0].clientY - veegStart.y;
+  veegStart = null;
+  if (Math.abs(dx) < 22 && Math.abs(dy) < 22) return;
+  if (Math.abs(dx) > Math.abs(dy)) beweeg(Math.sign(dx), 0); else beweeg(0, Math.sign(dy));
+}, { passive: true });
+document.querySelectorAll("#pijlen button").forEach(b => {
+  b.addEventListener("touchstart", e => { e.preventDefault(); const [x, y] = b.dataset.r.split(",").map(Number); beweeg(x, y); });
+  b.addEventListener("click", () => { const [x, y] = b.dataset.r.split(",").map(Number); beweeg(x, y); });
+});
+
+function klaar() {
+  stand = "dood";
+  const best = zetRecord("deluxe-doolhof-best", score);
+  const keys = geefKeys(Math.floor(score / 2), "doolhof");
+  document.getElementById("doodScore").textContent = score + " punten";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (score >= best && score > 0 ? " 🏆 NIEUW RECORD!" : "") + " • " + tikken + " stapjes";
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+}
+
+function teken() {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, m.W, m.H);
+  if (!muren) return;
+  ctx.strokeStyle = "#3b82ff"; ctx.lineWidth = 3; ctx.lineCap = "round";
+  for (let y = 0; y < KH; y++) for (let x = 0; x < KB; x++) {
+    const [b, r, o, l] = muren[y * KB + x];
+    const px = BX + x * CEL, py = BY + y * CEL;
+    ctx.beginPath();
+    if (b) { ctx.moveTo(px, py); ctx.lineTo(px + CEL, py); }
+    if (r) { ctx.moveTo(px + CEL, py); ctx.lineTo(px + CEL, py + CEL); }
+    if (o) { ctx.moveTo(px, py + CEL); ctx.lineTo(px + CEL, py + CEL); }
+    if (l) { ctx.moveTo(px, py); ctx.lineTo(px, py + CEL); }
+    ctx.stroke();
+  }
+  ctx.font = Math.floor(CEL * 0.7) + "px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("🧀", BX + kaas.x * CEL + CEL / 2, BY + kaas.y * CEL + CEL / 2);
+  ctx.fillText("🐭", BX + muis.x * CEL + CEL / 2, BY + muis.y * CEL + CEL / 2);
+}
+
+function loop() { teken(); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+
+function startSpel() {
+  score = 0; tikken = 0; doolhofNr = 1;
+  maakDoolhof(9, 7);
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  hud();
+}
+document.getElementById("startKnop").addEventListener("click", startSpel);
+document.getElementById("nogEenKeer").addEventListener("click", startSpel);
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-doolhof-best") || "0";
+</script>
+</body>
+</html>

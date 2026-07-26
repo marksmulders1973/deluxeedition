@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🎈 BALLON-PRIKKER — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+<style>
+  #tijdBalk { position:fixed; top:0; left:0; height:7px; background:linear-gradient(90deg,#ff3b3b,#3b82ff); width:100%; z-index:6; transition:width 0.2s linear; }
+</style>
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="tijdBalk" class="verborgen"></div>
+<div id="hud" class="verborgen">0</div>
+<canvas id="c"></canvas>
+
+<div class="paneel" id="startPaneel">
+  <h1>🎈 BALLON-PRIKKER</h1>
+  <div class="sub">een spel van Claude 🤖 — ✏️ afstelbaar door Arthur</div>
+  <div class="uitleg" id="uitlegTekst"></div>
+  <button class="knop" id="startKnop">🎈 START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">⏰ TIJD IS OM!</h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const STANDAARD = { speeltijd: 45, tempo: 100, doodskopKans: 15 };
+let INSTEL = { ...STANDAARD };
+function uitleg() {
+  document.getElementById("uitlegTekst").innerHTML =
+    "Prik zoveel mogelijk ballonnen door erop te tikken — 🎈 = 1 punt = 1 🗝️ key!<br>" +
+    "Kleine ballonnen zijn 2 punten. Maar prik NOOIT de 💀-ballon (kost 3 punten)!<br>" +
+    "Je hebt <b>" + INSTEL.speeltijd + " seconden</b>.";
+}
+editorKlaar("ballon", [
+  { sleutel: "speeltijd", label: "⏰ Speeltijd (seconden)", soort: "schuif", min: 20, max: 90, stap: 5 },
+  { sleutel: "tempo", label: "⚡ Snelheid (%)", soort: "schuif", min: 60, max: 180, stap: 10 },
+  { sleutel: "doodskopKans", label: "💀 Kans op doodskop-ballon (%)", soort: "schuif", min: 0, max: 40, stap: 5 },
+], STANDAARD, (waarden) => { INSTEL = waarden; uitleg(); });
+uitleg();
+
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+const KLEUREN = ["#ff3b3b", "#3b82ff", "#ffd700", "#2ecc71", "#c98fff", "#ff8fd7"];
+
+let stand = "start", ballonnen, score, tijdOver, totVolgende, flitsen, tijdKlok;
+
+function reset() {
+  ballonnen = []; score = 0; tijdOver = INSTEL.speeltijd; totVolgende = 0.2; flitsen = [];
+}
+function nieuweBallon() {
+  const doodskop = Math.random() * 100 < INSTEL.doodskopKans;
+  const klein = !doodskop && Math.random() < 0.25;
+  const r = klein ? 20 : 30 + Math.random() * 8;
+  ballonnen.push({
+    x: 40 + Math.random() * (m.W - 80), y: m.H + r + 10,
+    r, doodskop, klein,
+    vy: (70 + Math.random() * 60) * INSTEL.tempo / 100 * (klein ? 1.5 : 1),
+    zwaai: Math.random() * 7, kleur: KLEUREN[Math.floor(Math.random() * KLEUREN.length)],
+  });
+}
+
+window.addEventListener("pointerdown", e => {
+  if (stand !== "spel") return;
+  if (e.target.closest(".paneel") || e.target.closest("a") || e.target.closest("#editKnop") || e.target.closest("#editOverlay")) return;
+  const x = e.clientX, y = e.clientY;
+  for (let i = ballonnen.length - 1; i >= 0; i--) {
+    const b = ballonnen[i];
+    if (Math.hypot(x - b.x, y - b.y) <= b.r + 10) {
+      if (b.doodskop) {
+        score = Math.max(0, score - 3);
+        flitsen.push({ x: b.x, y: b.y, tekst: "-3 💀", leven: 0.8, kleur: "#ff3b3b" });
+        document.body.style.background = "#3a0a0a";
+        setTimeout(() => { document.body.style.background = ""; }, 180);
+      } else {
+        const punten = b.klein ? 2 : 1;
+        score += punten;
+        flitsen.push({ x: b.x, y: b.y, tekst: "+" + punten, leven: 0.6, kleur: "#ffd700" });
+      }
+      ballonnen.splice(i, 1);
+      document.getElementById("hud").textContent = score;
+      return;
+    }
+  }
+});
+
+function stap(dt) {
+  totVolgende -= dt;
+  if (totVolgende <= 0) {
+    nieuweBallon();
+    totVolgende = (0.45 + Math.random() * 0.4) * 100 / INSTEL.tempo;
+  }
+  for (const b of ballonnen) {
+    b.y -= b.vy * dt;
+    b.zwaai += 2 * dt;
+    b.x += Math.sin(b.zwaai) * 26 * dt;
+  }
+  ballonnen = ballonnen.filter(b => b.y > -60);
+  for (const f of flitsen) { f.leven -= dt; f.y -= 40 * dt; }
+  flitsen = flitsen.filter(f => f.leven > 0);
+}
+
+function teken() {
+  const lucht = ctx.createLinearGradient(0, 0, 0, m.H);
+  lucht.addColorStop(0, "#0a1030"); lucht.addColorStop(1, "#1a0b2e");
+  ctx.fillStyle = lucht; ctx.fillRect(0, 0, m.W, m.H);
+  for (const b of ballonnen) {
+    // touwtje
+    ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(b.x, b.y + b.r);
+    ctx.quadraticCurveTo(b.x + 6, b.y + b.r + 14, b.x, b.y + b.r + 26); ctx.stroke();
+    // ballon
+    ctx.fillStyle = b.doodskop ? "#2a2f3a" : b.kleur;
+    ctx.beginPath(); ctx.ellipse(b.x, b.y, b.r * 0.82, b.r, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.beginPath(); ctx.ellipse(b.x - b.r * 0.3, b.y - b.r * 0.35, b.r * 0.2, b.r * 0.28, -0.5, 0, 7); ctx.fill();
+    if (b.doodskop) {
+      ctx.font = (b.r) + "px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("💀", b.x, b.y);
+    }
+  }
+  ctx.font = "800 24px sans-serif"; ctx.textAlign = "center";
+  for (const f of flitsen) {
+    ctx.globalAlpha = Math.max(0, f.leven * 1.4);
+    ctx.fillStyle = f.kleur;
+    ctx.fillText(f.tekst, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function klaar() {
+  stand = "dood";
+  clearInterval(tijdKlok);
+  const best = zetRecord("deluxe-ballon-best", score);
+  const keys = geefKeys(score, "ballon");
+  document.getElementById("doodScore").textContent = score + " punten";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (score >= best && score > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+  document.getElementById("tijdBalk").classList.add("verborgen");
+}
+
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  document.getElementById("hud").textContent = "0";
+  document.getElementById("tijdBalk").classList.remove("verborgen");
+  clearInterval(tijdKlok);
+  tijdKlok = setInterval(() => {
+    tijdOver--;
+    document.getElementById("tijdBalk").style.width = (tijdOver / INSTEL.speeltijd * 100) + "%";
+    if (tijdOver <= 0) klaar();
+  }, 1000);
+}
+document.getElementById("startKnop").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("nogEenKeer").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-ballon-best") || "0";
+</script>
+</body>
+</html>

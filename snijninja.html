@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🥷 SNIJ-NINJA — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<canvas id="c"></canvas>
+
+<div class="paneel" id="startPaneel">
+  <h1>🥷 SNIJ-NINJA</h1>
+  <div class="sub">een spel van Claude 🤖 — ✏️ afstelbaar door Arthur</div>
+  <div class="uitleg" id="uitlegTekst"></div>
+  <button class="knop" id="startKnop">🥷 START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">💥 BOEM!</h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const STANDAARD = { fruit: "🍉🍎🍊🍌🍓🥝", bomKans: 12, tempo: 100 };
+let INSTEL = { ...STANDAARD };
+function uitleg() {
+  document.getElementById("uitlegTekst").innerHTML =
+    "Veeg met je vinger of muis (ingedrukt houden) door het fruit: " + [...INSTEL.fruit].slice(0, 6).join("") + "<br>" +
+    "Elk stuk fruit = 1 punt = 1 🗝️ key. Maar snij GEEN 💣 — dat kost een leven!<br>" +
+    "Je hebt ❤️❤️❤️. Het fruit vliegt steeds sneller voorbij…";
+}
+editorKlaar("snijninja", [
+  { sleutel: "fruit", label: "🍉 Fruit-emoji's (plak er zoveel je wil)", soort: "tekst", maxLen: 24 },
+  { sleutel: "bomKans", label: "💣 Kans op een bom (%)", soort: "schuif", min: 0, max: 35, stap: 5 },
+  { sleutel: "tempo", label: "⚡ Snelheid (%)", soort: "schuif", min: 60, max: 160, stap: 10 },
+], STANDAARD, (waarden) => { INSTEL = waarden; uitleg(); });
+uitleg();
+
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+
+let stand = "start", dingen, score, levens, tijd, totVolgende, mes, helften, flitsen;
+
+function reset() {
+  dingen = []; score = 0; levens = 3; tijd = 0; totVolgende = 0.7;
+  mes = []; helften = []; flitsen = [];
+}
+function hud() {
+  document.getElementById("hud").innerHTML = "⭐ " + score + " &nbsp;" + "❤️".repeat(Math.max(0, levens));
+}
+
+function lanceer() {
+  const fruitLijst = [...INSTEL.fruit].length ? [...INSTEL.fruit] : ["🍉"];
+  const isBom = Math.random() * 100 < INSTEL.bomKans;
+  const x = m.W * (0.15 + Math.random() * 0.7);
+  const f = INSTEL.tempo / 100;
+  // precies genoeg vaart om tot 55-90% van het scherm te vliegen
+  const topHoogte = m.H * (0.55 + Math.random() * 0.35);
+  dingen.push({
+    x, y: m.H + 30,
+    vx: (m.W / 2 - x) * (0.3 + Math.random() * 0.5) * 0.01 * 60 * f,
+    vy: -Math.sqrt(2 * 620 * topHoogte) * (0.9 + 0.2 * f),
+    emoji: isBom ? "💣" : fruitLijst[Math.floor(Math.random() * fruitLijst.length)],
+    bom: isBom, r: 30, draai: Math.random() * 7, draaiSnel: (Math.random() - 0.5) * 5,
+  });
+}
+
+// ── het mes: spoor van je vinger/muis ──
+let mesActief = false;
+function mesPunt(x, y) {
+  mes.push({ x, y, t: performance.now() });
+  while (mes.length > 12) mes.shift();
+  if (stand !== "spel" || mes.length < 2) return;
+  const a = mes[mes.length - 2], b = mes[mes.length - 1];
+  const snelGenoeg = Math.hypot(b.x - a.x, b.y - a.y) > 6;
+  if (!snelGenoeg) return;
+  for (let i = dingen.length - 1; i >= 0; i--) {
+    const d = dingen[i];
+    if (lijnRaaktCirkel(a, b, d)) {
+      if (d.bom) {
+        levens--;
+        flitsen.push({ x: d.x, y: d.y, tekst: "💥", leven: 0.9, kleur: "#ff3b3b" });
+        document.body.style.background = "#3a0a0a";
+        setTimeout(() => { document.body.style.background = ""; }, 200);
+        dingen.splice(i, 1);
+        hud();
+        if (levens <= 0) return dood();
+      } else {
+        score++;
+        flitsen.push({ x: d.x, y: d.y, tekst: "+1", leven: 0.6, kleur: "#ffd700" });
+        // twee helften laten wegvliegen
+        helften.push({ x: d.x - 10, y: d.y, vx: -140, vy: d.vy * 0.4, emoji: d.emoji, leven: 1 });
+        helften.push({ x: d.x + 10, y: d.y, vx: 140, vy: d.vy * 0.4, emoji: d.emoji, leven: 1 });
+        dingen.splice(i, 1);
+        hud();
+      }
+    }
+  }
+}
+function lijnRaaktCirkel(a, b, c) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const lang2 = dx * dx + dy * dy;
+  let t = lang2 ? ((c.x - a.x) * dx + (c.y - a.y) * dy) / lang2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(a.x + dx * t - c.x, a.y + dy * t - c.y) < c.r + 8;
+}
+
+window.addEventListener("pointerdown", e => {
+  if (e.target.closest(".paneel") || e.target.closest("a") || e.target.closest("#editKnop") || e.target.closest("#editOverlay")) return;
+  mesActief = true; mes = [];
+  mesPunt(e.clientX, e.clientY);
+});
+window.addEventListener("pointermove", e => { if (mesActief) mesPunt(e.clientX, e.clientY); });
+window.addEventListener("pointerup", () => { mesActief = false; mes = []; });
+window.addEventListener("touchmove", e => { if (stand === "spel") e.preventDefault(); }, { passive: false });
+
+function stap(dt) {
+  tijd += dt;
+  totVolgende -= dt;
+  if (totVolgende <= 0) {
+    lanceer();
+    if (Math.random() < 0.35) lanceer();   // soms een dubbele!
+    totVolgende = Math.max(0.35, 1.1 - tijd / 60);
+  }
+  const f = 1;
+  for (const d of dingen) {
+    d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 620 * dt; d.draai += d.draaiSnel * dt;
+  }
+  dingen = dingen.filter(d => d.y < m.H + 80);
+  for (const h of helften) { h.x += h.vx * dt; h.y += h.vy * dt; h.vy += 800 * dt; h.leven -= dt; }
+  helften = helften.filter(h => h.leven > 0);
+  for (const fl of flitsen) { fl.leven -= dt; fl.y -= 40 * dt; }
+  flitsen = flitsen.filter(fl => fl.leven > 0);
+  // oude mes-punten laten vervagen
+  const nu = performance.now();
+  mes = mes.filter(p => nu - p.t < 180);
+}
+
+function dood() {
+  stand = "dood";
+  const best = zetRecord("deluxe-snijninja-best", score);
+  const keys = geefKeys(score, "snijninja");
+  document.getElementById("doodScore").textContent = score + " fruit";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (score >= best && score > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+}
+
+function teken() {
+  const lucht = ctx.createLinearGradient(0, 0, 0, m.H);
+  lucht.addColorStop(0, "#12081f"); lucht.addColorStop(1, "#05060f");
+  ctx.fillStyle = lucht; ctx.fillRect(0, 0, m.W, m.H);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const d of dingen) {
+    ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.draai);
+    ctx.font = "52px serif"; ctx.fillText(d.emoji, 0, 0);
+    ctx.restore();
+  }
+  for (const h of helften) {
+    ctx.globalAlpha = Math.max(0, h.leven);
+    ctx.font = "30px serif"; ctx.fillText(h.emoji, h.x, h.y);
+  }
+  ctx.globalAlpha = 1;
+  // het mes-spoor
+  if (mes.length > 1) {
+    ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = 4; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(mes[0].x, mes[0].y);
+    for (const p of mes) ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  }
+  ctx.font = "800 24px sans-serif";
+  for (const fl of flitsen) {
+    ctx.globalAlpha = Math.max(0, fl.leven * 1.4);
+    ctx.fillStyle = fl.kleur;
+    ctx.fillText(fl.tekst, fl.x, fl.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  hud();
+}
+document.getElementById("startKnop").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("nogEenKeer").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-snijninja-best") || "0";
+</script>
+</body>
+</html>

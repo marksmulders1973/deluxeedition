@@ -25,7 +25,7 @@ function keurGoed(s) {
 // ── ✏️ Spel-instellingen (de EDIT-knop van Arthur) ──────
 // 5 Claude-spellen mag Arthur (of NovaX) afstellen, zo vaak
 // hij wil. Opslag: kv "stel:<spelId>" = {instellingen, door}.
-const STELBAAR = ["zombietik", "pongrobot", "kikker", "geheugen", "lavasprint"];
+const STELBAAR = ["zombietik", "pongrobot", "kikker", "geheugen", "lavasprint", "stapeltoren", "snijninja", "ballon", "mijnenveger"];
 function keurInstellingen(inst) {
   if (!inst || typeof inst !== "object" || Array.isArray(inst)) return "geen instellingen";
   if (Object.keys(inst).length > 25) return "te veel instellingen";

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🗼 STAPEL-TOREN — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen">0</div>
+<canvas id="c"></canvas>
+
+<div class="paneel" id="startPaneel">
+  <h1>🗼 STAPEL-TOREN</h1>
+  <div class="sub">een spel van Claude 🤖 — ✏️ afstelbaar door Arthur</div>
+  <div class="uitleg" id="uitlegTekst"></div>
+  <button class="knop" id="startKnop">🗼 START</button>
+  <div class="rij" style="margin-top:16px">Hoogste toren: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">🫣 ERNAAST!</h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const STANDAARD = { tempo: 260, startBreedte: 200 };
+let INSTEL = { ...STANDAARD };
+function uitleg() {
+  document.getElementById("uitlegTekst").innerHTML =
+    "Het blok schuift heen en weer — <b>tik of druk op spatie</b> om het te laten vallen!<br>" +
+    "Alles wat naast de toren uitsteekt, valt eraf… dus je toren wordt steeds smaller.<br>" +
+    "Perfect gestapeld (✨) = geen stukje kwijt! Elk blok = 1 punt = 1 🗝️ key.";
+}
+editorKlaar("stapeltoren", [
+  { sleutel: "tempo", label: "⚡ Schuif-snelheid", soort: "schuif", min: 150, max: 420, stap: 10 },
+  { sleutel: "startBreedte", label: "📏 Breedte van het eerste blok", soort: "schuif", min: 120, max: 300, stap: 10 },
+], STANDAARD, (waarden) => { INSTEL = waarden; uitleg(); });
+uitleg();
+
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+const BLOK_H = 34;
+
+let stand = "start", toren, actief, richting, score, camera, brokken, flits;
+
+function kleurVoor(i) {
+  // regenboog door het logo: rood → paars → blauw en weer terug
+  const t = (Math.sin(i * 0.35) + 1) / 2;
+  const r = Math.round(255 - t * 196), g = Math.round(59 + t * 71), b = Math.round(59 + t * 196);
+  return "rgb(" + r + "," + g + "," + b + ")";
+}
+
+function reset() {
+  const eersteW = INSTEL.startBreedte;
+  toren = [{ x: (m.W - eersteW) / 2, w: eersteW }];
+  score = 0; camera = 0; brokken = []; flits = 0;
+  nieuwBlok();
+}
+function nieuwBlok() {
+  const vorige = toren[toren.length - 1];
+  actief = { x: 0, w: vorige.w, snel: INSTEL.tempo + score * 6 };
+  richting = 1;
+}
+
+function drop() {
+  if (stand !== "spel" || !actief) return;
+  const vorige = toren[toren.length - 1];
+  const links = Math.max(actief.x, vorige.x);
+  const rechts = Math.min(actief.x + actief.w, vorige.x + vorige.w);
+  const overlap = rechts - links;
+  if (overlap <= 8) {   // helemaal (of bijna) mis → blok valt, einde
+    brokken.push({ x: actief.x, w: actief.w, y: torenTopY(), vy: 60, kleur: kleurVoor(toren.length) });
+    return dood();
+  }
+  const perfect = overlap >= actief.w - 6;
+  if (perfect) {
+    toren.push({ x: vorige.x, w: vorige.w });
+    flits = 0.5;
+    score += 1;   // zelfde punt, maar je verliest niks — dat is de beloning
+  } else {
+    // afgevallen stukje visueel laten vallen
+    if (actief.x < links) brokken.push({ x: actief.x, w: links - actief.x, y: torenTopY(), vy: 40, kleur: kleurVoor(toren.length) });
+    if (actief.x + actief.w > rechts) brokken.push({ x: rechts, w: actief.x + actief.w - rechts, y: torenTopY(), vy: 40, kleur: kleurVoor(toren.length) });
+    toren.push({ x: links, w: overlap });
+    score += 1;
+  }
+  document.getElementById("hud").textContent = score;
+  nieuwBlok();
+}
+
+function torenTopY() { return m.H - 90 - (toren.length - 1) * BLOK_H + camera; }
+
+window.addEventListener("keydown", e => { if (e.code === "Space") { e.preventDefault(); drop(); } });
+window.addEventListener("pointerdown", e => {
+  if (e.target.closest(".paneel") || e.target.closest("a") || e.target.closest("#editKnop") || e.target.closest("#editOverlay")) return;
+  drop();
+});
+
+function stap(dt) {
+  if (actief) {
+    actief.x += richting * actief.snel * dt;
+    if (actief.x + actief.w > m.W - 10) { actief.x = m.W - 10 - actief.w; richting = -1; }
+    if (actief.x < 10) { actief.x = 10; richting = 1; }
+  }
+  // camera schuift mee omlaag zodra de toren hoog wordt
+  const topZonderCamera = m.H - 90 - (toren.length - 1) * BLOK_H;
+  const gewenst = Math.max(0, m.H * 0.35 - topZonderCamera);
+  camera += (gewenst - camera) * Math.min(1, 5 * dt);
+  for (const b of brokken) { b.y += b.vy * dt; b.vy += 900 * dt; }
+  brokken = brokken.filter(b => b.y < m.H + 60);
+  if (flits > 0) flits -= dt;
+}
+
+function dood() {
+  stand = "dood";
+  actief = null;
+  const best = zetRecord("deluxe-stapeltoren-best", score);
+  const keys = geefKeys(score, "stapeltoren");
+  document.getElementById("doodScore").textContent = score + " blokken hoog";
+  document.getElementById("doodBest").innerHTML = "Hoogste toren: <b>" + best + "</b>" + (score >= best && score > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+}
+
+function teken() {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, m.W, m.H);
+  // toren
+  toren.forEach((blok, i) => {
+    const y = m.H - 90 - i * BLOK_H + camera;
+    if (y > m.H || y < -BLOK_H) return;
+    ctx.fillStyle = kleurVoor(i);
+    ctx.fillRect(blok.x, y, blok.w, BLOK_H - 3);
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.fillRect(blok.x, y, blok.w, 6);
+  });
+  // grond
+  ctx.fillStyle = "#1a1030"; ctx.fillRect(0, m.H - 90 + BLOK_H + camera, m.W, m.H);
+  // schuivend blok
+  if (actief && stand === "spel") {
+    const y = torenTopY() - BLOK_H;
+    ctx.fillStyle = kleurVoor(toren.length);
+    ctx.fillRect(actief.x, y, actief.w, BLOK_H - 3);
+    ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 2;
+    ctx.strokeRect(actief.x, y, actief.w, BLOK_H - 3);
+  }
+  for (const b of brokken) {
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = b.kleur;
+    ctx.fillRect(b.x, b.y, b.w, BLOK_H - 3);
+  }
+  ctx.globalAlpha = 1;
+  if (flits > 0) {
+    ctx.fillStyle = "#ffd700"; ctx.font = "900 34px sans-serif"; ctx.textAlign = "center";
+    ctx.globalAlpha = flits * 2;
+    ctx.fillText("✨ PERFECT!", m.W / 2, m.H * 0.28);
+    ctx.globalAlpha = 1;
+  }
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  document.getElementById("hud").textContent = "0";
+}
+document.getElementById("startKnop").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("nogEenKeer").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-stapeltoren-best") || "0";
+</script>
+</body>
+</html>
