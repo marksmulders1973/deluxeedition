@@ -176,7 +176,10 @@ function stap(dt) {
       const rel = (bal.x - plank.x) / (plank.w / 2);           // -1 .. 1
       const snel = Math.hypot(bal.vx, bal.vy);
       const hoek = -Math.PI / 2 + rel * 1.05;
-      bal.vx = Math.cos(hoek) * snel; bal.vy = Math.sin(hoek) * snel;
+      bal.vx = Math.cos(hoek) * snel;
+      // nooit kaarsrecht omhoog — anders blijft de bal saai op-en-neer stuiteren
+      if (Math.abs(bal.vx) < 45) bal.vx = rel >= 0 ? 45 : -45;
+      bal.vy = -Math.sqrt(Math.max(100, snel * snel - bal.vx * bal.vx));
       bal.y = py - bal.r;
     }
     // bal kwijt
