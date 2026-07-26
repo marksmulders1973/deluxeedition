@@ -1,0 +1,66 @@
+/* ══════════════════════════════════════════════════════
+   spel-stijl.css — gedeelde huisstijl voor de Claude-spellen
+   (rood/blauw DELUXE-logo-kleuren, donkere achtergrond)
+   ══════════════════════════════════════════════════════ */
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { height:100%; overflow:hidden; background:#05060f; font-family:'Segoe UI',Arial,sans-serif; touch-action:none; }
+canvas { display:block; }
+
+.paneel {
+  position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:rgba(5,6,15,0.86); color:#fff; text-align:center; z-index:10; padding:20px; overflow-y:auto;
+}
+.paneel h1 {
+  font-size:clamp(30px,7vw,54px); font-weight:900; letter-spacing:2px;
+  background:linear-gradient(90deg,#ff3b3b,#3b82ff);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+}
+.paneel .sub { color:#9aa4c7; margin:6px 0 20px; font-size:15px; }
+.paneel .uitleg { color:#cfd6f2; font-size:16px; line-height:1.7; margin-bottom:24px; max-width:560px; }
+.knop {
+  font-size:20px; font-weight:800; color:#fff; border:none; cursor:pointer;
+  background:linear-gradient(135deg,#ff3b3b,#3b82ff); border-radius:14px; padding:16px 34px;
+  box-shadow:0 0 26px rgba(59,130,246,0.45); letter-spacing:1px;
+}
+.knop:active { transform:scale(0.96); }
+.knop.klein { font-size:15px; padding:10px 20px; }
+.score-groot { font-size:58px; font-weight:900; color:#ffd700; margin:8px 0; }
+.rij { color:#9aa4c7; font-size:16px; margin:4px 0; }
+.rij b { color:#fff; }
+a.home { position:fixed; top:12px; left:12px; z-index:20; color:#9aa4c7; text-decoration:none;
+  font-weight:700; font-size:14px; background:rgba(255,255,255,0.06); padding:8px 14px; border-radius:10px; }
+#hud { position:fixed; top:12px; right:14px; z-index:5; color:#fff; font-size:24px; font-weight:900;
+  text-shadow:0 0 12px rgba(59,130,246,0.8); text-align:right; }
+.verborgen { display:none !important; }
+
+/* ── ✏️ Arthur-editor ── */
+#editKnop {
+  position:fixed; bottom:14px; left:14px; z-index:22; cursor:pointer;
+  font-size:14px; font-weight:800; color:#ffd700; border:2px solid rgba(255,215,0,0.6);
+  background:rgba(20,16,2,0.8); border-radius:12px; padding:10px 16px;
+}
+#editBadge {
+  position:fixed; bottom:14px; right:14px; z-index:21; color:#ffd700; font-size:12px; font-weight:700;
+  background:rgba(20,16,2,0.7); padding:6px 12px; border-radius:10px; border:1px solid rgba(255,215,0,0.35);
+}
+#editOverlay {
+  position:fixed; inset:0; z-index:40; background:rgba(5,6,15,0.92); color:#fff;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; overflow-y:auto;
+}
+#editOverlay .doos {
+  background:#0c0f22; border:2px solid rgba(255,215,0,0.5); border-radius:18px;
+  padding:22px 26px; max-width:440px; width:100%; max-height:92vh; overflow-y:auto;
+}
+#editOverlay h2 { color:#ffd700; font-size:22px; margin-bottom:4px; }
+#editOverlay .wie { color:#9aa4c7; font-size:13px; margin-bottom:16px; }
+.editVeld { margin-bottom:14px; text-align:left; }
+.editVeld label { display:block; color:#cfd6f2; font-size:14px; font-weight:700; margin-bottom:5px; }
+.editVeld input[type=range] { width:100%; accent-color:#ffd700; }
+.editVeld .waarde { color:#ffd700; font-weight:800; font-size:14px; margin-left:8px; }
+.editVeld input[type=text], .editVeld select {
+  width:100%; font-size:16px; padding:9px 12px; border-radius:10px; border:1px solid #33406e;
+  background:#131735; color:#fff;
+}
+.editKnoppen { display:flex; gap:10px; margin-top:18px; }
+.editKnoppen .knop { flex:1; font-size:16px; padding:12px; }
+.editKnoppen .weg { background:#2a2f4a; box-shadow:none; }

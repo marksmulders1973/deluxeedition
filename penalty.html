@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>⚽ PENALTY-HELD — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<canvas id="c"></canvas>
+
+<div class="paneel" id="startPaneel">
+  <h1>⚽ PENALTY-HELD</h1>
+  <div class="sub">een spel van Claude 🤖 — voor de site van Brian</div>
+  <div class="uitleg">
+    Jij neemt <b>10 penalty's</b>. Tik in het doel waar je wil schieten —<br>
+    maar de keeper 🧤 duikt ook een kant op! Hoekjes zijn het moeilijkst te pakken.<br>
+    Elke goal = 2 punten = 2 🗝️ keys. 10 uit 10 = +5 bonus!
+  </div>
+  <button class="knop" id="startKnop">⚽ START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b> goals</div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)" id="doodTitel"></h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+
+let stand = "start", schoten, goals, fase, bal, mikpunt, keeper, keeperDoel, melding, meldTijd;
+// fase: "mik" (wacht op tik) | "schiet" (bal vliegt) | "na" (goal/redding tonen)
+
+function doelVak() {
+  const w = Math.min(m.W * 0.86, 560);
+  const h = w * 0.42;
+  return { x: (m.W - w) / 2, y: m.H * 0.16, w, h };
+}
+
+function reset() {
+  schoten = 0; goals = 0;
+  klaarVoorSchot();
+}
+function klaarVoorSchot() {
+  fase = "mik";
+  const d = doelVak();
+  bal = { x: m.W / 2, y: m.H - 70, r: 16 };
+  keeper = { x: d.x + d.w / 2, y: d.y + d.h - 26, duik: 0 };
+  mikpunt = null; melding = null;
+  hud();
+}
+function hud() {
+  document.getElementById("hud").innerHTML = "⚽ " + goals + " goals &nbsp;<span style='font-size:15px;color:#9aa4c7'>schot " + Math.min(schoten + 1, 10) + "/10</span>";
+}
+
+window.addEventListener("pointerdown", e => {
+  if (stand !== "spel" || fase !== "mik") return;
+  if (e.target.closest(".paneel") || e.target.closest("a")) return;
+  const d = doelVak();
+  const x = Math.max(d.x + 14, Math.min(d.x + d.w - 14, e.clientX));
+  const y = Math.max(d.y + 14, Math.min(d.y + d.h - 10, e.clientY));
+  mikpunt = { x, y };
+  // keeper kiest een vak: 40% jouw kant (hij "leest" je), anders random van 3 zones
+  const zones = [d.x + d.w * 0.18, d.x + d.w * 0.5, d.x + d.w * 0.82];
+  const mijnZone = x < d.x + d.w / 3 ? 0 : x < d.x + d.w * 2 / 3 ? 1 : 2;
+  const keeperZone = Math.random() < 0.4 ? mijnZone : Math.floor(Math.random() * 3);
+  keeperDoel = zones[keeperZone];
+  fase = "schiet";
+});
+
+function stap(dt) {
+  if (fase === "schiet") {
+    // bal vliegt naar het mikpunt
+    const dx = mikpunt.x - bal.x, dy = mikpunt.y - bal.y;
+    const afstand = Math.hypot(dx, dy);
+    const snel = 900;
+    if (afstand < snel * dt) {
+      bal.x = mikpunt.x; bal.y = mikpunt.y;
+      beoordeel();
+    } else {
+      bal.x += dx / afstand * snel * dt;
+      bal.y += dy / afstand * snel * dt;
+      bal.r = Math.max(9, bal.r - 8 * dt);       // wordt kleiner = verder weg
+    }
+    // keeper duikt
+    keeper.x += (keeperDoel - keeper.x) * Math.min(1, 6 * dt);
+  }
+  if (fase === "na") {
+    meldTijd -= dt;
+    if (meldTijd <= 0) {
+      if (schoten >= 10) return klaar();
+      klaarVoorSchot();
+    }
+  }
+}
+
+function beoordeel() {
+  schoten++;
+  const d = doelVak();
+  const gered = Math.abs(bal.x - keeper.x) < d.w * 0.17 && bal.y > d.y + d.h * 0.25;
+  const hoekBonus = (bal.x < d.x + d.w * 0.22 || bal.x > d.x + d.w * 0.78) && bal.y < d.y + d.h * 0.45;
+  if (!gered || hoekBonus) {           // strak in de hoek gaat er altijd in!
+    goals++;
+    melding = { tekst: "⚽ GOAL!", kleur: "#2ecc71" };
+  } else {
+    melding = { tekst: "🧤 GERED!", kleur: "#ff3b3b" };
+  }
+  hud();
+  fase = "na"; meldTijd = 1.1;
+}
+
+function klaar() {
+  stand = "dood";
+  const alles = goals === 10;
+  const best = zetRecord("deluxe-penalty-best", goals);
+  const keys = geefKeys(goals * 2 + (alles ? 5 : 0), "penalty");
+  document.getElementById("doodTitel").textContent = alles ? "🏆 PERFECT — 10 UIT 10!" : goals >= 7 ? "🎉 GOED GESCHOTEN!" : "⚽ AFGELOPEN!";
+  document.getElementById("doodScore").textContent = goals + " / 10";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (goals >= best && goals > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+}
+
+function teken() {
+  // grasveld
+  const lucht = ctx.createLinearGradient(0, 0, 0, m.H);
+  lucht.addColorStop(0, "#0a1030"); lucht.addColorStop(0.45, "#132352"); lucht.addColorStop(0.46, "#123a1c"); lucht.addColorStop(1, "#0d2a14");
+  ctx.fillStyle = lucht; ctx.fillRect(0, 0, m.W, m.H);
+  const d = doelVak();
+  // doel
+  ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 6;
+  ctx.strokeRect(d.x, d.y, d.w, d.h);
+  ctx.lineWidth = 1; ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  for (let i = 1; i < 12; i++) {   // netje
+    ctx.beginPath(); ctx.moveTo(d.x + d.w * i / 12, d.y); ctx.lineTo(d.x + d.w * i / 12, d.y + d.h); ctx.stroke();
+  }
+  for (let i = 1; i < 6; i++) {
+    ctx.beginPath(); ctx.moveTo(d.x, d.y + d.h * i / 6); ctx.lineTo(d.x + d.w, d.y + d.h * i / 6); ctx.stroke();
+  }
+  // penaltystip
+  ctx.fillStyle = "rgba(255,255,255,0.6)";
+  ctx.beginPath(); ctx.arc(m.W / 2, m.H - 70, 5, 0, 7); ctx.fill();
+
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  // keeper
+  ctx.font = "44px serif";
+  ctx.fillText("🧤", keeper.x, keeper.y);
+  // mik-hint
+  if (fase === "mik") {
+    ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "700 17px sans-serif";
+    ctx.fillText("👆 tik in het doel waar je wil schieten!", m.W / 2, d.y + d.h + 34);
+  }
+  // bal
+  ctx.font = (bal.r * 2.2) + "px serif";
+  ctx.fillText("⚽", bal.x, bal.y);
+  // melding
+  if (melding) {
+    ctx.font = "900 46px sans-serif";
+    ctx.fillStyle = melding.kleur;
+    ctx.fillText(melding.tekst, m.W / 2, m.H * 0.55);
+  }
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+}
+document.getElementById("startKnop").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("nogEenKeer").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-penalty-best") || "0";
+</script>
+</body>
+</html>

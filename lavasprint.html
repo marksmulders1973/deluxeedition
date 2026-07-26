@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🏃 LAVA-SPRINT — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+<style>
+  #bukKnop { position:fixed; left:14px; bottom:14px; z-index:6; display:none;
+    font-size:26px; border:none; border-radius:14px; color:#fff; padding:14px 22px;
+    background:rgba(59,130,246,0.28); }
+  #bukKnop:active { background:rgba(255,59,59,0.5); }
+  @media (pointer:coarse) { #bukKnop { display:block; } }
+</style>
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<canvas id="c"></canvas>
+<button id="bukKnop">⬇️ BUK</button>
+
+<div class="paneel" id="startPaneel">
+  <h1>🏃 LAVA-SPRINT</h1>
+  <div class="sub">een spel van Claude 🤖 — ✏️ afstelbaar door Arthur</div>
+  <div class="uitleg" id="uitlegTekst"></div>
+  <button class="knop" id="startKnop">🏃 START</button>
+  <div class="rij" style="margin-top:16px">Beste afstand: <b id="bestStart">0</b> m</div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">🔥 AU, HEET!</h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const STANDAARD = { startTempo: 240, versnelling: 4, springKracht: 560, grondEmoji: "🌋", luchtEmoji: "🦅" };
+let INSTEL = { ...STANDAARD };
+function uitleg() {
+  document.getElementById("uitlegTekst").innerHTML =
+    "Ren zo ver mogelijk! <b>Tik of spatie</b> = springen over de " + INSTEL.grondEmoji + "<br>" +
+    "<b>Veeg omlaag / S / ⬇️-knop</b> = bukken onder de " + INSTEL.luchtEmoji + "<br>" +
+    "Het gaat steeds sneller… elke 10 meter = 1 punt = 1 🗝️ key!";
+}
+editorKlaar("lavasprint", [
+  { sleutel: "startTempo", label: "🏃 Start-snelheid", soort: "schuif", min: 180, max: 360, stap: 10 },
+  { sleutel: "versnelling", label: "⚡ Hoe snel wordt het sneller?", soort: "schuif", min: 1, max: 10, stap: 1 },
+  { sleutel: "springKracht", label: "🦘 Spring-kracht", soort: "schuif", min: 450, max: 750, stap: 10 },
+  { sleutel: "grondEmoji", label: "🌋 Grond-obstakel emoji", soort: "tekst", maxLen: 4 },
+  { sleutel: "luchtEmoji", label: "🦅 Vlieg-obstakel emoji", soort: "tekst", maxLen: 4 },
+], STANDAARD, (waarden) => { INSTEL = waarden; uitleg(); });
+uitleg();
+
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+const SPELER_X = () => Math.max(70, m.W * 0.2);
+
+let stand = "start";
+let voetY, vy, bukt, bukTijd, tempo, afstand, obstakels, totVolgende, wolkjes;
+
+function grondY() { return m.H - 80; }
+
+function reset() {
+  voetY = 0; vy = 0; bukt = false; bukTijd = 0;
+  tempo = INSTEL.startTempo; afstand = 0;
+  obstakels = []; totVolgende = 1.2;
+  wolkjes = [];
+  for (let i = 0; i < 5; i++) wolkjes.push({ x: Math.random() * m.W, y: 40 + Math.random() * 120 });
+}
+
+function springen() {
+  if (stand !== "spel") return;
+  if (voetY === 0) { vy = -INSTEL.springKracht; bukt = false; }
+}
+function bukken() {
+  if (stand !== "spel") return;
+  if (voetY === 0) { bukt = true; bukTijd = 0.6; }
+}
+
+window.addEventListener("keydown", e => {
+  if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") { e.preventDefault(); springen(); }
+  if (e.code === "ArrowDown" || e.code === "KeyS") { e.preventDefault(); bukken(); }
+});
+let veegStart = null;
+window.addEventListener("touchstart", e => {
+  if (e.target.closest(".paneel") || e.target.closest("a") || e.target.closest("#bukKnop") || e.target.closest("#editKnop") || e.target.closest("#editOverlay")) return;
+  veegStart = { y: e.touches[0].clientY, t: performance.now() };
+}, { passive: true });
+window.addEventListener("touchend", e => {
+  if (!veegStart) return;
+  const dy = e.changedTouches[0].clientY - veegStart.y;
+  veegStart = null;
+  if (dy > 30) bukken(); else springen();
+}, { passive: true });
+window.addEventListener("mousedown", e => {
+  if (e.target.closest(".paneel") || e.target.closest("a") || e.target.closest("#editKnop") || e.target.closest("#editOverlay")) return;
+  springen();
+});
+document.getElementById("bukKnop").addEventListener("touchstart", e => { e.preventDefault(); bukken(); });
+
+function nieuwObstakel() {
+  const laag = Math.random() < 0.62;
+  obstakels.push({
+    x: m.W + 60,
+    soort: laag ? "grond" : "lucht",
+    breed: laag && Math.random() < 0.3 ? 2 : 1,     // soms dubbele lava!
+  });
+}
+
+function stap(dt) {
+  tempo += INSTEL.versnelling * dt;
+  afstand += tempo * dt / 35;             // ~meters
+  document.getElementById("hud").textContent = Math.floor(afstand) + " m";
+
+  // springen/vallen (voetY = 0 op de grond, negatief = in de lucht)
+  vy += 1500 * dt;
+  voetY += vy * dt;
+  if (voetY > 0) { voetY = 0; vy = 0; }
+  if (bukTijd > 0) { bukTijd -= dt; if (bukTijd <= 0) bukt = false; }
+
+  totVolgende -= dt;
+  if (totVolgende <= 0) {
+    nieuwObstakel();
+    totVolgende = (0.9 + Math.random() * 0.9) * (INSTEL.startTempo / tempo) + 0.35;
+  }
+
+  const sx = SPELER_X();
+  for (const o of obstakels) {
+    o.x -= tempo * dt;
+    const ow = o.breed * 34;
+    if (o.x + ow > sx - 16 && o.x < sx + 16) {
+      if (o.soort === "grond" && voetY > -40) return dood();               // niet hoog genoeg gesprongen
+      if (o.soort === "lucht" && !bukt && voetY === 0) return dood();      // niet gebukt
+      if (o.soort === "lucht" && voetY < -14) return dood();               // springen tegen de vogel = ook mis
+    }
+  }
+  obstakels = obstakels.filter(o => o.x > -120);
+  for (const w of wolkjes) { w.x -= tempo * 0.18 * dt; if (w.x < -60) { w.x = m.W + 40; w.y = 40 + Math.random() * 120; } }
+}
+
+function dood() {
+  stand = "dood";
+  const meters = Math.floor(afstand);
+  const best = zetRecord("deluxe-lavasprint-best", meters);
+  const keys = geefKeys(Math.floor(meters / 10), "lavasprint");
+  document.getElementById("doodScore").textContent = meters + " meter";
+  document.getElementById("doodBest").innerHTML = "Beste afstand: <b>" + best + " m</b>" + (meters >= best && meters > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+}
+
+function teken() {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, m.W, m.H);
+  ctx.font = "26px serif";
+  for (const w of wolkjes) ctx.fillText("☁️", w.x, w.y);
+  // grond
+  const gy = grondY();
+  ctx.fillStyle = "#1a1030"; ctx.fillRect(0, gy, m.W, m.H - gy);
+  ctx.strokeStyle = "rgba(255,59,59,0.7)"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(m.W, gy); ctx.stroke();
+
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const o of obstakels) {
+    ctx.font = "40px serif";
+    if (o.soort === "grond") {
+      for (let i = 0; i < o.breed; i++) ctx.fillText(INSTEL.grondEmoji, o.x + 17 + i * 34, gy - 18);
+    } else {
+      ctx.fillText(INSTEL.luchtEmoji, o.x + 17, gy - 52);
+    }
+  }
+  // de renner
+  if (stand !== "dood") {
+    const sx = SPELER_X();
+    ctx.font = (bukt ? "30px" : "40px") + " serif";
+    const y = gy + voetY - (bukt ? 14 : 22);
+    ctx.fillText(bukt ? "🦆" : "🏃", sx, y);
+  }
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+}
+document.getElementById("startKnop").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("nogEenKeer").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-lavasprint-best") || "0";
+</script>
+</body>
+</html>

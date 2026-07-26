@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🏓 PONG-ROBOT — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<canvas id="c"></canvas>
+
+<div class="paneel" id="startPaneel">
+  <h1>🏓 PONG-ROBOT</h1>
+  <div class="sub">een spel van Claude 🤖 — ✏️ afstelbaar door Arthur</div>
+  <div class="uitleg" id="uitlegTekst"></div>
+  <button class="knop" id="startKnop">🏓 START</button>
+  <div class="rij" style="margin-top:16px">Gewonnen potjes: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)" id="doodTitel"></h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const STANDAARD = { balTempo: 330, robotKracht: 60, totPunten: 7 };
+let INSTEL = { ...STANDAARD };
+function uitleg() {
+  document.getElementById("uitlegTekst").innerHTML =
+    "Jij bent het plankje <b>onderin</b> — beweeg met je muis of vinger.<br>" +
+    "De robot 🤖 speelt bovenin. Wie het eerst <b>" + INSTEL.totPunten + " punten</b> heeft wint!<br>" +
+    "Elk punt dat jij scoort = 2 🗝️ keys, winnen = +5 bonus-keys.";
+}
+editorKlaar("pongrobot", [
+  { sleutel: "balTempo", label: "⚡ Bal-snelheid", soort: "schuif", min: 240, max: 520, stap: 10 },
+  { sleutel: "robotKracht", label: "🤖 Hoe goed is de robot? (%)", soort: "schuif", min: 30, max: 95, stap: 5 },
+  { sleutel: "totPunten", label: "🏆 Punten om te winnen", soort: "schuif", min: 3, max: 15, stap: 1 },
+], STANDAARD, (waarden) => { INSTEL = waarden; uitleg(); });
+uitleg();
+
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+const PLANK_W = 120, PLANK_H = 14;
+
+let stand = "start";
+let mijnX, robotX, bal, mijnPunten, robotPunten, balWacht;
+
+function reset() {
+  mijnX = m.W / 2; robotX = m.W / 2;
+  mijnPunten = 0; robotPunten = 0;
+  nieuweBal(1);
+}
+function nieuweBal(richting) {
+  balWacht = 0.9;
+  const hoek = (Math.random() * 0.6 - 0.3) + (richting > 0 ? Math.PI / 2 : -Math.PI / 2);
+  bal = { x: m.W / 2, y: m.H / 2, vx: Math.sin(hoek) * INSTEL.balTempo * 0.9, vy: Math.cos(hoek) * INSTEL.balTempo * (richting > 0 ? 1 : -1), r: 10 };
+  bal.vy = Math.abs(bal.vy) * richting;   // richting: 1 = naar mij, -1 = naar robot
+  hud();
+}
+function hud() {
+  document.getElementById("hud").innerHTML = "🤖 " + robotPunten + " — " + mijnPunten + " 😎<br><span style='font-size:13px;color:#9aa4c7'>tot " + INSTEL.totPunten + "</span>";
+}
+
+window.addEventListener("mousemove", e => { mijnX = e.clientX; });
+window.addEventListener("touchmove", e => { mijnX = e.touches[0].clientX; }, { passive: true });
+window.addEventListener("touchstart", e => { if (!e.target.closest(".paneel")) mijnX = e.touches[0].clientX; }, { passive: true });
+
+function stap(dt) {
+  mijnX = Math.max(PLANK_W / 2, Math.min(m.W - PLANK_W / 2, mijnX));
+  // robot volgt de bal, maar niet perfect
+  const robotSnel = INSTEL.balTempo * INSTEL.robotKracht / 100;
+  const doel = bal.vy < 0 ? bal.x : m.W / 2;
+  if (robotX < doel - 8) robotX += robotSnel * dt;
+  else if (robotX > doel + 8) robotX -= robotSnel * dt;
+  robotX = Math.max(PLANK_W / 2, Math.min(m.W - PLANK_W / 2, robotX));
+
+  if (balWacht > 0) { balWacht -= dt; return; }
+  bal.x += bal.vx * dt; bal.y += bal.vy * dt;
+  if (bal.x - bal.r < 0) { bal.x = bal.r; bal.vx = Math.abs(bal.vx); }
+  if (bal.x + bal.r > m.W) { bal.x = m.W - bal.r; bal.vx = -Math.abs(bal.vx); }
+
+  const mijnY = m.H - 50, robotY = 36;
+  // mijn plankje
+  if (bal.vy > 0 && bal.y + bal.r >= mijnY && bal.y + bal.r <= mijnY + PLANK_H + 16 &&
+      bal.x > mijnX - PLANK_W / 2 - bal.r && bal.x < mijnX + PLANK_W / 2 + bal.r) {
+    const rel = (bal.x - mijnX) / (PLANK_W / 2);
+    const snel = Math.min(700, Math.hypot(bal.vx, bal.vy) * 1.04);   // elk potje ietsje sneller
+    bal.vx = rel * snel * 0.85;
+    if (Math.abs(bal.vx) < 40) bal.vx = rel >= 0 ? 40 : -40;
+    bal.vy = -Math.sqrt(Math.max(100, snel * snel - bal.vx * bal.vx));
+    bal.y = mijnY - bal.r;
+  }
+  // robot-plankje
+  if (bal.vy < 0 && bal.y - bal.r <= robotY + PLANK_H && bal.y - bal.r >= robotY - 16 &&
+      bal.x > robotX - PLANK_W / 2 - bal.r && bal.x < robotX + PLANK_W / 2 + bal.r) {
+    const rel = (bal.x - robotX) / (PLANK_W / 2);
+    const snel = Math.hypot(bal.vx, bal.vy);
+    bal.vx = rel * snel * 0.85;
+    bal.vy = Math.sqrt(Math.max(100, snel * snel - bal.vx * bal.vx));
+    bal.y = robotY + PLANK_H + bal.r;
+  }
+  // punt!
+  if (bal.y - bal.r > m.H) { robotPunten++; hud(); naPunt(-1); }
+  else if (bal.y + bal.r < 0) { mijnPunten++; hud(); naPunt(1); }
+}
+
+function naPunt(richting) {
+  if (mijnPunten >= INSTEL.totPunten || robotPunten >= INSTEL.totPunten) return klaar();
+  nieuweBal(richting);
+}
+
+function klaar() {
+  stand = "dood";
+  const gewonnen = mijnPunten > robotPunten;
+  let potjes = parseInt(localStorage.getItem("deluxe-pong-potjes") || "0", 10) || 0;
+  if (gewonnen) { potjes++; localStorage.setItem("deluxe-pong-potjes", String(potjes)); }
+  const keys = geefKeys(mijnPunten * 2 + (gewonnen ? 5 : 0), "pongrobot");
+  document.getElementById("doodTitel").textContent = gewonnen ? "🏆 JIJ WINT!" : "🤖 DE ROBOT WINT…";
+  document.getElementById("doodScore").textContent = robotPunten + " — " + mijnPunten;
+  document.getElementById("doodBest").innerHTML = "Totaal gewonnen potjes: <b>" + potjes + "</b>";
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+}
+
+function teken() {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, m.W, m.H);
+  // middenlijn
+  ctx.strokeStyle = "rgba(154,164,199,0.35)"; ctx.setLineDash([12, 14]); ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, m.H / 2); ctx.lineTo(m.W, m.H / 2); ctx.stroke();
+  ctx.setLineDash([]);
+  // planken
+  const g1 = ctx.createLinearGradient(mijnX - PLANK_W / 2, 0, mijnX + PLANK_W / 2, 0);
+  g1.addColorStop(0, "#ff3b3b"); g1.addColorStop(1, "#3b82ff");
+  ctx.fillStyle = g1;
+  ctx.beginPath(); ctx.roundRect(mijnX - PLANK_W / 2, m.H - 50, PLANK_W, PLANK_H, 7); ctx.fill();
+  ctx.fillStyle = "#8e9bff";
+  ctx.beginPath(); ctx.roundRect(robotX - PLANK_W / 2, 36, PLANK_W, PLANK_H, 7); ctx.fill();
+  ctx.font = "22px serif"; ctx.textAlign = "center";
+  ctx.fillText("🤖", robotX, 26);
+  // bal
+  if (stand === "spel") {
+    ctx.fillStyle = "#ffd700"; ctx.shadowColor = "#ffd700"; ctx.shadowBlur = 14;
+    ctx.beginPath(); ctx.arc(bal.x, bal.y, bal.r, 0, 7); ctx.fill();
+    ctx.shadowBlur = 0;
+    if (balWacht > 0) {
+      ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.font = "800 40px sans-serif";
+      ctx.fillText(Math.ceil(balWacht * 3), m.W / 2, m.H / 2 - 40);
+    }
+  }
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+}
+document.getElementById("startKnop").addEventListener("click", startSpel);
+document.getElementById("nogEenKeer").addEventListener("click", startSpel);
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-pong-potjes") || "0";
+</script>
+</body>
+</html>

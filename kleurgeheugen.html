@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🎨 KLEUR-GEHEUGEN — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+<style>
+  #bord {
+    position:fixed; inset:0; display:grid; place-content:center;
+    grid-template-columns:repeat(2, min(38vw, 210px)); gap:min(3vw, 16px);
+  }
+  .vak {
+    width:min(38vw,210px); height:min(38vw,210px); border-radius:24px; cursor:pointer;
+    opacity:0.35; transition:opacity 0.12s, transform 0.12s;
+    display:flex; align-items:center; justify-content:center; font-size:min(12vw,64px);
+  }
+  .vak.aan { opacity:1; transform:scale(1.05); box-shadow:0 0 40px currentColor; }
+  #beurtTekst { position:fixed; top:60px; left:0; right:0; text-align:center; z-index:5;
+    color:#cfd6f2; font-size:18px; font-weight:700; }
+</style>
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<div id="beurtTekst" class="verborgen"></div>
+<div id="bord">
+  <div class="vak" id="v0" style="background:#ff3b3b;color:#ff3b3b">🍓</div>
+  <div class="vak" id="v1" style="background:#3b82ff;color:#3b82ff">🫐</div>
+  <div class="vak" id="v2" style="background:#2ecc71;color:#2ecc71">🥝</div>
+  <div class="vak" id="v3" style="background:#ffd700;color:#ffd700">🍋</div>
+</div>
+
+<div class="paneel" id="startPaneel">
+  <h1>🎨 KLEUR-GEHEUGEN</h1>
+  <div class="sub">een spel van Claude 🤖 — voor de site van Brian</div>
+  <div class="uitleg">
+    Kijk goed welke kleuren oplichten — en tik ze daarna <b>in dezelfde volgorde</b> na!<br>
+    Elke ronde komt er één kleur bij. Hoe ver kom jij?<br>
+    Elke goede ronde = 2 punten = 2 🗝️ keys!
+  </div>
+  <button class="knop" id="startKnop">🎨 START</button>
+  <div class="rij" style="margin-top:16px">Beste reeks: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">🙈 NET VERKEERD!</h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const vakken = [0, 1, 2, 3].map(i => document.getElementById("v" + i));
+const TONEN = [261.6, 329.6, 392.0, 523.3];    // do-mi-sol-do
+let audio;
+function piep(i, duur = 0.28) {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.frequency.value = TONEN[i]; o.type = "sine";
+    g.gain.setValueAtTime(0.18, audio.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + duur);
+    o.connect(g); g.connect(audio.destination);
+    o.start(); o.stop(audio.currentTime + duur);
+  } catch (e) {}
+}
+
+let stand = "start", reeks, plek, mijnBeurt, ronde;
+
+function flits(i, duur = 380) {
+  vakken[i].classList.add("aan");
+  piep(i, duur / 1000);
+  setTimeout(() => vakken[i].classList.remove("aan"), duur * 0.75);
+}
+
+function toonReeks() {
+  mijnBeurt = false;
+  document.getElementById("beurtTekst").textContent = "👀 Kijk goed…";
+  const tempo = Math.max(280, 620 - ronde * 25);   // steeds vlotter
+  reeks.forEach((v, idx) => setTimeout(() => flits(v, tempo * 0.8), 600 + idx * tempo));
+  setTimeout(() => {
+    mijnBeurt = true; plek = 0;
+    document.getElementById("beurtTekst").textContent = "👉 Jouw beurt! (" + reeks.length + " kleuren)";
+  }, 600 + reeks.length * tempo);
+}
+
+function nieuweRonde() {
+  ronde++;
+  reeks.push(Math.floor(Math.random() * 4));
+  document.getElementById("hud").textContent = "reeks: " + reeks.length;
+  toonReeks();
+}
+
+vakken.forEach((vak, i) => {
+  vak.addEventListener("pointerdown", () => {
+    if (stand !== "spel" || !mijnBeurt) return;
+    flits(i, 240);
+    if (i === reeks[plek]) {
+      plek++;
+      if (plek >= reeks.length) {
+        document.getElementById("beurtTekst").textContent = "✅ Goed zo!";
+        mijnBeurt = false;
+        setTimeout(nieuweRonde, 700);
+      }
+    } else {
+      dood();
+    }
+  });
+});
+
+function dood() {
+  stand = "dood";
+  mijnBeurt = false;
+  const gehaald = reeks.length - 1;              // laatste reeks was mis
+  const score = gehaald * 2;
+  const best = zetRecord("deluxe-kleurgeheugen-best", gehaald);
+  const keys = geefKeys(score, "kleurgeheugen");
+  document.getElementById("doodScore").textContent = gehaald + " goed";
+  document.getElementById("doodBest").innerHTML = "Beste reeks: <b>" + best + "</b>" + (gehaald >= best && gehaald > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+  document.getElementById("beurtTekst").classList.add("verborgen");
+}
+
+function startSpel() {
+  stand = "spel"; reeks = []; ronde = 0; plek = 0; mijnBeurt = false;
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  document.getElementById("beurtTekst").classList.remove("verborgen");
+  nieuweRonde();
+}
+document.getElementById("startKnop").addEventListener("click", startSpel);
+document.getElementById("nogEenKeer").addEventListener("click", startSpel);
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-kleurgeheugen-best") || "0";
+</script>
+</body>
+</html>

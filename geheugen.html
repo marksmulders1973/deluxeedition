@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🧠 GEHEUGEN-MATCH — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+<style>
+  html,body { overflow:auto; }
+  #veld {
+    position:fixed; inset:60px 8px 8px 8px; display:grid; place-content:center; gap:8px;
+  }
+  .kaart {
+    width:var(--kw); height:var(--kw); cursor:pointer; perspective:600px;
+  }
+  .kaart .binnen {
+    width:100%; height:100%; position:relative; transition:transform 0.35s; transform-style:preserve-3d;
+  }
+  .kaart.om .binnen { transform:rotateY(180deg); }
+  .kant {
+    position:absolute; inset:0; border-radius:14px; display:flex; align-items:center; justify-content:center;
+    backface-visibility:hidden; -webkit-backface-visibility:hidden; font-size:calc(var(--kw) * 0.55);
+  }
+  .voor { background:linear-gradient(135deg,#20264d,#131735); border:2px solid rgba(59,130,246,0.4); color:#3b82ff; font-weight:900; }
+  .achter { background:#0e1228; border:2px solid rgba(255,255,255,0.25); transform:rotateY(180deg); }
+  .kaart.goed .achter { border-color:#2ecc71; box-shadow:0 0 14px rgba(46,204,113,0.6); }
+  #tijdBalk { position:fixed; top:0; left:0; height:7px; background:linear-gradient(90deg,#ff3b3b,#3b82ff); width:100%; z-index:6; transition:width 0.3s linear; }
+</style>
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="tijdBalk" class="verborgen"></div>
+<div id="hud" class="verborgen"></div>
+<div id="veld"></div>
+
+<div class="paneel" id="startPaneel">
+  <h1>🧠 GEHEUGEN-MATCH</h1>
+  <div class="sub">een spel van Claude 🤖 — ✏️ afstelbaar door Arthur</div>
+  <div class="uitleg" id="uitlegTekst"></div>
+  <button class="knop" id="startKnop">🧠 START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)" id="doodTitel"></h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const THEMAS = {
+  dieren:  ["🐶","🐱","🦊","🐸","🦁","🐼","🐵","🦄","🐷","🐙","🐢","🦜"],
+  eten:    ["🍕","🍔","🍟","🌮","🍩","🍪","🍓","🍉","🍦","🥨","🍿","🧁"],
+  sport:   ["⚽","🏀","🎾","🏈","⚾","🏐","🏓","🥊","⛳","🏆","🎳","🛹"],
+  griezel: ["🧟","👻","💀","🕷️","🦇","🎃","👹","🕸️","🧛","👽","🐍","🌑"],
+};
+const STANDAARD = { paren: 8, thema: "dieren", tijdLimiet: 90 };
+let INSTEL = { ...STANDAARD };
+function uitleg() {
+  document.getElementById("uitlegTekst").innerHTML =
+    "Draai 2 kaarten om — zijn ze hetzelfde, dan blijven ze open!<br>" +
+    "Thema: <b>" + INSTEL.thema + "</b> " + THEMAS[INSTEL.thema].slice(0, 4).join("") + " • <b>" + INSTEL.paren + " paren</b><br>" +
+    (INSTEL.tijdLimiet > 0 ? "Je hebt <b>" + INSTEL.tijdLimiet + " seconden</b> — overgebleven tijd = bonus-punten!" : "Geen tijdslimiet — lekker rustig puzzelen.") +
+    "<br>Elk paar = 2 punten = 2 🗝️ keys.";
+}
+editorKlaar("geheugen", [
+  { sleutel: "paren", label: "🃏 Aantal paren", soort: "schuif", min: 6, max: 12, stap: 1 },
+  { sleutel: "thema", label: "🎨 Thema", soort: "keuze", keuzes: [
+    { w: "dieren", label: "🐶 Dieren" }, { w: "eten", label: "🍕 Eten" },
+    { w: "sport", label: "⚽ Sport" }, { w: "griezel", label: "🧟 Griezel" }] },
+  { sleutel: "tijdLimiet", label: "⏰ Tijdslimiet (seconden, 0 = uit)", soort: "schuif", min: 0, max: 180, stap: 15 },
+], STANDAARD, (waarden) => { INSTEL = waarden; uitleg(); });
+uitleg();
+
+const veld = document.getElementById("veld");
+let stand = "start", open = [], gevonden, beurten, score, tijdOver, tijdKlok, slotje = false;
+
+function hud() {
+  document.getElementById("hud").innerHTML = "⭐ " + score + " &nbsp;<span style='font-size:15px;color:#9aa4c7'>" + gevonden + "/" + INSTEL.paren + " paren</span>";
+}
+
+function bouw() {
+  veld.innerHTML = "";
+  const emojis = THEMAS[INSTEL.thema] || THEMAS.dieren;
+  const set = emojis.slice(0, INSTEL.paren);
+  const kaarten = [...set, ...set].sort(() => Math.random() - 0.5);
+  const totaal = kaarten.length;
+  const kolommen = totaal <= 12 ? 4 : totaal <= 16 ? 4 : totaal <= 20 ? 5 : 6;
+  const rijen = Math.ceil(totaal / kolommen);
+  const kw = Math.floor(Math.min((window.innerWidth - 40) / kolommen, (window.innerHeight - 110) / rijen) - 8);
+  veld.style.gridTemplateColumns = "repeat(" + kolommen + ", " + kw + "px)";
+  veld.style.setProperty("--kw", kw + "px");
+  kaarten.forEach((emoji) => {
+    const k = document.createElement("div");
+    k.className = "kaart";
+    k.innerHTML = "<div class='binnen'><div class='kant voor'>?</div><div class='kant achter'>" + emoji + "</div></div>";
+    k.dataset.emoji = emoji;
+    k.addEventListener("pointerdown", () => draai(k));
+    veld.appendChild(k);
+  });
+}
+
+function draai(k) {
+  if (stand !== "spel" || slotje) return;
+  if (k.classList.contains("om")) return;
+  k.classList.add("om");
+  open.push(k);
+  if (open.length === 2) {
+    beurten++;
+    slotje = true;
+    const [a, b] = open;
+    if (a.dataset.emoji === b.dataset.emoji) {
+      a.classList.add("goed"); b.classList.add("goed");
+      gevonden++; score += 2;
+      open = []; slotje = false;
+      hud();
+      if (gevonden >= INSTEL.paren) klaar(true);
+    } else {
+      setTimeout(() => { a.classList.remove("om"); b.classList.remove("om"); open = []; slotje = false; }, 750);
+    }
+  }
+}
+
+function klaar(gewonnen) {
+  stand = "dood";
+  clearInterval(tijdKlok);
+  if (gewonnen && INSTEL.tijdLimiet > 0) score += Math.floor(tijdOver / 5);   // tijd-bonus
+  const best = zetRecord("deluxe-geheugen-best", score);
+  const keys = geefKeys(score, "geheugen");
+  document.getElementById("doodTitel").textContent = gewonnen ? "🎉 ALLES GEVONDEN!" : "⏰ TIJD IS OM!";
+  document.getElementById("doodScore").textContent = score + " punten";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (score >= best && score > 0 ? " 🏆 NIEUW RECORD!" : "") +
+    " • in " + beurten + " beurten";
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+  document.getElementById("tijdBalk").classList.add("verborgen");
+}
+
+function startSpel() {
+  bouw();
+  stand = "spel"; open = []; gevonden = 0; beurten = 0; score = 0; slotje = false;
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  hud();
+  clearInterval(tijdKlok);
+  if (INSTEL.tijdLimiet > 0) {
+    tijdOver = INSTEL.tijdLimiet;
+    document.getElementById("tijdBalk").classList.remove("verborgen");
+    document.getElementById("tijdBalk").style.width = "100%";
+    tijdKlok = setInterval(() => {
+      tijdOver--;
+      document.getElementById("tijdBalk").style.width = (tijdOver / INSTEL.tijdLimiet * 100) + "%";
+      if (tijdOver <= 0) klaar(false);
+    }, 1000);
+  }
+}
+document.getElementById("startKnop").addEventListener("click", startSpel);
+document.getElementById("nogEenKeer").addEventListener("click", startSpel);
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-geheugen-best") || "0";
+</script>
+</body>
+</html>

@@ -22,10 +22,51 @@ function keurGoed(s) {
   return null;
 }
 
+// ── ✏️ Spel-instellingen (de EDIT-knop van Arthur) ──────
+// 5 Claude-spellen mag Arthur (of NovaX) afstellen, zo vaak
+// hij wil. Opslag: kv "stel:<spelId>" = {instellingen, door}.
+const STELBAAR = ["zombietik", "pongrobot", "kikker", "geheugen", "lavasprint"];
+function keurInstellingen(inst) {
+  if (!inst || typeof inst !== "object" || Array.isArray(inst)) return "geen instellingen";
+  if (Object.keys(inst).length > 25) return "te veel instellingen";
+  for (const w of Object.values(inst)) {
+    if (!["number", "string", "boolean"].includes(typeof w)) return "rare waarde";
+    if (String(w).length > 40) return "waarde te lang";
+  }
+  if (JSON.stringify(inst).length > 2000) return "te groot";
+  return null;
+}
+
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
 
   try {
+    // ✏️ instellingen ophalen: GET /api/spellen?stel=<spelId>
+    if (req.method === "GET" && req.query.stel) {
+      const id = String(req.query.stel);
+      if (!STELBAAR.includes(id)) return res.status(400).json({ fout: "dit spel is niet afstelbaar" });
+      const rij = await kvLees("stel:" + id);
+      return res.status(200).json(rij || { instellingen: null, door: null });
+    }
+
+    // ✏️ instellingen opslaan: POST /api/spellen?stel=1
+    // Leeg object {} = terug naar standaard.
+    if (req.method === "POST" && req.query.stel) {
+      const { spel, naam, instellingen } = req.body || {};
+      if (!STELBAAR.includes(spel)) return res.status(400).json({ fout: "dit spel is niet afstelbaar" });
+      const wie = String(naam || "").trim().slice(0, 20);
+      const magHet = wie.toLowerCase().includes("arthur") || wie === "NovaX";
+      if (!magHet) return res.status(403).json({ fout: "alleen Arthur (of NovaX) mag dit spel afstellen" });
+      if (instellingen && Object.keys(instellingen).length === 0) {
+        await kvWis("stel:" + spel);
+        return res.status(200).json({ ok: true, reset: true });
+      }
+      const fout = keurInstellingen(instellingen);
+      if (fout) return res.status(400).json({ fout });
+      await kvSchrijf("stel:" + spel, { instellingen, door: wie, wanneer: new Date().toISOString() });
+      return res.status(200).json({ ok: true });
+    }
+
     if (req.method === "GET") {
       const rijen = await kvLijst("spel:", 200);
       return res.status(200).json(rijen.map((r) => r.data).filter(Boolean));

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🍬 SNOEP-VANGER — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<canvas id="c"></canvas>
+
+<div class="paneel" id="startPaneel">
+  <h1>🍬 SNOEP-VANGER</h1>
+  <div class="sub">een spel van Claude 🤖 — voor de site van Brian</div>
+  <div class="uitleg">
+    Vang het snoep met je mandje 🧺 — beweeg met muis of vinger!<br>
+    🍬 = 1 punt • 🍭 = 3 punten • maar vang GEEN 💣 (kost een leven!)<br>
+    Je hebt ❤️❤️❤️. Het regent steeds harder snoep… 1 punt = 1 🗝️ key!
+  </div>
+  <button class="knop" id="startKnop">🍬 START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">💥 BOEM!</h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+
+let stand = "start", mandX, score, levens, tijd, vallers, totVolgende, flitsen;
+
+function reset() {
+  mandX = m.W / 2; score = 0; levens = 3; tijd = 0;
+  vallers = []; totVolgende = 0.4; flitsen = [];
+}
+
+window.addEventListener("mousemove", e => { mandX = e.clientX; });
+window.addEventListener("touchmove", e => { mandX = e.touches[0].clientX; }, { passive: true });
+window.addEventListener("touchstart", e => { if (!e.target.closest(".paneel")) mandX = e.touches[0].clientX; }, { passive: true });
+
+function hud() {
+  document.getElementById("hud").innerHTML = "⭐ " + score + " &nbsp;" + "❤️".repeat(Math.max(0, levens));
+}
+
+function stap(dt) {
+  tijd += dt;
+  const tempo = 1 + tijd / 30;
+  mandX = Math.max(40, Math.min(m.W - 40, mandX));
+
+  totVolgende -= dt;
+  if (totVolgende <= 0) {
+    const kans = Math.random();
+    vallers.push({
+      x: 30 + Math.random() * (m.W - 60), y: -30,
+      soort: kans < 0.14 ? "bom" : kans < 0.3 ? "lolly" : "snoep",
+      vy: (170 + Math.random() * 130) * tempo,
+      zwaai: Math.random() * 7, zwaaiSnel: 1 + Math.random() * 2,
+    });
+    totVolgende = Math.max(0.18, 0.55 / tempo);
+  }
+
+  const mandY = m.H - 60;
+  for (let i = vallers.length - 1; i >= 0; i--) {
+    const v = vallers[i];
+    v.y += v.vy * dt;
+    v.zwaai += v.zwaaiSnel * dt;
+    v.x += Math.sin(v.zwaai) * 30 * dt;
+    if (v.y > mandY - 14 && v.y < mandY + 26 && Math.abs(v.x - mandX) < 46) {
+      if (v.soort === "bom") {
+        levens--;
+        flitsen.push({ x: v.x, y: v.y, tekst: "💥", leven: 0.8, kleur: "#ff3b3b" });
+        document.body.style.background = "#3a0a0a";
+        setTimeout(() => { document.body.style.background = ""; }, 180);
+        if (levens <= 0) { vallers.splice(i, 1); hud(); return dood(); }
+      } else {
+        const punten = v.soort === "lolly" ? 3 : 1;
+        score += punten;
+        flitsen.push({ x: v.x, y: v.y - 20, tekst: "+" + punten, leven: 0.7, kleur: "#ffd700" });
+      }
+      vallers.splice(i, 1);
+      hud();
+    } else if (v.y > m.H + 40) {
+      vallers.splice(i, 1);
+    }
+  }
+  for (const f of flitsen) { f.leven -= dt; f.y -= 40 * dt; }
+  flitsen = flitsen.filter(f => f.leven > 0);
+}
+
+function dood() {
+  stand = "dood";
+  const best = zetRecord("deluxe-snoep-best", score);
+  const keys = geefKeys(score, "snoepvanger");
+  document.getElementById("doodScore").textContent = score + " punten";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (score >= best && score > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+}
+
+function teken() {
+  const lucht = ctx.createLinearGradient(0, 0, 0, m.H);
+  lucht.addColorStop(0, "#1a0b2e"); lucht.addColorStop(1, "#05060f");
+  ctx.fillStyle = lucht; ctx.fillRect(0, 0, m.W, m.H);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = "30px serif";
+  for (const v of vallers) ctx.fillText(v.soort === "bom" ? "💣" : v.soort === "lolly" ? "🍭" : "🍬", v.x, v.y);
+  if (stand !== "dood") {
+    ctx.font = "52px serif";
+    ctx.fillText("🧺", mandX, m.H - 44);
+  }
+  ctx.font = "800 22px sans-serif";
+  for (const f of flitsen) {
+    ctx.globalAlpha = Math.max(0, f.leven * 1.4);
+    ctx.fillStyle = f.kleur;
+    ctx.fillText(f.tekst, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  hud();
+}
+document.getElementById("startKnop").addEventListener("click", startSpel);
+document.getElementById("nogEenKeer").addEventListener("click", startSpel);
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-snoep-best") || "0";
+</script>
+</body>
+</html>

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🐸 OVERSTEEK-KIKKER — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+<style>
+  #pijlen { position:fixed; right:14px; bottom:14px; z-index:6; display:none;
+    grid-template-columns:repeat(3,56px); grid-template-rows:repeat(2,56px); gap:6px; }
+  #pijlen button { font-size:24px; border:none; border-radius:12px; color:#fff;
+    background:rgba(59,130,246,0.28); }
+  #pijlen button:active { background:rgba(255,59,59,0.5); }
+  @media (pointer:coarse) { #pijlen { display:grid; } }
+</style>
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<canvas id="c"></canvas>
+
+<div id="pijlen">
+  <span></span><button data-r="0,-1">⬆️</button><span></span>
+  <button data-r="-1,0">⬅️</button><button data-r="0,1">⬇️</button><button data-r="1,0">➡️</button>
+</div>
+
+<div class="paneel" id="startPaneel">
+  <h1>🐸 OVERSTEEK-KIKKER</h1>
+  <div class="sub">een spel van Claude 🤖 — ✏️ afstelbaar door Arthur</div>
+  <div class="uitleg" id="uitlegTekst"></div>
+  <button class="knop" id="startKnop">🐸 START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">🚑 PLAT GEREDEN!</h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const STANDAARD = { autoTempo: 130, stroken: 5, levens: 3, autos: "🚗🚕🚙🚌🏎️" };
+let INSTEL = { ...STANDAARD };
+function uitleg() {
+  document.getElementById("uitlegTekst").innerHTML =
+    "Help de kikker naar de overkant! Spring met de <b>pijltjes</b> (of veeg / knopjes).<br>" +
+    "Ontwijk het verkeer op de <b>" + INSTEL.stroken + " rijstroken</b>: " + [...INSTEL.autos].slice(0, 10).join("") + "<br>" +
+    "Elke oversteek = 1 punt = 3 🗝️ keys, en het verkeer wordt steeds sneller!<br>" +
+    "Je hebt " + "❤️".repeat(INSTEL.levens) + " levens.";
+}
+editorKlaar("kikker", [
+  { sleutel: "autoTempo", label: "🚗 Snelheid van het verkeer", soort: "schuif", min: 60, max: 260, stap: 10 },
+  { sleutel: "stroken", label: "🛣️ Aantal rijstroken", soort: "schuif", min: 3, max: 7, stap: 1 },
+  { sleutel: "levens", label: "❤️ Levens", soort: "schuif", min: 1, max: 5, stap: 1 },
+  { sleutel: "autos", label: "🚙 Voertuig-emoji's (plak er zoveel je wil)", soort: "tekst", maxLen: 20 },
+], STANDAARD, (waarden) => { INSTEL = waarden; uitleg(); });
+uitleg();
+
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+
+let stand = "start";
+let RIJEN, CEL, BX, BY, KOL;
+let kikker, banen, score, levens, tempoFactor;
+
+function bouw() {
+  RIJEN = INSTEL.stroken + 2;               // onderste + bovenste = stoep
+  KOL = 11;
+  CEL = Math.floor(Math.min((m.W - 16) / KOL, (m.H - 90) / RIJEN));
+  BX = Math.floor((m.W - CEL * KOL) / 2);
+  BY = Math.floor((m.H - CEL * RIJEN) / 2) + 20;
+  banen = [];
+  const emojis = [...INSTEL.autos].length ? [...INSTEL.autos] : ["🚗"];
+  for (let r = 0; r < INSTEL.stroken; r++) {
+    const richting = r % 2 === 0 ? 1 : -1;
+    const aantal = 2 + Math.floor(Math.random() * 2);
+    const autos = [];
+    for (let i = 0; i < aantal; i++)
+      autos.push({ x: (i / aantal) * KOL * CEL + Math.random() * CEL * 2, emoji: emojis[Math.floor(Math.random() * emojis.length)] });
+    banen.push({ rij: 1 + r, richting, autos, snel: (0.8 + Math.random() * 0.5) });
+  }
+}
+function kikkerThuis() { kikker = { k: Math.floor(KOL / 2), r: RIJEN - 1 }; }
+
+function hud() {
+  document.getElementById("hud").innerHTML = "⭐ " + score + " &nbsp;" + "❤️".repeat(levens);
+}
+
+function spring(dx, dy) {
+  if (stand !== "spel") return;
+  kikker.k = Math.max(0, Math.min(KOL - 1, kikker.k + dx));
+  kikker.r = Math.max(0, Math.min(RIJEN - 1, kikker.r + dy));
+  if (kikker.r === 0) {   // overkant gehaald!
+    score++;
+    tempoFactor += 0.09;
+    hud();
+    kikkerThuis();
+  }
+}
+
+const RICHTINGEN = { ArrowUp:[0,-1], ArrowDown:[0,1], ArrowLeft:[-1,0], ArrowRight:[1,0], KeyW:[0,-1], KeyS:[0,1], KeyA:[-1,0], KeyD:[1,0] };
+window.addEventListener("keydown", e => {
+  const r = RICHTINGEN[e.code];
+  if (r) { e.preventDefault(); spring(r[0], r[1]); }
+});
+let veegStart = null;
+window.addEventListener("touchstart", e => { if (!e.target.closest("#pijlen")) veegStart = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }, { passive: true });
+window.addEventListener("touchend", e => {
+  if (!veegStart) return;
+  const dx = e.changedTouches[0].clientX - veegStart.x;
+  const dy = e.changedTouches[0].clientY - veegStart.y;
+  veegStart = null;
+  if (Math.abs(dx) < 24 && Math.abs(dy) < 24) { spring(0, -1); return; }   // tikje = vooruit
+  if (Math.abs(dx) > Math.abs(dy)) spring(Math.sign(dx), 0); else spring(0, Math.sign(dy));
+}, { passive: true });
+document.querySelectorAll("#pijlen button").forEach(b => {
+  b.addEventListener("touchstart", e => { e.preventDefault(); const [x, y] = b.dataset.r.split(",").map(Number); spring(x, y); });
+  b.addEventListener("click", () => { const [x, y] = b.dataset.r.split(",").map(Number); spring(x, y); });
+});
+
+function stap(dt) {
+  const breed = KOL * CEL;
+  for (const baan of banen) {
+    for (const a of baan.autos) {
+      a.x += baan.richting * INSTEL.autoTempo * baan.snel * tempoFactor * dt;
+      if (a.x > breed + CEL) a.x = -CEL;
+      if (a.x < -CEL) a.x = breed + CEL;
+      // botsing? (kikker staat in deze rij en auto overlapt zijn vakje)
+      if (kikker.r === baan.rij) {
+        const kx = kikker.k * CEL + CEL / 2;
+        if (Math.abs(a.x + CEL / 2 - kx) < CEL * 0.72) return geraakt();
+      }
+    }
+  }
+}
+
+function geraakt() {
+  levens--;
+  hud();
+  document.body.style.background = "#3a0a0a";
+  setTimeout(() => { document.body.style.background = ""; }, 180);
+  if (levens <= 0) return dood();
+  kikkerThuis();
+}
+
+function dood() {
+  stand = "dood";
+  const best = zetRecord("deluxe-kikker-best", score);
+  const keys = geefKeys(score * 3, "kikker");
+  document.getElementById("doodScore").textContent = score + "× overgestoken";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (score >= best && score > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+}
+
+function teken() {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, m.W, m.H);
+  if (!CEL) return;
+  for (let r = 0; r < RIJEN; r++) {
+    const stoep = r === 0 || r === RIJEN - 1;
+    ctx.fillStyle = stoep ? "#123a1c" : (r % 2 ? "#191d38" : "#14172e");
+    ctx.fillRect(BX, BY + r * CEL, KOL * CEL, CEL);
+    if (!stoep) {   // wegstrepen
+      ctx.strokeStyle = "rgba(255,255,255,0.16)"; ctx.setLineDash([14, 16]); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(BX, BY + r * CEL); ctx.lineTo(BX + KOL * CEL, BY + r * CEL); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+  ctx.strokeStyle = "rgba(59,130,246,0.55)"; ctx.lineWidth = 3;
+  ctx.strokeRect(BX - 2, BY - 2, KOL * CEL + 4, RIJEN * CEL + 4);
+  ctx.font = Math.floor(CEL * 0.42) + "px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("🏁 hier naartoe! 🏁", BX + KOL * CEL / 2, BY + CEL / 2);
+
+  ctx.font = Math.floor(CEL * 0.78) + "px serif";
+  for (const baan of banen) {
+    for (const a of baan.autos) {
+      ctx.save();
+      ctx.translate(BX + a.x + CEL / 2, BY + baan.rij * CEL + CEL / 2);
+      if (baan.richting === 1) ctx.scale(-1, 1);   // autootje kijkt de goede kant op
+      ctx.fillText(a.emoji, 0, 0);
+      ctx.restore();
+    }
+  }
+  if (stand === "spel" || stand === "start")
+    ctx.fillText("🐸", BX + kikker.k * CEL + CEL / 2, BY + kikker.r * CEL + CEL / 2);
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+
+function startSpel() {
+  bouw();
+  kikkerThuis();
+  score = 0; levens = INSTEL.levens; tempoFactor = 1;
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  hud();
+}
+document.getElementById("startKnop").addEventListener("click", startSpel);
+document.getElementById("nogEenKeer").addEventListener("click", startSpel);
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-kikker-best") || "0";
+bouw(); kikkerThuis();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

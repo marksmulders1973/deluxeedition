@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🛸 UFO-ONTWIJKER — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<canvas id="c"></canvas>
+
+<div class="paneel" id="startPaneel">
+  <h1>🛸 UFO-ONTWIJKER</h1>
+  <div class="sub">een spel van Claude 🤖 — voor de site van Brian</div>
+  <div class="uitleg">
+    Jouw UFO volgt je muis of vinger. Ontwijk de vallende ruimtestenen ☄️!<br>
+    Vang de ⭐ sterren voor +5 punten. Hoe langer je overleeft, hoe meer punten —<br>
+    en hoe sneller het gaat… 1 punt = 1 🗝️ key!
+  </div>
+  <button class="knop" id="startKnop">🛸 START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">💥 GERAAKT!</h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+
+let stand = "start", ufo, doelX, doelY, stenen, sterrenVal, score, tijd, totSteen, totSter, brokken;
+
+const sterrenLucht = [];
+for (let i = 0; i < 80; i++) sterrenLucht.push({ x: Math.random(), y: Math.random(), r: Math.random() * 1.6 + 0.4 });
+
+function reset() {
+  ufo = { x: m.W / 2, y: m.H * 0.72, r: 20 };
+  doelX = ufo.x; doelY = ufo.y;
+  stenen = []; sterrenVal = []; brokken = [];
+  score = 0; tijd = 0; totSteen = 0.5; totSter = 3;
+}
+
+window.addEventListener("mousemove", e => { doelX = e.clientX; doelY = e.clientY; });
+window.addEventListener("touchmove", e => { doelX = e.touches[0].clientX; doelY = e.touches[0].clientY - 50; }, { passive: true });
+window.addEventListener("touchstart", e => {
+  if (e.target.closest(".paneel")) return;
+  doelX = e.touches[0].clientX; doelY = e.touches[0].clientY - 50;
+}, { passive: true });
+
+function stap(dt) {
+  tijd += dt;
+  const tempo = 1 + tijd / 25;                 // wordt langzaam sneller
+  score += dt * 2;                             // 2 punten per seconde overleven
+  document.getElementById("hud").textContent = Math.floor(score);
+
+  // ufo zweeft naar je vinger/muis
+  ufo.x += (doelX - ufo.x) * Math.min(1, 10 * dt);
+  ufo.y += (doelY - ufo.y) * Math.min(1, 10 * dt);
+  ufo.x = Math.max(20, Math.min(m.W - 20, ufo.x));
+  ufo.y = Math.max(60, Math.min(m.H - 20, ufo.y));
+
+  totSteen -= dt;
+  if (totSteen <= 0) {
+    const r = 16 + Math.random() * 18;
+    stenen.push({ x: Math.random() * m.W, y: -40, r,
+      vy: (140 + Math.random() * 120) * tempo, vx: (Math.random() - 0.5) * 80, draai: Math.random() * 7 });
+    totSteen = Math.max(0.16, 0.55 / tempo);
+  }
+  totSter -= dt;
+  if (totSter <= 0) {
+    sterrenVal.push({ x: 40 + Math.random() * (m.W - 80), y: -30, vy: 150 });
+    totSter = 4 + Math.random() * 3;
+  }
+
+  for (const s of stenen) {
+    s.y += s.vy * dt; s.x += s.vx * dt; s.draai += dt;
+    if (Math.hypot(s.x - ufo.x, s.y - ufo.y) < s.r * 0.72 + ufo.r * 0.8) return dood();
+  }
+  stenen = stenen.filter(s => s.y < m.H + 60);
+  for (let i = sterrenVal.length - 1; i >= 0; i--) {
+    const st = sterrenVal[i];
+    st.y += st.vy * dt;
+    if (Math.hypot(st.x - ufo.x, st.y - ufo.y) < 34) {
+      score += 5;
+      brokken.push({ x: st.x, y: st.y, tekst: "+5", leven: 0.8 });
+      sterrenVal.splice(i, 1);
+    } else if (st.y > m.H + 40) sterrenVal.splice(i, 1);
+  }
+  for (const b of brokken) { b.leven -= dt; b.y -= 40 * dt; }
+  brokken = brokken.filter(b => b.leven > 0);
+}
+
+function dood() {
+  stand = "dood";
+  const punten = Math.floor(score);
+  const best = zetRecord("deluxe-ufo-best", punten);
+  const keys = geefKeys(punten, "ufododge");
+  document.getElementById("doodScore").textContent = punten + " punten";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (punten >= best && punten > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+}
+
+function teken() {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, m.W, m.H);
+  ctx.fillStyle = "#cfd6f2";
+  for (const s of sterrenLucht) { ctx.globalAlpha = 0.5; ctx.fillRect(s.x * m.W, s.y * m.H, s.r, s.r); }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const s of stenen) {
+    ctx.save();
+    ctx.translate(s.x, s.y); ctx.rotate(s.draai);
+    ctx.font = (s.r * 2) + "px serif";
+    ctx.fillText("☄️", 0, 0);
+    ctx.restore();
+  }
+  ctx.font = "30px serif";
+  for (const st of sterrenVal) ctx.fillText("⭐", st.x, st.y);
+  if (stand !== "dood") {
+    ctx.font = "42px serif";
+    ctx.fillText("🛸", ufo.x, ufo.y);
+  }
+  ctx.font = "800 22px sans-serif"; ctx.fillStyle = "#ffd700";
+  for (const b of brokken) {
+    ctx.globalAlpha = Math.max(0, b.leven * 1.4);
+    ctx.fillText(b.tekst, b.x, b.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+}
+document.getElementById("startKnop").addEventListener("click", startSpel);
+document.getElementById("nogEenKeer").addEventListener("click", startSpel);
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-ufo-best") || "0";
+</script>
+</body>
+</html>

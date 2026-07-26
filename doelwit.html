@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🎯 DOELWIT-FLITS — een spel van Claude</title>
+<link rel="stylesheet" href="spel-stijl.css">
+<style>
+  #tijdBalk { position:fixed; top:0; left:0; height:7px; background:linear-gradient(90deg,#ff3b3b,#3b82ff); width:100%; z-index:6; transition:width 0.2s linear; }
+</style>
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="tijdBalk" class="verborgen"></div>
+<div id="hud" class="verborgen">0</div>
+<canvas id="c"></canvas>
+
+<div class="paneel" id="startPaneel">
+  <h1>🎯 DOELWIT-FLITS</h1>
+  <div class="sub">een spel van Claude 🤖 — voor de site van Brian</div>
+  <div class="uitleg">
+    Tik de doelwitten zo snel je kan — ze krimpen en verdwijnen!<br>
+    Klein raken = meer punten (3-2-1). Mis-klikken kost 1 punt.<br>
+    Je hebt <b>30 seconden</b>. 1 punt = 1 🗝️ key!
+  </div>
+  <button class="knop" id="startKnop">🎯 START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">⏰ TIJD IS OM!</h1>
+  <div class="score-groot" id="doodScore"></div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script src="spel-basis.js"></script>
+<script>
+const m = basisCanvas(document.getElementById("c"));
+const ctx = m.ctx;
+const SPEELTIJD = 30;
+
+let stand = "start", score, tijdOver, doelen, totVolgende, flitsen, tijdKlok;
+
+function reset() {
+  score = 0; tijdOver = SPEELTIJD; doelen = []; totVolgende = 0; flitsen = [];
+}
+
+function nieuwDoel() {
+  const r = 34 + Math.random() * 22;
+  doelen.push({
+    x: 60 + Math.random() * (m.W - 120),
+    y: 90 + Math.random() * (m.H - 180),
+    r, maxR: r, leven: 1.6 + Math.random() * 0.7,
+  });
+}
+
+window.addEventListener("pointerdown", e => {
+  if (stand !== "spel") return;
+  if (e.target.closest(".paneel") || e.target.closest("a")) return;
+  const x = e.clientX, y = e.clientY;
+  let raak = false;
+  for (let i = doelen.length - 1; i >= 0; i--) {
+    const d = doelen[i];
+    if (Math.hypot(x - d.x, y - d.y) <= d.r + 6) {
+      const deel = d.r / d.maxR;
+      const punten = deel < 0.45 ? 3 : deel < 0.75 ? 2 : 1;
+      score += punten;
+      flitsen.push({ x: d.x, y: d.y, tekst: "+" + punten, leven: 0.7, kleur: "#ffd700" });
+      doelen.splice(i, 1);
+      raak = true;
+      break;
+    }
+  }
+  if (!raak) {
+    score = Math.max(0, score - 1);
+    flitsen.push({ x, y, tekst: "-1", leven: 0.7, kleur: "#ff3b3b" });
+  }
+  document.getElementById("hud").textContent = score;
+});
+
+function stap(dt) {
+  totVolgende -= dt;
+  if (totVolgende <= 0 && doelen.length < 4) {
+    nieuwDoel();
+    totVolgende = 0.35 + Math.random() * 0.4;
+  }
+  for (const d of doelen) { d.leven -= dt; d.r = d.maxR * Math.max(0.18, d.leven / 2.3 + 0.25); }
+  doelen = doelen.filter(d => d.leven > 0);
+  for (const f of flitsen) { f.leven -= dt; f.y -= 40 * dt; }
+  flitsen = flitsen.filter(f => f.leven > 0);
+}
+
+function teken() {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, m.W, m.H);
+  for (const d of doelen) {
+    // schietschijf: rood-wit-blauw ringen
+    const ringen = [[1, "#ff3b3b"], [0.66, "#ffffff"], [0.33, "#3b82ff"]];
+    for (const [deel, kleur] of ringen) {
+      ctx.fillStyle = kleur;
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r * deel, 0, 7); ctx.fill();
+    }
+  }
+  ctx.textAlign = "center"; ctx.font = "800 24px sans-serif";
+  for (const f of flitsen) {
+    ctx.globalAlpha = Math.max(0, f.leven * 1.5);
+    ctx.fillStyle = f.kleur;
+    ctx.fillText(f.tekst, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function klaar() {
+  stand = "dood";
+  clearInterval(tijdKlok);
+  const best = zetRecord("deluxe-doelwit-best", score);
+  const keys = geefKeys(score, "doelwit");
+  document.getElementById("doodScore").textContent = score + " punten";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (score >= best && score > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keysTekst(keys);
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+  document.getElementById("tijdBalk").classList.add("verborgen");
+}
+
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  document.getElementById("hud").textContent = "0";
+  document.getElementById("tijdBalk").classList.remove("verborgen");
+  clearInterval(tijdKlok);
+  tijdKlok = setInterval(() => {
+    tijdOver--;
+    document.getElementById("tijdBalk").style.width = (tijdOver / SPEELTIJD * 100) + "%";
+    if (tijdOver <= 0) klaar();
+  }, 1000);
+}
+document.getElementById("startKnop").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("nogEenKeer").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-doelwit-best") || "0";
+</script>
+</body>
+</html>
