@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🚀 RAKET RUN — een spel van Claude</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#05060f; font-family:'Segoe UI',Arial,sans-serif; touch-action:none; }
+  canvas { display:block; }
+  .paneel {
+    position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:rgba(5,6,15,0.82); color:#fff; text-align:center; z-index:10; padding:20px;
+  }
+  .paneel h1 {
+    font-size:clamp(34px,8vw,64px); font-weight:900; letter-spacing:2px;
+    background:linear-gradient(90deg,#ff3b3b,#3b82ff);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  }
+  .paneel .sub { color:#9aa4c7; margin:6px 0 22px; font-size:15px; }
+  .paneel .uitleg { color:#cfd6f2; font-size:16px; line-height:1.7; margin-bottom:26px; }
+  .knop {
+    font-size:20px; font-weight:800; color:#fff; border:none; cursor:pointer;
+    background:linear-gradient(135deg,#ff3b3b,#3b82ff); border-radius:14px; padding:16px 34px;
+    box-shadow:0 0 26px rgba(59,130,246,0.45); letter-spacing:1px;
+  }
+  .knop:active { transform:scale(0.96); }
+  .score-groot { font-size:60px; font-weight:900; color:#ffd700; margin:8px 0; }
+  .rij { color:#9aa4c7; font-size:16px; margin:4px 0; }
+  .rij b { color:#fff; }
+  a.home { position:fixed; top:12px; left:12px; z-index:20; color:#9aa4c7; text-decoration:none;
+    font-weight:700; font-size:14px; background:rgba(255,255,255,0.06); padding:8px 14px; border-radius:10px; }
+  #hud { position:fixed; top:12px; right:14px; z-index:5; color:#fff; font-size:30px; font-weight:900;
+    text-shadow:0 0 12px rgba(59,130,246,0.8); }
+  #keysLive { position:fixed; top:52px; right:14px; z-index:5; color:#ffd700; font-size:14px; font-weight:700; }
+  .verborgen { display:none !important; }
+</style>
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen">0</div>
+<div id="keysLive" class="verborgen"></div>
+<canvas id="c"></canvas>
+
+<div class="paneel" id="startPaneel">
+  <h1>🚀 RAKET RUN</h1>
+  <div class="sub">een spel van Claude 🤖 — voor de site van Brian</div>
+  <div class="uitleg">
+    Tik op het scherm (of druk op <b>SPATIE</b>) om je raket omhoog te stuwen.<br>
+    Vlieg tussen de laser-torens door. Elke poort = 1 punt = 1 🗝️ key!<br>
+    Hoe verder je komt, hoe sneller het gaat… 😱
+  </div>
+  <button class="knop" id="startKnop">🚀 START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">💥 GECRASHT!</h1>
+  <div class="score-groot" id="doodScore">0</div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script>
+// ── 🗝️ keys uitdelen (zelfde spaarpot als de winkel, max 25/dag per spel) ──
+function geefKeys(n, spel) {
+  try {
+    const vandaag = new Date().toDateString();
+    const dagSleutel = "deluxe-dagkeys-" + spel;
+    let d = {};
+    try { d = JSON.parse(localStorage.getItem(dagSleutel)) || {}; } catch (e) {}
+    if (d.dag !== vandaag) d = { dag: vandaag, verdiend: 0 };
+    const erbij = Math.max(0, Math.min(n, 25 - d.verdiend));
+    if (erbij > 0) {
+      d.verdiend += erbij;
+      localStorage.setItem(dagSleutel, JSON.stringify(d));
+      const saldo = (parseInt(localStorage.getItem("deluxe-keys") || "0", 10) || 0) + erbij;
+      localStorage.setItem("deluxe-keys", String(saldo));
+    }
+    return erbij;
+  } catch (e) { return 0; }
+}
+
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+let W = 0, H = 0;
+function maat() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + "px"; canvas.style.height = H + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+maat();
+window.addEventListener("resize", maat);
+
+// ── sterren-achtergrond ──
+const sterren = [];
+for (let i = 0; i < 90; i++) sterren.push({ x: Math.random(), y: Math.random(), r: Math.random() * 1.8 + 0.4, laag: Math.random() < 0.5 ? 0.25 : 0.6 });
+
+// ── spel-toestand ──
+let stand = "start"; // start | spel | dood
+let raketY, raketVy, torens, score, tijdTotToren, snelheid, vlammen, brokken;
+const RAKET_X = () => Math.max(70, W * 0.24);
+const RAKET_R = 17;
+
+function reset() {
+  raketY = H * 0.45; raketVy = 0;
+  torens = []; score = 0; tijdTotToren = 0.4;
+  snelheid = 215; vlammen = []; brokken = [];
+}
+
+function boost() {
+  if (stand !== "spel") return;
+  raketVy = -400;
+  for (let i = 0; i < 6; i++)
+    vlammen.push({ x: RAKET_X() - 16, y: raketY + 8, vx: -80 - Math.random() * 120, vy: 40 + Math.random() * 80, leven: 0.5 });
+}
+
+// ── besturing ──
+window.addEventListener("keydown", e => {
+  if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); boost(); }
+});
+window.addEventListener("pointerdown", e => {
+  if (e.target.closest(".paneel") || e.target.closest("a")) return;
+  boost();
+});
+
+// ── torens ──
+function nieuweToren() {
+  const gat = Math.max(168, 236 - score * 2.2);
+  const midden = 90 + gat / 2 + Math.random() * (H - 180 - gat);
+  torens.push({ x: W + 40, gatBoven: midden - gat / 2, gatOnder: midden + gat / 2, geteld: false });
+}
+
+function stap(dt) {
+  snelheid = Math.min(430, 215 + score * 4);
+  raketVy += 1250 * dt;
+  raketY += raketVy * dt;
+  tijdTotToren -= dt;
+  if (tijdTotToren <= 0) { nieuweToren(); tijdTotToren = Math.max(1.05, 1.75 - score * 0.02); }
+
+  const rx = RAKET_X();
+  for (const t of torens) {
+    t.x -= snelheid * dt;
+    if (!t.geteld && t.x + 35 < rx) {
+      t.geteld = true; score++;
+      document.getElementById("hud").textContent = score;
+    }
+    // botsing met toren (raket = cirkel, toren = 2 rechthoeken)
+    if (rx + RAKET_R > t.x && rx - RAKET_R < t.x + 70) {
+      if (raketY - RAKET_R < t.gatBoven || raketY + RAKET_R > t.gatOnder) return dood();
+    }
+  }
+  torens = torens.filter(t => t.x > -90);
+  if (raketY - RAKET_R < 0 || raketY + RAKET_R > H) return dood();
+
+  for (const v of vlammen) { v.x += v.vx * dt; v.y += v.vy * dt; v.leven -= dt; }
+  vlammen = vlammen.filter(v => v.leven > 0);
+}
+
+function dood() {
+  stand = "dood";
+  for (let i = 0; i < 26; i++)
+    brokken.push({ x: RAKET_X(), y: raketY, vx: (Math.random() - 0.5) * 420, vy: (Math.random() - 0.8) * 420, leven: 1.1, kleur: Math.random() < 0.5 ? "#ff3b3b" : "#ffd700" });
+  const best = Math.max(score, parseInt(localStorage.getItem("deluxe-raketrun-best") || "0", 10) || 0);
+  localStorage.setItem("deluxe-raketrun-best", String(best));
+  const keys = geefKeys(score, "raketrun");
+  document.getElementById("doodScore").textContent = score + " punten";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (score >= best && score > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keys > 0 ? "🗝️ <b>+" + keys + " keys</b> voor de winkel!" : "🗝️ dag-limiet bereikt (morgen weer keys!)";
+  setTimeout(() => {
+    document.getElementById("doodPaneel").classList.remove("verborgen");
+    document.getElementById("hud").classList.add("verborgen");
+  }, 700);
+}
+
+// ── tekenen ──
+function teken() {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, W, H);
+  const scroll = performance.now() / 1000;
+  for (const s of sterren) {
+    const sx = ((s.x * W - scroll * 40 * s.laag) % W + W) % W;
+    ctx.globalAlpha = s.laag + 0.2;
+    ctx.fillStyle = "#cfd6f2";
+    ctx.fillRect(sx, s.y * H, s.r, s.r);
+  }
+  ctx.globalAlpha = 1;
+
+  for (const t of torens) {
+    const g = ctx.createLinearGradient(t.x, 0, t.x + 70, 0);
+    g.addColorStop(0, "#ff3b3b"); g.addColorStop(1, "#3b82ff");
+    ctx.fillStyle = g;
+    ctx.fillRect(t.x, 0, 70, t.gatBoven);
+    ctx.fillRect(t.x, t.gatOnder, 70, H - t.gatOnder);
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillRect(t.x, t.gatBoven - 6, 70, 6);
+    ctx.fillRect(t.x, t.gatOnder, 70, 6);
+  }
+
+  for (const v of vlammen) {
+    ctx.globalAlpha = Math.max(0, v.leven * 2);
+    ctx.fillStyle = v.leven > 0.25 ? "#ffd700" : "#ff3b3b";
+    ctx.beginPath(); ctx.arc(v.x, v.y, 5 * v.leven + 2, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  if (stand !== "dood") {
+    ctx.save();
+    ctx.translate(RAKET_X(), raketY);
+    ctx.rotate(Math.max(-0.5, Math.min(0.7, raketVy / 600)) + Math.PI / 4);
+    ctx.font = "34px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("🚀", 0, 0);
+    ctx.restore();
+  }
+  for (const b of brokken) {
+    ctx.globalAlpha = Math.max(0, b.leven);
+    ctx.fillStyle = b.kleur;
+    ctx.fillRect(b.x - 4, b.y - 4, 8, 8);
+  }
+  ctx.globalAlpha = 1;
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  if (stand === "dood") {
+    for (const b of brokken) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 700 * dt; b.leven -= dt; }
+  }
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ── knoppen ──
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  document.getElementById("hud").textContent = "0";
+  const dagSleutel = "deluxe-dagkeys-raketrun";
+  let d = {}; try { d = JSON.parse(localStorage.getItem(dagSleutel)) || {}; } catch (e) {}
+  const over = d.dag === new Date().toDateString() ? Math.max(0, 25 - (d.verdiend || 0)) : 25;
+  const kl = document.getElementById("keysLive");
+  kl.classList.remove("verborgen");
+  kl.textContent = "🗝️ vandaag nog " + over + " keys te verdienen";
+}
+document.getElementById("startKnop").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("nogEenKeer").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-raketrun-best") || "0";
+</script>
+</body>
+</html>

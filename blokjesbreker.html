@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🧱 BLOKJES-BREKER — een spel van Claude</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#05060f; font-family:'Segoe UI',Arial,sans-serif; touch-action:none; }
+  canvas { display:block; }
+  .paneel {
+    position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:rgba(5,6,15,0.82); color:#fff; text-align:center; z-index:10; padding:20px;
+  }
+  .paneel h1 {
+    font-size:clamp(30px,8vw,56px); font-weight:900; letter-spacing:2px;
+    background:linear-gradient(90deg,#ff3b3b,#3b82ff);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  }
+  .paneel .sub { color:#9aa4c7; margin:6px 0 22px; font-size:15px; }
+  .paneel .uitleg { color:#cfd6f2; font-size:16px; line-height:1.7; margin-bottom:26px; }
+  .knop {
+    font-size:20px; font-weight:800; color:#fff; border:none; cursor:pointer;
+    background:linear-gradient(135deg,#ff3b3b,#3b82ff); border-radius:14px; padding:16px 34px;
+    box-shadow:0 0 26px rgba(59,130,246,0.45); letter-spacing:1px;
+  }
+  .knop:active { transform:scale(0.96); }
+  .score-groot { font-size:60px; font-weight:900; color:#ffd700; margin:8px 0; }
+  .rij { color:#9aa4c7; font-size:16px; margin:4px 0; }
+  .rij b { color:#fff; }
+  a.home { position:fixed; top:12px; left:12px; z-index:20; color:#9aa4c7; text-decoration:none;
+    font-weight:700; font-size:14px; background:rgba(255,255,255,0.06); padding:8px 14px; border-radius:10px; }
+  #hud { position:fixed; top:12px; right:14px; z-index:5; color:#fff; font-size:22px; font-weight:900;
+    text-shadow:0 0 12px rgba(59,130,246,0.8); }
+  .verborgen { display:none !important; }
+</style>
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen"></div>
+<canvas id="c"></canvas>
+
+<div class="paneel" id="startPaneel">
+  <h1>🧱 BLOKJES-BREKER</h1>
+  <div class="sub">een spel van Claude 🤖 — voor de site van Brian</div>
+  <div class="uitleg">
+    Beweeg het plankje met je <b>muis</b> of <b>vinger</b> en kaats de bal omhoog.<br>
+    Breek alle blokjes! Soms valt er iets uit een blokje:<br>
+    ⭐ = breed plankje &nbsp;•&nbsp; 🗝️ = meteen 1 key erbij!<br>
+    Je hebt 3 levens ❤️ — elk level wordt sneller. 1 blokje = 1 punt = 1 key.
+  </div>
+  <button class="knop" id="startKnop">🧱 START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)" id="doodTitel">💔 GAME OVER</h1>
+  <div class="score-groot" id="doodScore">0</div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script>
+// ── 🗝️ keys uitdelen (zelfde spaarpot als de winkel, max 25/dag per spel) ──
+function geefKeys(n, spel) {
+  try {
+    const vandaag = new Date().toDateString();
+    const dagSleutel = "deluxe-dagkeys-" + spel;
+    let d = {};
+    try { d = JSON.parse(localStorage.getItem(dagSleutel)) || {}; } catch (e) {}
+    if (d.dag !== vandaag) d = { dag: vandaag, verdiend: 0 };
+    const erbij = Math.max(0, Math.min(n, 25 - d.verdiend));
+    if (erbij > 0) {
+      d.verdiend += erbij;
+      localStorage.setItem(dagSleutel, JSON.stringify(d));
+      const saldo = (parseInt(localStorage.getItem("deluxe-keys") || "0", 10) || 0) + erbij;
+      localStorage.setItem("deluxe-keys", String(saldo));
+    }
+    return erbij;
+  } catch (e) { return 0; }
+}
+
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+let W, H;
+function maat() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + "px"; canvas.style.height = H + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+maat();
+window.addEventListener("resize", maat);
+
+let stand = "start"; // start | spel | dood
+let plank, bal, blokjes, vallers, deeltjes, score, levens, level, breedTot, keysLive, balVast;
+
+const PLANK_H = 14;
+
+function bouwLevel() {
+  blokjes = [];
+  const kol = W < 500 ? 6 : 9;
+  const rij = 5;
+  const rand = 14, tussen = 6;
+  const bw = (Math.min(W, 760) - rand * 2 - (kol - 1) * tussen) / kol;
+  const startX = (W - Math.min(W, 760)) / 2 + rand;
+  for (let r = 0; r < rij; r++) for (let k = 0; k < kol; k++) {
+    const t = r / (rij - 1);
+    blokjes.push({
+      x: startX + k * (bw + tussen), y: 70 + r * 30, w: bw, h: 22,
+      kleur: "rgb(" + Math.round(255 - t * 196) + "," + Math.round(59 + t * 71) + "," + Math.round(59 + t * 196) + ")",
+      drop: Math.random() < 0.15 ? "ster" : (Math.random() < 0.09 ? "key" : null)
+    });
+  }
+}
+
+function reset() {
+  score = 0; levens = 3; level = 1; keysLive = 0;
+  plank = { x: W / 2, w: 120 };
+  breedTot = 0;
+  vallers = []; deeltjes = [];
+  bouwLevel();
+  nieuweBal();
+}
+function nieuweBal() {
+  balVast = true;
+  bal = { x: plank.x, y: H - 60 - PLANK_H, vx: 0, vy: 0, r: 9 };
+}
+function lanceer() {
+  if (!balVast) return;
+  balVast = false;
+  const snel = 300 + level * 35;
+  const hoek = -Math.PI / 2 + (Math.random() - 0.5) * 0.6;
+  bal.vx = Math.cos(hoek) * snel; bal.vy = Math.sin(hoek) * snel;
+}
+
+// ── besturing ──
+function zetPlank(px) { plank.x = Math.max(plank.w / 2, Math.min(W - plank.w / 2, px)); if (balVast) bal.x = plank.x; }
+window.addEventListener("mousemove", e => { if (stand === "spel") zetPlank(e.clientX); });
+window.addEventListener("touchmove", e => { if (stand === "spel") zetPlank(e.touches[0].clientX); }, { passive: true });
+window.addEventListener("touchstart", e => {
+  if (stand !== "spel") return;
+  if (e.target.closest(".paneel") || e.target.closest("a")) return;
+  zetPlank(e.touches[0].clientX); lanceer();
+}, { passive: true });
+window.addEventListener("mousedown", e => {
+  if (stand !== "spel") return;
+  if (e.target.closest(".paneel") || e.target.closest("a")) return;
+  lanceer();
+});
+window.addEventListener("keydown", e => { if (e.code === "Space") { e.preventDefault(); lanceer(); } });
+
+function hud() {
+  document.getElementById("hud").textContent = "❤️".repeat(levens) + "  ⭐ " + score + "  🗝️ " + keysLive + "  L" + level;
+}
+
+function knal(x, y, kleur) {
+  for (let i = 0; i < 8; i++)
+    deeltjes.push({ x, y, vx: (Math.random() - 0.5) * 300, vy: (Math.random() - 0.7) * 300, leven: 0.6, kleur });
+}
+
+function stap(dt) {
+  const py = H - 60;
+  if (balVast) { bal.y = py - PLANK_H; }
+  else {
+    bal.x += bal.vx * dt; bal.y += bal.vy * dt;
+    if (bal.x - bal.r < 0) { bal.x = bal.r; bal.vx = Math.abs(bal.vx); }
+    if (bal.x + bal.r > W) { bal.x = W - bal.r; bal.vx = -Math.abs(bal.vx); }
+    if (bal.y - bal.r < 0) { bal.y = bal.r; bal.vy = Math.abs(bal.vy); }
+
+    // plank raken → hoek hangt af van waar je raakt
+    if (bal.vy > 0 && bal.y + bal.r >= py && bal.y + bal.r <= py + PLANK_H + 14 &&
+        bal.x > plank.x - plank.w / 2 - bal.r && bal.x < plank.x + plank.w / 2 + bal.r) {
+      const rel = (bal.x - plank.x) / (plank.w / 2);           // -1 .. 1
+      const snel = Math.hypot(bal.vx, bal.vy);
+      const hoek = -Math.PI / 2 + rel * 1.05;
+      bal.vx = Math.cos(hoek) * snel; bal.vy = Math.sin(hoek) * snel;
+      bal.y = py - bal.r;
+    }
+    // bal kwijt
+    if (bal.y - bal.r > H) {
+      levens--;
+      hud();
+      if (levens <= 0) return dood(false);
+      nieuweBal();
+    }
+    // blokjes raken
+    for (let i = blokjes.length - 1; i >= 0; i--) {
+      const b = blokjes[i];
+      if (bal.x + bal.r > b.x && bal.x - bal.r < b.x + b.w && bal.y + bal.r > b.y && bal.y - bal.r < b.y + b.h) {
+        // van welke kant kwam de bal?
+        const overX = Math.min(bal.x + bal.r - b.x, b.x + b.w - (bal.x - bal.r));
+        const overY = Math.min(bal.y + bal.r - b.y, b.y + b.h - (bal.y - bal.r));
+        if (overX < overY) bal.vx = -bal.vx; else bal.vy = -bal.vy;
+        knal(b.x + b.w / 2, b.y + b.h / 2, b.kleur);
+        if (b.drop) vallers.push({ x: b.x + b.w / 2, y: b.y + b.h / 2, soort: b.drop });
+        blokjes.splice(i, 1);
+        score++;
+        hud();
+        break;
+      }
+    }
+    if (!blokjes.length) {
+      level++;
+      bouwLevel();
+      nieuweBal();
+      hud();
+    }
+  }
+
+  // power-ups vallen
+  for (let i = vallers.length - 1; i >= 0; i--) {
+    const v = vallers[i];
+    v.y += 170 * dt;
+    if (v.y > py - 6 && v.y < py + 26 && v.x > plank.x - plank.w / 2 - 14 && v.x < plank.x + plank.w / 2 + 14) {
+      if (v.soort === "ster") { plank.w = 185; breedTot = 10; }
+      else { keysLive += geefKeys(1, "blokjesbreker"); }
+      hud();
+      vallers.splice(i, 1);
+    } else if (v.y > H + 20) vallers.splice(i, 1);
+  }
+  if (breedTot > 0) { breedTot -= dt; if (breedTot <= 0) plank.w = 120; }
+
+  for (const d of deeltjes) { d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 500 * dt; d.leven -= dt; }
+  deeltjes = deeltjes.filter(d => d.leven > 0);
+}
+
+function dood() {
+  stand = "dood";
+  const best = Math.max(score, parseInt(localStorage.getItem("deluxe-breker-best") || "0", 10) || 0);
+  localStorage.setItem("deluxe-breker-best", String(best));
+  const keys = geefKeys(score, "blokjesbreker");
+  document.getElementById("doodScore").textContent = score + " punten (level " + level + ")";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (score >= best && score > 0 ? " 🏆 NIEUW RECORD!" : "");
+  const totaalKeys = keys + keysLive;
+  document.getElementById("doodKeys").innerHTML = totaalKeys > 0 ? "🗝️ <b>+" + totaalKeys + " keys</b> voor de winkel!" : "🗝️ dag-limiet bereikt (morgen weer keys!)";
+  document.getElementById("doodPaneel").classList.remove("verborgen");
+  document.getElementById("hud").classList.add("verborgen");
+}
+
+function teken() {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, W, H);
+  for (const b of blokjes) {
+    ctx.fillStyle = b.kleur;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 5); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.fillRect(b.x + 2, b.y + 2, b.w - 4, 5);
+  }
+  ctx.font = "22px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const v of vallers) ctx.fillText(v.soort === "ster" ? "⭐" : "🗝️", v.x, v.y);
+
+  // plank in logo-gradient
+  const py = H - 60;
+  const g = ctx.createLinearGradient(plank.x - plank.w / 2, 0, plank.x + plank.w / 2, 0);
+  g.addColorStop(0, "#ff3b3b"); g.addColorStop(1, "#3b82ff");
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.roundRect(plank.x - plank.w / 2, py, plank.w, PLANK_H, 7); ctx.fill();
+
+  // bal
+  ctx.fillStyle = "#ffd700";
+  ctx.shadowColor = "#ffd700"; ctx.shadowBlur = 14;
+  ctx.beginPath(); ctx.arc(bal.x, bal.y, bal.r, 0, 7); ctx.fill();
+  ctx.shadowBlur = 0;
+  if (balVast && stand === "spel") {
+    ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "15px sans-serif";
+    ctx.fillText("tik of druk op spatie om te schieten!", W / 2, py + 40);
+  }
+
+  for (const d of deeltjes) {
+    ctx.globalAlpha = Math.max(0, d.leven * 1.6);
+    ctx.fillStyle = d.kleur;
+    ctx.fillRect(d.x - 3, d.y - 3, 6, 6);
+  }
+  ctx.globalAlpha = 1;
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.033, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") stap(dt);
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  hud();
+}
+document.getElementById("startKnop").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("nogEenKeer").addEventListener("click", e => { e.stopPropagation(); startSpel(); });
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-breker-best") || "0";
+</script>
+</body>
+</html>

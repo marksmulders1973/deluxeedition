@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🐍 SLANGEN-SNACK — een spel van Claude</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#05060f; font-family:'Segoe UI',Arial,sans-serif; touch-action:none; }
+  canvas { display:block; }
+  .paneel {
+    position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:rgba(5,6,15,0.82); color:#fff; text-align:center; z-index:10; padding:20px;
+  }
+  .paneel h1 {
+    font-size:clamp(32px,8vw,58px); font-weight:900; letter-spacing:2px;
+    background:linear-gradient(90deg,#ff3b3b,#3b82ff);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  }
+  .paneel .sub { color:#9aa4c7; margin:6px 0 22px; font-size:15px; }
+  .paneel .uitleg { color:#cfd6f2; font-size:16px; line-height:1.7; margin-bottom:26px; }
+  .knop {
+    font-size:20px; font-weight:800; color:#fff; border:none; cursor:pointer;
+    background:linear-gradient(135deg,#ff3b3b,#3b82ff); border-radius:14px; padding:16px 34px;
+    box-shadow:0 0 26px rgba(59,130,246,0.45); letter-spacing:1px;
+  }
+  .knop:active { transform:scale(0.96); }
+  .score-groot { font-size:60px; font-weight:900; color:#ffd700; margin:8px 0; }
+  .rij { color:#9aa4c7; font-size:16px; margin:4px 0; }
+  .rij b { color:#fff; }
+  a.home { position:fixed; top:12px; left:12px; z-index:20; color:#9aa4c7; text-decoration:none;
+    font-weight:700; font-size:14px; background:rgba(255,255,255,0.06); padding:8px 14px; border-radius:10px; }
+  #hud { position:fixed; top:12px; right:14px; z-index:5; color:#fff; font-size:30px; font-weight:900;
+    text-shadow:0 0 12px rgba(59,130,246,0.8); }
+  .verborgen { display:none !important; }
+  /* pijl-knoppen voor telefoon */
+  #pijlen { position:fixed; right:14px; bottom:14px; z-index:6; display:none;
+    grid-template-columns:repeat(3,56px); grid-template-rows:repeat(2,56px); gap:6px; }
+  #pijlen button { font-size:24px; border:none; border-radius:12px; color:#fff;
+    background:rgba(59,130,246,0.28); backdrop-filter:blur(2px); }
+  #pijlen button:active { background:rgba(255,59,59,0.5); }
+  @media (pointer:coarse) { #pijlen { display:grid; } }
+</style>
+</head>
+<body>
+<a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="hud" class="verborgen">0</div>
+<canvas id="c"></canvas>
+
+<div id="pijlen">
+  <span></span><button data-r="0,-1">⬆️</button><span></span>
+  <button data-r="-1,0">⬅️</button><button data-r="0,1">⬇️</button><button data-r="1,0">➡️</button>
+</div>
+
+<div class="paneel" id="startPaneel">
+  <h1>🐍 SLANGEN-SNACK</h1>
+  <div class="sub">een spel van Claude 🤖 — voor de site van Brian</div>
+  <div class="uitleg">
+    Stuur met de <b>pijltjestoetsen</b> (of veeg / gebruik de knoppen op je telefoon).<br>
+    🍎 appel = 1 punt &nbsp;•&nbsp; ⭐ gouden appel = 5 punten (maar hij verdwijnt snel!)<br>
+    Raak de muur of jezelf niet… en de slang wordt steeds sneller! 1 punt = 1 🗝️ key.
+  </div>
+  <button class="knop" id="startKnop">🐍 START</button>
+  <div class="rij" style="margin-top:16px">Beste score: <b id="bestStart">0</b></div>
+</div>
+
+<div class="paneel verborgen" id="doodPaneel">
+  <h1 style="font-size:clamp(28px,6vw,46px)">😵 AU!</h1>
+  <div class="score-groot" id="doodScore">0</div>
+  <div class="rij" id="doodBest"></div>
+  <div class="rij" id="doodKeys"></div>
+  <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
+</div>
+
+<script>
+// ── 🗝️ keys uitdelen (zelfde spaarpot als de winkel, max 25/dag per spel) ──
+function geefKeys(n, spel) {
+  try {
+    const vandaag = new Date().toDateString();
+    const dagSleutel = "deluxe-dagkeys-" + spel;
+    let d = {};
+    try { d = JSON.parse(localStorage.getItem(dagSleutel)) || {}; } catch (e) {}
+    if (d.dag !== vandaag) d = { dag: vandaag, verdiend: 0 };
+    const erbij = Math.max(0, Math.min(n, 25 - d.verdiend));
+    if (erbij > 0) {
+      d.verdiend += erbij;
+      localStorage.setItem(dagSleutel, JSON.stringify(d));
+      const saldo = (parseInt(localStorage.getItem("deluxe-keys") || "0", 10) || 0) + erbij;
+      localStorage.setItem("deluxe-keys", String(saldo));
+    }
+    return erbij;
+  } catch (e) { return 0; }
+}
+
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const N = 21;                       // 21×21 vakjes
+let W, H, CEL, BX, BY;              // bord-maten + linksboven-hoek
+function maat() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + "px"; canvas.style.height = H + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  CEL = Math.floor(Math.min(W - 20, H - 90) / N);
+  BX = Math.floor((W - CEL * N) / 2);
+  BY = Math.floor((H - CEL * N) / 2) + 18;
+}
+maat();
+window.addEventListener("resize", maat);
+
+let stand = "start"; // start | spel | dood
+let slang, richting, wachtrij, appel, goud, goudTeller, goudTijd, score, tikTijd, klok, appelsOp;
+
+function vrijePlek() {
+  while (true) {
+    const p = { x: Math.floor(Math.random() * N), y: Math.floor(Math.random() * N) };
+    if (!slang.some(s => s.x === p.x && s.y === p.y) &&
+        !(appel && appel.x === p.x && appel.y === p.y) &&
+        !(goud && goud.x === p.x && goud.y === p.y)) return p;
+  }
+}
+
+function reset() {
+  slang = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
+  richting = { x: 1, y: 0 };
+  wachtrij = [];
+  appel = null; goud = null; goudTeller = 0; goudTijd = 0;
+  appel = vrijePlek();
+  score = 0; appelsOp = 0; tikTijd = 0.15; klok = 0;
+}
+
+// ── besturing: toetsen ──
+const RICHTINGEN = { ArrowUp:[0,-1], ArrowDown:[0,1], ArrowLeft:[-1,0], ArrowRight:[1,0], KeyW:[0,-1], KeyS:[0,1], KeyA:[-1,0], KeyD:[1,0] };
+window.addEventListener("keydown", e => {
+  const r = RICHTINGEN[e.code];
+  if (r) { e.preventDefault(); duw(r[0], r[1]); }
+});
+function duw(x, y) {
+  if (stand !== "spel") return;
+  const laatste = wachtrij.length ? wachtrij[wachtrij.length - 1] : richting;
+  if (laatste.x === -x && laatste.y === -y) return;  // niet omdraaien in jezelf
+  if (laatste.x === x && laatste.y === y) return;
+  if (wachtrij.length < 3) wachtrij.push({ x, y });
+}
+
+// ── besturing: vegen ──
+let veegStart = null;
+window.addEventListener("touchstart", e => { veegStart = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }, { passive: true });
+window.addEventListener("touchend", e => {
+  if (!veegStart) return;
+  const dx = e.changedTouches[0].clientX - veegStart.x;
+  const dy = e.changedTouches[0].clientY - veegStart.y;
+  veegStart = null;
+  if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return;
+  if (Math.abs(dx) > Math.abs(dy)) duw(Math.sign(dx), 0); else duw(0, Math.sign(dy));
+}, { passive: true });
+
+// ── besturing: pijl-knoppen ──
+document.querySelectorAll("#pijlen button").forEach(b => {
+  b.addEventListener("touchstart", e => { e.preventDefault(); const [x, y] = b.dataset.r.split(",").map(Number); duw(x, y); });
+  b.addEventListener("click", () => { const [x, y] = b.dataset.r.split(",").map(Number); duw(x, y); });
+});
+
+function tik() {
+  if (wachtrij.length) richting = wachtrij.shift();
+  const kop = { x: slang[0].x + richting.x, y: slang[0].y + richting.y };
+  if (kop.x < 0 || kop.y < 0 || kop.x >= N || kop.y >= N) return dood();
+  if (slang.some(s => s.x === kop.x && s.y === kop.y)) return dood();
+  slang.unshift(kop);
+
+  let gegeten = false;
+  if (appel && kop.x === appel.x && kop.y === appel.y) {
+    gegeten = true; score += 1; appelsOp++;
+    appel = vrijePlek();
+    tikTijd = Math.max(0.08, tikTijd - 0.0022);
+    if (appelsOp % 5 === 0 && !goud) { goud = vrijePlek(); goudTijd = 6; }
+  } else if (goud && kop.x === goud.x && kop.y === goud.y) {
+    gegeten = true; score += 5; goud = null;
+  }
+  if (!gegeten) slang.pop();
+  document.getElementById("hud").textContent = score;
+}
+
+function dood() {
+  stand = "dood";
+  const best = Math.max(score, parseInt(localStorage.getItem("deluxe-slang-best") || "0", 10) || 0);
+  localStorage.setItem("deluxe-slang-best", String(best));
+  const keys = geefKeys(score, "slangensnack");
+  document.getElementById("doodScore").textContent = score + " punten";
+  document.getElementById("doodBest").innerHTML = "Beste score: <b>" + best + "</b>" + (score >= best && score > 0 ? " 🏆 NIEUW RECORD!" : "");
+  document.getElementById("doodKeys").innerHTML = keys > 0 ? "🗝️ <b>+" + keys + " keys</b> voor de winkel!" : "🗝️ dag-limiet bereikt (morgen weer keys!)";
+  setTimeout(() => {
+    document.getElementById("doodPaneel").classList.remove("verborgen");
+    document.getElementById("hud").classList.add("verborgen");
+  }, 500);
+}
+
+function teken() {
+  ctx.fillStyle = "#05060f"; ctx.fillRect(0, 0, W, H);
+  // bord
+  for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) {
+    ctx.fillStyle = (x + y) % 2 === 0 ? "#0b0e21" : "#0e1228";
+    ctx.fillRect(BX + x * CEL, BY + y * CEL, CEL, CEL);
+  }
+  ctx.strokeStyle = "rgba(59,130,246,0.55)"; ctx.lineWidth = 3;
+  ctx.strokeRect(BX - 2, BY - 2, CEL * N + 4, CEL * N + 4);
+
+  // appels
+  ctx.font = (CEL * 0.8) + "px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  if (appel) ctx.fillText("🍎", BX + appel.x * CEL + CEL / 2, BY + appel.y * CEL + CEL / 2);
+  if (goud) {
+    ctx.globalAlpha = goudTijd < 2 ? (Math.sin(performance.now() / 90) + 1.4) / 2.4 : 1;
+    ctx.fillText("⭐", BX + goud.x * CEL + CEL / 2, BY + goud.y * CEL + CEL / 2);
+    ctx.globalAlpha = 1;
+  }
+
+  // slang in logo-kleuren: kop rood → staart blauw
+  slang.forEach((s, i) => {
+    const t = slang.length === 1 ? 0 : i / (slang.length - 1);
+    const r = Math.round(255 - t * (255 - 59));
+    const g = Math.round(59 + t * (130 - 59));
+    const b = Math.round(59 + t * (255 - 59));
+    ctx.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
+    const m = Math.max(1, Math.floor(CEL * 0.08));
+    ctx.beginPath();
+    ctx.roundRect(BX + s.x * CEL + m, BY + s.y * CEL + m, CEL - 2 * m, CEL - 2 * m, CEL * 0.25);
+    ctx.fill();
+  });
+  // oogjes op de kop
+  if (stand === "spel" && slang.length) {
+    const k = slang[0];
+    ctx.fillStyle = "#fff";
+    const cx = BX + k.x * CEL + CEL / 2, cy = BY + k.y * CEL + CEL / 2;
+    ctx.beginPath(); ctx.arc(cx - CEL * 0.16, cy - CEL * 0.1, CEL * 0.09, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + CEL * 0.16, cy - CEL * 0.1, CEL * 0.09, 0, 7); ctx.fill();
+  }
+}
+
+let vorige = performance.now();
+function loop(nu) {
+  const dt = Math.min(0.05, (nu - vorige) / 1000);
+  vorige = nu;
+  if (stand === "spel") {
+    klok += dt;
+    if (goud) { goudTijd -= dt; if (goudTijd <= 0) goud = null; }
+    while (klok >= tikTijd) { klok -= tikTijd; tik(); if (stand !== "spel") break; }
+  }
+  teken();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function startSpel() {
+  reset();
+  stand = "spel";
+  document.getElementById("startPaneel").classList.add("verborgen");
+  document.getElementById("doodPaneel").classList.add("verborgen");
+  document.getElementById("hud").classList.remove("verborgen");
+  document.getElementById("hud").textContent = "0";
+}
+document.getElementById("startKnop").addEventListener("click", startSpel);
+document.getElementById("nogEenKeer").addEventListener("click", startSpel);
+document.getElementById("bestStart").textContent = localStorage.getItem("deluxe-slang-best") || "0";
+</script>
+</body>
+</html>
