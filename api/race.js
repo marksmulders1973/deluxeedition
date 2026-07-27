@@ -49,7 +49,8 @@ async function kamerTik(b, res) {
     yaw: +(+b.yaw || 0).toFixed(2),
     oog: Math.max(0.4, Math.min(2, +b.oog || 1.6)),   // laag = bukken/sliden
     tegel: Math.max(0, Math.min(2, parseInt(b.tegel, 10) || 0)),   // op welke duel-tegel je staat
-    wereld: b.wereld === 'arena' ? 'arena' : 'lobby',              // lobby of witte map
+    wereld: b.wereld === 'arena' ? 'arena' : 'lobby',              // lobby of duel-map
+    map: ["klassiek", "chinajapan", "noorwegen", "mega"].includes(b.map) ? b.map : "klassiek",  // welke duel-map
     hp: Math.max(0, Math.min(100, Number.isFinite(+b.hp) ? Math.round(+b.hp) : 100)),
     schild: b.schild === true,
     doden: Math.max(0, Math.min(99, parseInt(b.doden, 10) || 0)),   // score: hun doden = jouw punten
