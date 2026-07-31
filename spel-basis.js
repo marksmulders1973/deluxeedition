@@ -2,10 +2,10 @@
 // spel-basis.js — gedeelde hulpjes voor de Claude-spellen
 // • geefKeys()  → keys verdienen in de gezamenlijke spaarpot
 // • basisCanvas() → canvas dat automatisch meegroeit
-// • editorKlaar() → het ✏️ EDIT-systeem voor Arthur:
-//   Arthur (of NovaX) mag de instellingen van dit spel
-//   aanpassen, zo vaak hij wil — iedereen speelt daarna
-//   met zíjn versie. Opslag op de server via /api/spellen?stel=…
+// • editorKlaar() → het ✏️ EDIT-systeem voor Arthur & Sahasra:
+//   Arthur, Sahasra (of NovaX) mogen de instellingen van dit
+//   spel aanpassen, zo vaak ze willen — iedereen speelt daarna
+//   met die versie. Opslag op de server via /api/spellen?stel=…
 // ══════════════════════════════════════════════════════
 
 // ── 🗝️ keys (zelfde spaarpot als de winkel, max 25/dag per spel) ──
@@ -34,7 +34,7 @@ function keysTekst(aantal) {
 function spelerNaam() { try { return localStorage.getItem("deluxe-speler") || ""; } catch (e) { return ""; } }
 function magEditen() {
   const n = spelerNaam().toLowerCase();
-  return n.includes("arthur") || n === "novax";
+  return n.includes("arthur") || n.includes("sahasra") || n === "novax";
 }
 
 // ── canvas dat meegroeit met het scherm ──

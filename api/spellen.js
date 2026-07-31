@@ -55,8 +55,8 @@ export default async function handler(req, res) {
       const { spel, naam, instellingen } = req.body || {};
       if (!STELBAAR.includes(spel)) return res.status(400).json({ fout: "dit spel is niet afstelbaar" });
       const wie = String(naam || "").trim().slice(0, 20);
-      const magHet = wie.toLowerCase().includes("arthur") || wie === "NovaX";
-      if (!magHet) return res.status(403).json({ fout: "alleen Arthur (of NovaX) mag dit spel afstellen" });
+      const magHet = wie.toLowerCase().includes("arthur") || wie.toLowerCase().includes("sahasra") || wie === "NovaX";
+      if (!magHet) return res.status(403).json({ fout: "alleen Arthur of Sahasra (of NovaX) mag dit spel afstellen" });
       if (instellingen && Object.keys(instellingen).length === 0) {
         await kvWis("stel:" + spel);
         return res.status(200).json({ ok: true, reset: true });
