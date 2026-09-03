@@ -481,7 +481,7 @@ function maakStamGeometrie(){
 // ── 2) één palmblad: een doorbuigende steel met losse blaadjes ──
 // Het blad wijst naar +X en hangt naar beneden door, precies zoals echt.
 function maakBladGeometrie(){
-  const N = IS_TOUCH ? 13 : 19;      // aantal blaadjes-paren
+  const N = IS_TOUCH ? 10 : 14;      // aantal blaadjes-paren
   const L = 3.9;                      // lengte van het blad
   const pos = [], kleur = [], idx = [];
   let v = 0;
@@ -498,20 +498,30 @@ function maakBladGeometrie(){
     ]){ pos.push(px, py, pz); kleur.push(l, l, l); }
     idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
 
-    // De blaadjes zijn nu SPITSE driehoekjes: breed waar ze aan de steel
-    // vastzitten en uitlopend in een punt, zoals bij een echt palmblad.
-    // Een driehoek kost ook nog eens de helft van een rechthoekje, dus er
-    // kunnen er meer op één blad.
-    const br = Math.sin(Math.PI * Math.pow(t0, 0.7)) * 0.66 + 0.06;
+    // ⚠️ Brian: "dit zijn spijkers, scherpe punten". Klopt — driehoekjes
+    // die dwars uit de steel steken worden zaagtanden. Een echt palmblaadje
+    // is een LANG SMAL LINTJE dat langs de steel naar achteren wijst en
+    // naar beneden hangt, met een licht toelopende punt. Dus: een smalle
+    // vierhoek, breed genoeg aan de voet om aan te sluiten op de buren
+    // (geen gaten in de kruin), en smal aan het uiteinde.
+    const br = Math.sin(Math.PI * Math.pow(t0, 0.62)) * 0.86 + 0.10;   // lengte van dit lintje
+    // de richting langs de steel, om het uiteinde een beetje breedte te geven
+    const sx = p1.x - p0.x, sy = p1.y - p0.y, sz = p1.z - p0.z;
+    const sl = Math.hypot(sx, sy, sz) || 1;
+    const ex = sx / sl * 0.115, ey = sy / sl * 0.115, ez = sz / sl * 0.115;
+    const oz = 0.42;                                   // overlap met de buren
+    const mx = (p0.x + p1.x) * 0.5, my = (p0.y + p1.y) * 0.5, mz = (p0.z + p1.z) * 0.5;
     for(const kant of [1, -1]){
-      // de punt wijst naar buiten, iets naar achteren en een stukje omlaag
-      const ux = -0.32, uy = -0.18 - 0.52 * br, uz = kant * br * 0.94;
-      pos.push(p0.x, p0.y, p0.z,
-               p1.x, p1.y, p1.z,
-               (p0.x + p1.x) * 0.5 + ux, (p0.y + p1.y) * 0.5 + uy, (p0.z + p1.z) * 0.5 + uz);
-      // donkerder bij de steel, lichter aan de punt → diepte in de kruin
-      kleur.push(0.70,0.70,0.70, 0.70,0.70,0.70, 1.06,1.06,1.06);
-      idx.push(v, v+1, v+2); v += 3;
+      // naar achteren (richting de voet van het blad), naar buiten en omlaag
+      const ux = -0.26 * br, uy = -0.18 - 0.42 * br, uz = kant * br * 1.08;
+      const tx = mx + ux, ty = my + uy, tz = mz + uz;
+      pos.push(p0.x - sx*oz, p0.y - sy*oz, p0.z - sz*oz,
+               p1.x + sx*oz, p1.y + sy*oz, p1.z + sz*oz,
+               tx + ex, ty + ey, tz + ez,
+               tx - ex, ty - ey, tz - ez);
+      // donkerder bij de steel, lichter naar de punt → diepte in de kruin
+      kleur.push(0.70,0.70,0.70, 0.70,0.70,0.70, 1.04,1.04,1.04, 1.04,1.04,1.04);
+      idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
     }
   }
   const g = new THREE.BufferGeometry();
