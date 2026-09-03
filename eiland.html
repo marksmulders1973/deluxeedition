@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>EILAND — DELUXE EDITION</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#0a1a24;font-family:'Segoe UI',Arial,sans-serif;-webkit-user-select:none;user-select:none;touch-action:none}
+  canvas{display:block}
+
+  /* ── startscherm ── */
+  #start{position:fixed;inset:0;background:linear-gradient(160deg,#0b2233,#06131c 70%);display:flex;flex-direction:column;
+         align-items:center;justify-content:center;z-index:30;text-align:center;padding:20px}
+  #start h1{color:#fff;font-size:clamp(32px,8vw,56px);margin:0 0 4px;font-weight:900;letter-spacing:2px;
+            background:linear-gradient(90deg,#ffd700,#2ecc71,#3b82ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  #start .zon{font-size:60px;line-height:1}
+  #start p{color:#a9c3d4;font-size:15px;margin:8px 0;max-width:460px;line-height:1.7}
+  #start .knop{margin-top:20px;padding:16px 38px;font-size:21px;font-weight:900;color:#fff;border:none;border-radius:14px;
+               background:linear-gradient(135deg,#2ecc71,#3b82ff);cursor:pointer;box-shadow:0 0 28px rgba(46,204,113,0.45)}
+  #start .knop:active{transform:scale(0.96)}
+
+  /* ── hud ── */
+  #thuis{position:fixed;top:12px;left:12px;z-index:12;color:#cfe6f5;text-decoration:none;font-weight:700;font-size:13px;
+         background:rgba(0,0,0,0.4);padding:8px 13px;border-radius:10px;display:none}
+  #teller{position:fixed;top:12px;right:12px;z-index:12;color:#fff;font-size:19px;font-weight:900;background:rgba(0,0,0,0.4);
+          padding:8px 14px;border-radius:10px;display:none;text-align:right;line-height:1.5}
+  #teller .klein{font-size:12px;color:#a9c3d4;font-weight:700}
+  #melding{position:fixed;top:96px;left:50%;transform:translateX(-50%);z-index:14;color:#fff;font-size:21px;font-weight:900;
+           text-shadow:0 2px 10px #000;opacity:0;transition:opacity .35s;pointer-events:none;white-space:nowrap;text-align:center}
+  #zwemBalk{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:12;color:#bde8ff;font-size:14px;font-weight:800;
+            background:rgba(0,40,70,0.5);padding:7px 16px;border-radius:10px;display:none}
+
+  /* ── knopjes rechtsonder (geluid) ── */
+  #geluidKnop{position:fixed;bottom:14px;right:14px;z-index:13;display:none;font-size:20px;cursor:pointer;
+              background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.25);border-radius:12px;padding:8px 12px;color:#fff}
+
+  /* ── telefoon-knoppen: alleen op aanraakschermen ── */
+  .touch-ui{display:none}
+  @media (pointer:coarse){ .touch-ui{display:block} }
+  #joy{position:fixed;left:18px;bottom:22px;width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,0.10);
+       border:2px solid rgba(255,255,255,0.25);z-index:15}
+  #joyStick{position:absolute;left:35px;top:35px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.45)}
+  #springKnop{position:fixed;right:22px;bottom:110px;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,255,255,0.4);
+              background:rgba(46,204,113,0.35);font-size:32px;z-index:15;color:#fff}
+
+  /* ── eindscherm ── */
+  #winscherm{position:fixed;inset:0;background:rgba(3,20,30,0.9);z-index:25;display:none;flex-direction:column;
+             align-items:center;justify-content:center;text-align:center;padding:20px}
+  #winscherm h2{color:#ffd700;font-size:clamp(28px,7vw,46px);margin:0 0 10px;font-weight:900}
+  #winscherm p{color:#cfe6f5;font-size:17px;margin:6px 0;line-height:1.7}
+  #winscherm .knop{margin-top:22px;padding:14px 30px;font-size:18px;font-weight:800;color:#fff;border:none;border-radius:13px;
+                   background:linear-gradient(135deg,#2ecc71,#3b82ff);cursor:pointer}
+</style>
+</head>
+<body>
+
+<div id="start">
+  <div class="zon">🏝️</div>
+  <h1>EILAND</h1>
+  <p>Je wordt wakker op een verlaten eiland — <b>door je eigen ogen</b>.<br>
+     Zoek alle <b>12 kokosnoten 🥥</b> die tussen de palmbomen liggen.<br>
+     Heb je ze allemaal? Dan gaat de <b>schatkist 🏆</b> open!</p>
+  <p style="font-size:13px">💻 WASD = lopen · Shift = rennen · spatie = springen · muis = kijken<br>
+     📱 rondje links = lopen · vegen rechts = kijken · groene knop = springen<br>
+     🏊 in het water kun je zwemmen — maar niet te ver!</p>
+  <button class="knop">▶ STAP OP HET EILAND</button>
+</div>
+
+<a id="thuis" href="index.html">← deluxeedition.nl</a>
+<div id="teller"></div>
+<div id="melding"></div>
+<div id="zwemBalk">🏊 je zwemt!</div>
+<div id="geluidKnop">🔊</div>
+
+<div id="joy" class="touch-ui"><div id="joyStick"></div></div>
+<button id="springKnop" class="touch-ui">⤴️</button>
+
+<div id="winscherm">
+  <h2>🏆 DE SCHAT IS VAN JOU!</h2>
+  <p id="winTekst"></p>
+  <button class="knop" onclick="document.getElementById('winscherm').style.display='none'">▶ VERDER ONTDEKKEN</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="spel-basis.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════════════
+// 🏝️ EILAND — je spawnt op een eiland en kijkt door je eigen ogen.
+// Gemaakt voor Brian (3 sep). Alles in first person: je ziet je eigen
+// handen, je loopt over het strand, je kunt zwemmen in de zee.
+// ══════════════════════════════════════════════════════════════════
+
+const IS_TOUCH = matchMedia('(pointer:coarse)').matches;
+
+// ── de wereld-instellingen ──
+const EILAND_R   = 70;    // hoe ver het eiland "reikt" (de kust ligt rond 52 m)
+const ZEE_GRENS  = 105;   // verder de zee in mag je niet (haaien! 🦈)
+const OOG        = 1.65;  // hoe hoog je ogen zitten
+const LOOP       = 4.2, REN = 7.4, ZWEM = 2.6;
+const ZWAARTE    = 16;
+const KOKOS_TOTAAL = 12;
+
+// ══════════════════════════════════════════════════════════════════
+// 1. DE VORM VAN HET EILAND
+// Eén functie bepaalt de hoogte van elk punt. De grond-mesh én je
+// voeten gebruiken exact dezelfde functie — dan zak je nooit door de
+// grond en zweef je nooit.
+// ══════════════════════════════════════════════════════════════════
+function hoogteOp(x, z){
+  const d = Math.hypot(x, z);
+  const val = Math.max(0, 1 - d / EILAND_R);          // 1 in het midden → 0 aan de rand
+  let h = Math.pow(val, 1.25) * 13;                    // de bolle heuvel
+  h += Math.sin(x * 0.085) * Math.cos(z * 0.075) * 2.4 * val;   // grote heuvels
+  h += Math.sin(x * 0.26 + 1.7) * Math.cos(z * 0.23) * 0.8 * val; // kleine bobbels
+  h += Math.sin(Math.atan2(z, x) * 3.4 + d * 0.05) * 2.2 * Math.pow(val, 0.55); // grillige kustlijn
+  return h - 2.2;                                      // de rand zakt onder water = strand
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 2. DE 3D-WERELD OPBOUWEN
+// ══════════════════════════════════════════════════════════════════
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 500);
+scene.add(camera);                                      // nodig: je handen hangen aan de camera
+
+const renderer = new THREE.WebGLRenderer({antialias:!IS_TOUCH});
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.5 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// De zon staat stil en de palmbomen ook, dus de schaduwen hoeven niet elk beeldje
+// opnieuw getekend te worden. Een paar keer per seconde is genoeg — dat scheelt
+// een hoop rekenwerk (vooral op een telefoon).
+renderer.shadowMap.autoUpdate = false;
+document.body.appendChild(renderer.domElement);
+
+// ── lucht: een verloop van diepblauw naar lichte horizon ──
+function luchtTextuur(){
+  const c = document.createElement('canvas'); c.width = 2; c.height = 256;
+  const g = c.getContext('2d'), v = g.createLinearGradient(0, 0, 0, 256);
+  v.addColorStop(0.00, '#2a7fc4');
+  v.addColorStop(0.55, '#7cc4e8');
+  v.addColorStop(1.00, '#d8f0f8');
+  g.fillStyle = v; g.fillRect(0, 0, 2, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.LinearFilter;
+  return t;
+}
+const lucht = new THREE.Mesh(
+  new THREE.SphereGeometry(320, 24, 16),
+  new THREE.MeshBasicMaterial({map: luchtTextuur(), side: THREE.BackSide, fog: false})
+);
+scene.add(lucht);
+scene.fog = new THREE.Fog(0xa9dcef, 90, 300);
+
+// ── licht: zon + zacht hemellicht ──
+const zon = new THREE.DirectionalLight(0xfff3d0, 0.95);
+zon.position.set(70, 95, 45);
+zon.castShadow = true;
+zon.shadow.mapSize.set(IS_TOUCH ? 1024 : 2048, IS_TOUCH ? 1024 : 2048);
+zon.shadow.camera.left = -70; zon.shadow.camera.right = 70;
+zon.shadow.camera.top  =  70; zon.shadow.camera.bottom = -70;
+zon.shadow.camera.far = 250;
+scene.add(zon);
+scene.add(new THREE.HemisphereLight(0xbfe9ff, 0x5a7a3a, 0.45));
+scene.add(new THREE.AmbientLight(0xffffff, 0.16));
+
+// de zon zelf aan de hemel
+const zonBol = new THREE.Mesh(
+  new THREE.SphereGeometry(9, 16, 12),
+  new THREE.MeshBasicMaterial({color: 0xfff6c8, fog: false})
+);
+zonBol.position.set(150, 190, 95);
+scene.add(zonBol);
+
+// ══════════════════════════════════════════════════════════════════
+// 3. DE GROND — één groot vlak dat we omhoog duwen tot een eiland
+// De kleur per punt: nat zand → strand → gras → donker gras → rots.
+// ══════════════════════════════════════════════════════════════════
+const grondGeo = new THREE.PlaneGeometry(230, 230, 150, 150);
+grondGeo.rotateX(-Math.PI/2);
+{
+  const pos = grondGeo.attributes.position;
+  const kleuren = new Float32Array(pos.count * 3);
+  const c = new THREE.Color();
+  for(let i = 0; i < pos.count; i++){
+    const x = pos.getX(i), z = pos.getZ(i);
+    const h = hoogteOp(x, z);
+    pos.setY(i, h);
+    // steilheid: hoe snel loopt de hoogte hier op? Steil = rots.
+    const steil = Math.abs(hoogteOp(x + 1.5, z) - h) + Math.abs(hoogteOp(x, z + 1.5) - h);
+    if(h < -0.6)      c.setHex(0xc9b98a);          // zand onder water
+    else if(h < 0.9)  c.setHex(0xe8d6a4);          // strand
+    else if(h < 2.0)  c.setHex(0x9dbf6a);          // duin-gras
+    else if(steil > 1.9) c.setHex(0x8b8478);       // steile rotswand
+    else if(h < 6.5)  c.setHex(0x5fae4a);          // gras
+    else if(h < 9.5)  c.setHex(0x47883a);          // donker bos-gras
+    else              c.setHex(0x9a9186);          // kale bergtop
+    // een klein beetje kleurruis zodat het niet plat oogt
+    const r = (Math.sin(x*3.1 + z*1.7) * 0.5 + 0.5) * 0.09 - 0.045;
+    kleuren[i*3] = c.r + r; kleuren[i*3+1] = c.g + r; kleuren[i*3+2] = c.b + r;
+  }
+  grondGeo.setAttribute('color', new THREE.BufferAttribute(kleuren, 3));
+  grondGeo.computeVertexNormals();
+}
+const grond = new THREE.Mesh(grondGeo, new THREE.MeshLambertMaterial({vertexColors: true}));
+grond.receiveShadow = true;
+scene.add(grond);
+
+// ══════════════════════════════════════════════════════════════════
+// 4. DE ZEE — golvend water + donkere diepte eronder
+// ══════════════════════════════════════════════════════════════════
+// de verre oceaan: één groot, rustig, diepblauw vlak
+const verreZee = new THREE.Mesh(
+  new THREE.PlaneGeometry(800, 800),
+  new THREE.MeshPhongMaterial({color: 0x0d4a78, shininess: 60, specular: 0x6fb8e0})
+);
+verreZee.rotation.x = -Math.PI/2; verreZee.position.y = -0.06;
+scene.add(verreZee);
+
+// de lagune rond het eiland: golft én kleurt mee met de diepte van de bodem.
+// Vlak bij het strand is het water ondiep turkoois, verderop diepblauw.
+const ZEE_MAAT = 300, ZEE_VAKJES = IS_TOUCH ? 44 : 64;
+const zeeGeo = new THREE.PlaneGeometry(ZEE_MAAT, ZEE_MAAT, ZEE_VAKJES, ZEE_VAKJES);
+zeeGeo.rotateX(-Math.PI/2);
+{
+  const pos = zeeGeo.attributes.position;
+  const kleuren = new Float32Array(pos.count * 3);
+  const ondiep = new THREE.Color(0x86e6dd), diep = new THREE.Color(0x0d4a78), c = new THREE.Color();
+  for(let i = 0; i < pos.count; i++){
+    const bodem = hoogteOp(pos.getX(i), pos.getZ(i));
+    const hoeDiep = Math.min(1, Math.max(0, -bodem) / 8);
+    c.copy(ondiep).lerp(diep, Math.pow(hoeDiep, 0.75));
+    kleuren[i*3] = c.r; kleuren[i*3+1] = c.g; kleuren[i*3+2] = c.b;
+  }
+  zeeGeo.setAttribute('color', new THREE.BufferAttribute(kleuren, 3));
+}
+const zee = new THREE.Mesh(zeeGeo, new THREE.MeshPhongMaterial({
+  vertexColors: true, shininess: 95, specular: 0xbfe9ff, transparent: true, opacity: 0.82
+}));
+scene.add(zee);
+const zeeBasis = zeeGeo.attributes.position.array.slice();  // de rustige beginvorm
+
+// de golven lopen elke tel een stukje verder
+let normaalTeller = 0;
+function golfZee(t){
+  const p = zeeGeo.attributes.position;
+  for(let i = 0; i < p.count; i++){
+    const x = zeeBasis[i*3], z = zeeBasis[i*3+2];
+    p.setY(i, Math.sin(x*0.09 + t*1.1)*0.20 + Math.sin(z*0.13 + t*1.5)*0.15 + Math.sin((x+z)*0.31 + t*2.2)*0.05);
+  }
+  p.needsUpdate = true;
+  // de schittering van de zon: normalen bijwerken (op de telefoon iets zuiniger)
+  if(++normaalTeller % (IS_TOUCH ? 4 : 2) === 0) zeeGeo.computeVertexNormals();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 5. PALMBOMEN, ROTSEN EN STRUIKEN
+// Alles in "InstancedMesh": 300 bladeren in één tekenbeurt, zodat het
+// ook op je telefoon snel blijft.
+// ══════════════════════════════════════════════════════════════════
+let zaad = 20260903;
+function rnd(){ zaad = (zaad * 1664525 + 1013904223) % 4294967296; return zaad / 4294967296; }
+
+// waar mag iets staan? (op het land, niet te steil, niet te hoog)
+function zoekPlek(minH, maxH, maxD){
+  for(let poging = 0; poging < 60; poging++){
+    const hoek = rnd() * Math.PI * 2, afst = Math.sqrt(rnd()) * maxD;
+    const x = Math.cos(hoek) * afst, z = Math.sin(hoek) * afst;
+    const h = hoogteOp(x, z);
+    if(h >= minH && h <= maxH) return {x, z, h};
+  }
+  return null;
+}
+
+const BLADEREN_PER_PALM = 8;
+const palmen = [];                     // om tegenaan te botsen
+{
+  // stam: staat met zijn voet op de grond (basis op y=0, top op y=1 × schaal)
+  const stamGeo = new THREE.CylinderGeometry(0.16, 0.30, 1, 7);
+  stamGeo.translate(0, 0.5, 0);
+  // blad: een platte punt die naar +X wijst
+  const bladGeo = new THREE.ConeGeometry(0.5, 3.4, 4);
+  bladGeo.scale(1, 1, 0.3);
+  bladGeo.translate(0, 1.7, 0);
+  bladGeo.rotateZ(-Math.PI/2);
+
+  const AANTAL = 46;
+  const stammen = new THREE.InstancedMesh(stamGeo,
+    new THREE.MeshLambertMaterial({color: 0x8a6238}), AANTAL);
+  const bladeren = new THREE.InstancedMesh(bladGeo,
+    new THREE.MeshLambertMaterial({color: 0x3f9c37, side: THREE.DoubleSide}), AANTAL * BLADEREN_PER_PALM);
+  stammen.castShadow = bladeren.castShadow = true;
+  bladeren.receiveShadow = true;
+
+  const d = new THREE.Object3D();
+  const kleur = new THREE.Color();
+  let b = 0;
+  for(let i = 0; i < AANTAL; i++){
+    const p = zoekPlek(0.4, 7.5, 52) || {x: 0, z: 0, h: hoogteOp(0, 0)};
+    const hoogte = 4.8 + rnd() * 3.2;
+    const kant = rnd() * Math.PI * 2, scheef = rnd() * 0.17;   // palmen staan altijd een beetje scheef
+    const richting = new THREE.Vector3(Math.sin(scheef)*Math.cos(kant), Math.cos(scheef), Math.sin(scheef)*Math.sin(kant));
+
+    d.position.set(p.x, p.h, p.z);
+    d.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), richting);
+    d.scale.set(0.85 + rnd()*0.4, hoogte, 0.85 + rnd()*0.4);
+    d.updateMatrix();
+    stammen.setMatrixAt(i, d.matrix);
+
+    // de kruin komt precies bovenop de (scheve) stam
+    const top = new THREE.Vector3(p.x, p.h, p.z).addScaledVector(richting, hoogte);
+    palmen.push({x: top.x, z: top.z, voetX: p.x, voetZ: p.z});
+    const draai = rnd() * Math.PI * 2;
+    for(let j = 0; j < BLADEREN_PER_PALM; j++){
+      d.position.copy(top);
+      d.rotation.set(0, draai + j * (Math.PI*2/BLADEREN_PER_PALM), -(0.35 + rnd()*0.5));
+      d.quaternion.setFromEuler(d.rotation);
+      d.scale.setScalar(0.85 + rnd()*0.45);
+      d.updateMatrix();
+      bladeren.setMatrixAt(b, d.matrix);
+      kleur.setHSL(0.28 + rnd()*0.05, 0.5, 0.30 + rnd()*0.12);
+      bladeren.setColorAt(b, kleur);
+      b++;
+    }
+  }
+  scene.add(stammen); scene.add(bladeren);
+}
+
+// ── rotsen ──
+{
+  const geo = new THREE.IcosahedronGeometry(1, 0);
+  const rotsen = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({flatShading: true}), 34);
+  rotsen.castShadow = rotsen.receiveShadow = true;
+  const d = new THREE.Object3D(), c = new THREE.Color();
+  for(let i = 0; i < 34; i++){
+    const p = zoekPlek(-0.8, 10, 56) || {x: 5, z: 5, h: 0};
+    const m = 0.7 + rnd() * 2.3;
+    d.position.set(p.x, p.h + m*0.35, p.z);
+    d.rotation.set(rnd()*3, rnd()*3, rnd()*3);
+    d.scale.set(m, m * (0.6 + rnd()*0.5), m);
+    d.updateMatrix();
+    rotsen.setMatrixAt(i, d.matrix);
+    const g = 0.45 + rnd()*0.22; c.setRGB(g, g*0.97, g*0.9);
+    rotsen.setColorAt(i, c);
+  }
+  scene.add(rotsen);
+}
+
+// ── struiken ──
+{
+  const geo = new THREE.IcosahedronGeometry(1, 0);
+  const struiken = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({flatShading: true}), 90);
+  struiken.castShadow = true;
+  const d = new THREE.Object3D(), c = new THREE.Color();
+  for(let i = 0; i < 90; i++){
+    const p = zoekPlek(1.0, 9, 52) || {x: 8, z: 8, h: 1};
+    const m = 0.5 + rnd() * 0.9;
+    d.position.set(p.x + (rnd()-0.5), p.h + m*0.55, p.z + (rnd()-0.5));
+    d.rotation.set(rnd()*3, rnd()*3, rnd()*3);
+    d.scale.set(m*1.3, m, m*1.3);
+    d.updateMatrix();
+    struiken.setMatrixAt(i, d.matrix);
+    c.setHSL(0.27 + rnd()*0.07, 0.55, 0.24 + rnd()*0.14);
+    struiken.setColorAt(i, c);
+  }
+  scene.add(struiken);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 6. DE KOKOSNOTEN — dit is wat je zoekt 🥥
+// ══════════════════════════════════════════════════════════════════
+const kokosGroep = new THREE.Group(); scene.add(kokosGroep);
+const kokossen = [];
+{
+  const geo = new THREE.SphereGeometry(0.32, 10, 8);
+  const mat = new THREE.MeshLambertMaterial({color: 0x6b4423});
+  for(let i = 0; i < KOKOS_TOTAAL; i++){
+    // de meeste liggen onder een palmboom — daar vallen ze immers uit
+    let x, z, h;
+    if(i < palmen.length){
+      const p = palmen[Math.floor(rnd() * palmen.length)];
+      x = p.voetX + (rnd()-0.5) * 5; z = p.voetZ + (rnd()-0.5) * 5;
+      h = hoogteOp(x, z);
+      if(h < 0.2){ const q = zoekPlek(0.5, 8, 50); if(q){ x = q.x; z = q.z; h = q.h; } }
+    } else {
+      const q = zoekPlek(0.5, 8, 50) || {x: 0, z: 0, h: 0}; x = q.x; z = q.z; h = q.h;
+    }
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, h + 0.34, z);
+    m.castShadow = true;
+    // 3 lichte "ogen" bovenop, zoals een echte kokosnoot
+    kokosGroep.add(m);
+    kokossen.push({mesh: m, x, z, y: h + 0.34, op: false, fase: rnd() * 6.28});
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 7. DE SCHATKIST — gaat pas open met alle 12 kokosnoten
+// ══════════════════════════════════════════════════════════════════
+const kist = new THREE.Group();
+let kistDeksel, kistPlek = {x: 0, z: 0};
+{
+  const p = zoekPlek(0.8, 5, 44) || {x: 20, z: -20, h: 1};
+  kistPlek = {x: p.x, z: p.z};
+  const hout = new THREE.MeshLambertMaterial({color: 0x7a4a22});
+  const goud = new THREE.MeshLambertMaterial({color: 0xd4af37});
+  const bak = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.9, 1.0), hout);
+  bak.position.y = 0.45; bak.castShadow = true; kist.add(bak);
+  for(const y of [0.2, 0.72]){
+    const band = new THREE.Mesh(new THREE.BoxGeometry(1.54, 0.12, 1.04), goud);
+    band.position.y = y; kist.add(band);
+  }
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.3, 0.1), goud);
+  slot.position.set(0, 0.5, 0.53); kist.add(slot);
+  // het deksel draait om zijn achterkant open
+  kistDeksel = new THREE.Group();
+  const dek = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.28, 1.05), hout);
+  dek.position.set(0, 0.14, 0.5); dek.castShadow = true;
+  kistDeksel.add(dek);
+  kistDeksel.position.set(0, 0.9, -0.5);
+  kist.add(kistDeksel);
+  // gouden gloed eromheen zodra hij openkan
+  kist.position.set(p.x, p.h, p.z);
+  scene.add(kist);
+}
+const kistLicht = new THREE.PointLight(0xffd700, 0, 9);
+kistLicht.position.set(kistPlek.x, hoogteOp(kistPlek.x, kistPlek.z) + 1.4, kistPlek.z);
+scene.add(kistLicht);
+
+// ══════════════════════════════════════════════════════════════════
+// 8. MEEUWEN EN KRABBEN — zodat het eiland leeft
+// ══════════════════════════════════════════════════════════════════
+const meeuwen = [];
+for(let i = 0; i < 5; i++){
+  const g = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({color: 0xf7f7f2, side: THREE.DoubleSide});
+  const lijf = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), mat);
+  lijf.scale.set(1, 0.7, 1.6); g.add(lijf);
+  const vleugels = [];
+  for(const kant of [-1, 1]){
+    const v = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.45), mat);
+    v.position.set(kant * 0.8, 0.05, 0);
+    g.add(v); vleugels.push(v);
+  }
+  g.userData = {r: 26 + rnd()*30, y: 16 + rnd()*10, snel: 0.16 + rnd()*0.14, fase: rnd()*6.28, vleugels};
+  scene.add(g); meeuwen.push(g);
+}
+
+const krabben = [];
+for(let i = 0; i < 4; i++){
+  const g = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({color: 0xe0533a});
+  const lijf = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6), mat);
+  lijf.scale.set(1.3, 0.6, 1); lijf.castShadow = true; g.add(lijf);
+  for(const kant of [-1, 1]){
+    const schaar = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.09, 0.09), mat);
+    schaar.position.set(kant * 0.27, 0.02, 0.12); g.add(schaar);
+  }
+  for(const oog of [-1, 1]){
+    const o = new THREE.Mesh(new THREE.SphereGeometry(0.038, 6, 5), new THREE.MeshBasicMaterial({color: 0x111111}));
+    o.position.set(oog * 0.08, 0.12, 0.11); g.add(o);
+  }
+  // zoek van buiten naar binnen waar het zand boven water komt = de kustlijn
+  const hoekStart = rnd() * 6.28;
+  let straal = 95;
+  while(straal > 10 && hoogteOp(Math.cos(hoekStart)*straal, Math.sin(hoekStart)*straal) < 0.15) straal -= 0.5;
+  g.userData = {hoek: hoekStart, r: straal, snel: (rnd() > 0.5 ? 1 : -1) * (0.05 + rnd()*0.05)};
+  scene.add(g); krabben.push(g);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 9. JE EIGEN HANDEN — zo weet je zeker dat je door JOUW ogen kijkt
+// (huidkleur komt uit je avatar, als je er een gemaakt hebt)
+// ══════════════════════════════════════════════════════════════════
+const HUID = ["#f9d5b3","#f3c39a","#eab184","#d99e6b","#c78550","#a96a3c","#8a512c","#6b3d20","#523018","#ffdfc4","#e6b8a2","#b07b5a","#b26aff"];
+let huidKleur = 0xf3c39a;
+try {
+  const a = JSON.parse(localStorage.getItem('deluxe-avatar') || '{}');
+  if(typeof a.huid === 'number' && HUID[a.huid]) huidKleur = new THREE.Color(HUID[a.huid]).getHex();
+} catch(e) {}
+
+const handen = [];
+for(const kant of [-1, 1]){
+  const arm = new THREE.Mesh(
+    new THREE.BoxGeometry(0.085, 0.085, 0.45),
+    new THREE.MeshLambertMaterial({color: huidKleur})
+  );
+  arm.position.set(kant * 0.34, -0.44, -0.66);
+  arm.rotation.x = -0.12;
+  arm.rotation.z = kant * 0.18;
+  camera.add(arm);
+  handen.push(arm);
+}
+// (geen extra handlicht: dat maakte de handen spierwit)
+
+// ══════════════════════════════════════════════════════════════════
+// 10. BESTURING — muis + toetsen op de pc, joystick + vegen op de telefoon
+// (zelfde systeem als in DUELS, dat werkt fijn op Brian's telefoon)
+// ══════════════════════════════════════════════════════════════════
+let yaw = 0, pitch = -0.06, pointerLocked = false;
+
+renderer.domElement.addEventListener('click', () => {
+  if(!IS_TOUCH && !pointerLocked && gestart) renderer.domElement.requestPointerLock();
+});
+document.addEventListener('pointerlockchange', () => {
+  pointerLocked = document.pointerLockElement === renderer.domElement;
+});
+document.addEventListener('mousemove', e => {
+  if(!pointerLocked) return;
+  yaw   -= e.movementX * 0.0022;
+  pitch -= e.movementY * 0.0022;
+  pitch = Math.max(-1.4, Math.min(1.4, pitch));
+});
+
+// telefoon: vegen op de rechterhelft = kijken
+const kijkVingers = new Map();
+addEventListener('touchstart', e => {
+  if(e.target.closest && e.target.closest('#joy,#springKnop,#geluidKnop,#start,#winscherm,#thuis')) return;
+  for(const t of e.changedTouches){
+    if(t.clientX > innerWidth/2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY});
+  }
+}, {passive:false});
+addEventListener('touchmove', e => {
+  for(const t of e.changedTouches){
+    const v = kijkVingers.get(t.identifier);
+    if(!v) continue;
+    yaw   -= (t.clientX - v.x) * 0.005;
+    pitch -= (t.clientY - v.y) * 0.005;
+    pitch = Math.max(-1.4, Math.min(1.4, pitch));
+    v.x = t.clientX; v.y = t.clientY;
+  }
+  if(kijkVingers.size) e.preventDefault();
+}, {passive:false});
+addEventListener('touchend', e => {
+  for(const t of e.changedTouches) kijkVingers.delete(t.identifier);
+});
+
+// toetsen
+const toets = {};
+addEventListener('keydown', e => { if(e.target && e.target.tagName === 'INPUT') return; toets[e.code] = true; });
+addEventListener('keyup',   e => { if(e.target && e.target.tagName === 'INPUT') return; toets[e.code] = false; });
+
+// telefoon-joystick (linksonder)
+const joy = document.getElementById('joy'), joyStick = document.getElementById('joyStick');
+let joyVec = {x: 0, y: 0}, joyTouch = null;
+joy.addEventListener('touchstart', e => { joyTouch = e.changedTouches[0].identifier; e.stopPropagation(); }, {passive:false});
+addEventListener('touchmove', e => {
+  for(const t of e.changedTouches){
+    if(joyTouch !== null && t.identifier === joyTouch){
+      const r = joy.getBoundingClientRect();
+      let dx = (t.clientX - (r.left+55)) / 55, dy = (t.clientY - (r.top+55)) / 55;
+      const len = Math.hypot(dx, dy); if(len > 1){ dx /= len; dy /= len; }
+      joyVec = {x: dx, y: dy};
+      joyStick.style.left = (35 + dx*32) + 'px';
+      joyStick.style.top  = (35 + dy*32) + 'px';
+    }
+  }
+}, {passive:false});
+addEventListener('touchend', e => {
+  for(const t of e.changedTouches){
+    if(joyTouch !== null && t.identifier === joyTouch){
+      joyTouch = null; joyVec = {x: 0, y: 0};
+      joyStick.style.left = '35px'; joyStick.style.top = '35px';
+    }
+  }
+});
+// springknop op de telefoon
+let touchSpring = false;
+const springKnop = document.getElementById('springKnop');
+springKnop.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); touchSpring = true; }, {passive:false});
+springKnop.addEventListener('touchend',   e => { touchSpring = false; });
+
+// ══════════════════════════════════════════════════════════════════
+// 11. LOPEN, SPRINGEN EN ZWEMMEN
+// ══════════════════════════════════════════════════════════════════
+// je start op het strand, met de zee in je rug en het eiland vóór je
+let spelerY = 0, velY = 0, opGrond = true, zwemt = false, loopBob = 0;
+{
+  let z = 56;
+  while(z > 20 && hoogteOp(0, z) < 0.35) z -= 0.5;   // zoek de kustlijn
+  camera.position.set(0, hoogteOp(0, z) + OOG, z);
+  spelerY = hoogteOp(0, z);
+}
+
+let springWas = false;
+function updateSpeler(dt){
+  let vx = 0, vz = 0;
+  if(toets['KeyW'] || toets['ArrowUp'])    vz -= 1;
+  if(toets['KeyS'] || toets['ArrowDown'])  vz += 1;
+  if(toets['KeyA'] || toets['ArrowLeft'])  vx -= 1;
+  if(toets['KeyD'] || toets['ArrowRight']) vx += 1;
+  vx += joyVec.x; vz += joyVec.y;
+  const len = Math.hypot(vx, vz);
+  const beweegt = len > 0.01;
+  const rent = toets['ShiftLeft'] || toets['ShiftRight'];
+  const sin = Math.sin(yaw), cos = Math.cos(yaw);
+
+  let stapX = 0, stapZ = 0;
+  if(beweegt){
+    const nvx = vx / Math.max(1, len), nvz = vz / Math.max(1, len);
+    const snel = zwemt ? ZWEM : (rent ? REN : LOOP);
+    stapX = ( nvx*cos + nvz*sin) * snel * dt;
+    stapZ = (-nvx*sin + nvz*cos) * snel * dt;
+  }
+
+  const oudX = camera.position.x, oudZ = camera.position.z;
+  let nx = oudX + stapX, nz = oudZ + stapZ;
+
+  // niet dwars door een palmstam heen lopen
+  for(const p of palmen){
+    if(Math.hypot(nx - p.voetX, nz - p.voetZ) < 0.55){ nx = oudX; nz = oudZ; break; }
+  }
+  // niet te ver de zee in — haaien! 🦈
+  const d = Math.hypot(nx, nz);
+  if(d > ZEE_GRENS){
+    nx = nx / d * ZEE_GRENS; nz = nz / d * ZEE_GRENS;
+    if(!terugDuwMelding){ zeg('🦈 niet verder de zee in!'); terugDuwMelding = true; setTimeout(() => terugDuwMelding = false, 4000); }
+  }
+  camera.position.x = nx; camera.position.z = nz;
+
+  // hoe hoog ligt de grond hier?
+  const grondH = hoogteOp(nx, nz);
+  zwemt = grondH < -0.55;
+
+  if(zwemt){
+    // in het water dobber je op de golven
+    spelerY += ((-0.55) - spelerY) * Math.min(1, dt * 5);
+    velY = 0; opGrond = false;
+  } else {
+    const springNu = !!toets['Space'] || touchSpring;
+    if(springNu && !springWas && opGrond){ velY = 6.0; opGrond = false; }
+    springWas = springNu;
+    velY -= ZWAARTE * dt;
+    spelerY += velY * dt;
+    if(spelerY <= grondH){ spelerY = grondH; velY = 0; opGrond = true; }
+    else if(opGrond && grondH < spelerY - 0.05) opGrond = false;
+    // een trapje van de heuvel op mag je gewoon oplopen
+    if(opGrond && grondH > spelerY) spelerY = grondH;
+  }
+
+  // hoofd-wiebel tijdens het lopen (voelt echt)
+  if(beweegt && (opGrond || zwemt)) loopBob += dt * (rent ? 13 : 8.5);
+  const bob = Math.sin(loopBob) * (beweegt ? 0.055 : 0);
+  camera.position.y = spelerY + (zwemt ? 0.75 : OOG) + bob;
+
+  // je handen wiebelen mee
+  handen[0].position.y = -0.44 + Math.sin(loopBob) * 0.03;
+  handen[1].position.y = -0.44 + Math.sin(loopBob + Math.PI) * 0.03;
+
+  document.getElementById('zwemBalk').style.display = zwemt ? 'block' : 'none';
+}
+let terugDuwMelding = false;
+
+// ══════════════════════════════════════════════════════════════════
+// 12. KOKOSNOTEN OPRAPEN + DE SCHATKIST
+// ══════════════════════════════════════════════════════════════════
+let gevonden = 0, kistOpen = false, keysVerdiend = 0;
+
+function updateSpullen(dt, t){
+  // kokosnoten draaien en dobberen zachtjes
+  for(const k of kokossen){
+    if(k.op) continue;
+    k.mesh.rotation.y += dt * 1.4;
+    k.mesh.position.y = k.y + Math.sin(t * 2 + k.fase) * 0.07;
+    if(Math.hypot(camera.position.x - k.x, camera.position.z - k.z) < 1.9
+       && Math.abs(spelerY - (k.y - 0.34)) < 3){
+      k.op = true;
+      kokosGroep.remove(k.mesh);
+      gevonden++;
+      keysVerdiend += geefKeys(1, 'eiland');
+      zeg('🥥 kokosnoot ' + gevonden + '/' + KOKOS_TOTAAL + '!');
+      updateTeller();
+      if(gevonden === KOKOS_TOTAAL) zeg('🏆 ALLE KOKOSNOTEN! Zoek nu de schatkist!');
+    }
+  }
+
+  // de kist gloeit zodra hij open kan
+  if(gevonden >= KOKOS_TOTAAL && !kistOpen){
+    kistLicht.intensity = 1.6 + Math.sin(t * 3) * 0.7;
+  }
+  // deksel open + beloning
+  if(gevonden >= KOKOS_TOTAAL && !kistOpen
+     && Math.hypot(camera.position.x - kistPlek.x, camera.position.z - kistPlek.z) < 2.4){
+    kistOpen = true;
+    keysVerdiend += geefKeys(10, 'eiland');
+    zetRecord('deluxe-eiland-best', KOKOS_TOTAAL);
+    document.getElementById('winTekst').innerHTML =
+      'Je vond alle <b>' + KOKOS_TOTAAL + ' kokosnoten</b> én de schatkist!<br>' +
+      keysTekst(keysVerdiend) + '<br><span style="font-size:14px;color:#8fb3c7">' +
+      'Je mag gewoon verder rondlopen op je eiland 🏝️</span>';
+    document.getElementById('winscherm').style.display = 'flex';
+    updateTeller();
+    if(pointerLocked) document.exitPointerLock();
+  }
+  if(kistOpen){
+    kistDeksel.rotation.x = Math.max(-1.9, kistDeksel.rotation.x - dt * 1.6);
+    kistLicht.intensity = 2.2 + Math.sin(t * 5) * 0.5;
+  }
+
+  // meeuwen cirkelen boven het eiland
+  for(const m of meeuwen){
+    const u = m.userData;
+    u.fase += dt * u.snel;
+    m.position.set(Math.cos(u.fase) * u.r, u.y + Math.sin(u.fase * 2) * 1.6, Math.sin(u.fase) * u.r);
+    m.rotation.y = -u.fase + Math.PI/2;
+    const klap = Math.sin(t * 7 + u.fase * 3) * 0.5;
+    u.vleugels[0].rotation.z =  klap;
+    u.vleugels[1].rotation.z = -klap;
+  }
+  // krabben scharrelen over het strand
+  for(const k of krabben){
+    const u = k.userData;
+    u.hoek += dt * u.snel;
+    // de krab scharrelt langs de vloedlijn: te nat? stapje omhoog. Te droog? stapje omlaag.
+    const proef = hoogteOp(Math.cos(u.hoek) * u.r, Math.sin(u.hoek) * u.r);
+    if(proef < 0.05) u.r -= dt * 3.5;
+    else if(proef > 0.75) u.r += dt * 3.5;
+    const x = Math.cos(u.hoek) * u.r, z = Math.sin(u.hoek) * u.r;
+    k.position.set(x, Math.max(0.02, hoogteOp(x, z)) + 0.12, z);
+    k.rotation.y = -u.hoek;
+    k.position.y += Math.abs(Math.sin(t * 9)) * 0.04;
+  }
+}
+
+function updateTeller(){
+  document.getElementById('teller').innerHTML =
+    '🥥 ' + gevonden + ' / ' + KOKOS_TOTAAL +
+    '<div class="klein">' + (kistOpen ? '🏆 schat gevonden!' : gevonden >= KOKOS_TOTAAL ? '🏆 zoek de schatkist!' : 'zoek ze allemaal') + '</div>';
+}
+
+let meldTimer = null;
+function zeg(tekst){
+  const el = document.getElementById('melding');
+  el.textContent = tekst; el.style.opacity = 1;
+  clearTimeout(meldTimer);
+  meldTimer = setTimeout(() => el.style.opacity = 0, 2600);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 13. ZEEGELUID — zacht ruisende golven (gemaakt met WebAudio)
+// ══════════════════════════════════════════════════════════════════
+let geluidAan = true, audioCtx = null, zeeGain = null;
+function startGeluid(){
+  if(audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 4, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    let vorig = 0;
+    for(let i = 0; i < data.length; i++){       // bruine ruis = zacht zee-geruis
+      const wit = Math.random() * 2 - 1;
+      vorig = (vorig + 0.02 * wit) / 1.02;
+      data[i] = vorig * 3.2;
+    }
+    const bron = audioCtx.createBufferSource(); bron.buffer = buf; bron.loop = true;
+    const filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 480;
+    zeeGain = audioCtx.createGain(); zeeGain.gain.value = 0.11;
+    const lfo = audioCtx.createOscillator(); lfo.frequency.value = 0.12;   // de golven komen en gaan
+    const lfoGain = audioCtx.createGain(); lfoGain.gain.value = 0.07;
+    lfo.connect(lfoGain); lfoGain.connect(zeeGain.gain); lfo.start();
+    bron.connect(filter); filter.connect(zeeGain); zeeGain.connect(audioCtx.destination); bron.start();
+  } catch(e) {}
+}
+document.getElementById('geluidKnop').addEventListener('click', () => {
+  geluidAan = !geluidAan;
+  if(zeeGain) zeeGain.gain.value = geluidAan ? 0.11 : 0;
+  document.getElementById('geluidKnop').textContent = geluidAan ? '🔊' : '🔇';
+});
+
+// ══════════════════════════════════════════════════════════════════
+// 14. START + DE GAME-LOOP
+// ══════════════════════════════════════════════════════════════════
+let gestart = false, vorigeTijd = 0, schaduwTeller = 0;
+
+document.querySelector('#start .knop').addEventListener('click', () => {
+  gestart = true;
+  document.getElementById('start').style.display = 'none';
+  for(const id of ['thuis','teller','geluidKnop']) document.getElementById(id).style.display = 'block';
+  updateTeller();
+  startGeluid();
+  if(!IS_TOUCH) renderer.domElement.requestPointerLock();
+  zeg('🏝️ welkom op je eiland!');
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+function loop(nu){
+  requestAnimationFrame(loop);
+  const t = nu / 1000;
+  const dt = Math.min(0.05, t - vorigeTijd || 0.016);
+  vorigeTijd = t;
+
+  if(gestart){
+    updateSpeler(dt);
+    updateSpullen(dt, t);
+  }
+  golfZee(t);
+  lucht.position.copy(camera.position);   // de hemel reist met je mee
+  // schaduwen ~4× per seconde bijwerken (voor de krabben en het kistdeksel)
+  if((schaduwTeller++ % 15) === 0) renderer.shadowMap.needsUpdate = true;
+
+  camera.rotation.set(0, 0, 0);
+  camera.rotateY(yaw);
+  camera.rotateX(pitch);
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(loop);
+</script>
+<script src="smiles-widget.js"></script>
+</body>
+</html>
