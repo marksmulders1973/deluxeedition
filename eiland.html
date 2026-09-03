@@ -382,11 +382,67 @@ function zoekPlek(minH, maxH, maxD){
 // hoeft er maar drie tekenbeurten voor te doen.
 // ══════════════════════════════════════════════════════════════════
 
+// ── DE BAST-TEXTUUR ──
+// Bij de rotsen bleek textuur het geheim, en bij een palm net zo: de bast
+// zit vol verticale vezels en horizontale littekens van afgevallen
+// bladeren. Dezelfde tekening dient ook als bult-kaart, zodat het licht
+// in elke groef anders valt.
+let _bastTex = null;
+function maakBastTextuur(){
+  if(_bastTex) return _bastTex;
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#7d5c3a'; g.fillRect(0, 0, 128, 256);
+
+  // fijne korrel
+  const beeld = g.getImageData(0, 0, 128, 256);
+  for(let i = 0; i < beeld.data.length; i += 4){
+    const n = (Math.random() - 0.5) * 46;
+    beeld.data[i]   = Math.max(0, Math.min(255, beeld.data[i] + n));
+    beeld.data[i+1] = Math.max(0, Math.min(255, beeld.data[i+1] + n * 0.9));
+    beeld.data[i+2] = Math.max(0, Math.min(255, beeld.data[i+2] + n * 0.7));
+  }
+  g.putImageData(beeld, 0, 0);
+
+  // verticale vezels: een palmstam is opgebouwd uit lange draden
+  for(let i = 0; i < 150; i++){
+    const x = Math.random() * 128;
+    g.strokeStyle = Math.random() > 0.5
+      ? 'rgba(150,120,84,' + (0.10 + Math.random() * 0.28) + ')'
+      : 'rgba(64,46,28,'   + (0.10 + Math.random() * 0.30) + ')';
+    g.lineWidth = 0.6 + Math.random() * 2.2;
+    g.beginPath(); g.moveTo(x, -5);
+    for(let y = 0; y < 262; y += 26) g.lineTo(x + (Math.random() - 0.5) * 4, y);
+    g.stroke();
+  }
+
+  // horizontale ringen: de littekens waar vroeger bladeren zaten
+  for(let y = 6; y < 256; y += 21 + Math.random() * 5){
+    g.strokeStyle = 'rgba(52,36,22,0.55)'; g.lineWidth = 2.6 + Math.random() * 2;
+    g.beginPath(); g.moveTo(-4, y);
+    for(let x = 0; x < 134; x += 16) g.lineTo(x, y + (Math.random() - 0.5) * 3.4);
+    g.stroke();
+    g.strokeStyle = 'rgba(178,146,102,0.42)'; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(-4, y - 3);
+    for(let x = 0; x < 134; x += 16) g.lineTo(x, y - 3 + (Math.random() - 0.5) * 3);
+    g.stroke();
+  }
+
+  _bastTex = new THREE.CanvasTexture(c);
+  _bastTex.wrapS = _bastTex.wrapT = THREE.RepeatWrapping;
+  _bastTex.anisotropy = 4;
+  return _bastTex;
+}
+
 // ── 1) de stam: gebogen, dikker aan de voet, met ribbels ──
 function maakStamGeometrie(){
   const RINGEN = 16, ZIJDEN = 9, HOOG = 5, BOOG = 1.05;   // maten voor een palm van 5 m
-  const pos = [], kleur = [], idx = [];
+  const pos = [], kleur = [], uv = [], idx = [];
   const c = new THREE.Color();
+  // ⚠️ ZIJDEN + 1 kolommen: de laatste is een kopie van de eerste, maar met
+  // u = 1. Zonder die extra kolom springt de textuur in de laatste strook
+  // van 0,9 terug naar 0 en zie je een lelijke naad over de hele stam.
   for(let i = 0; i <= RINGEN; i++){
     const t = i / RINGEN;
     const cx = BOOG * t * t, cy = HOOG * t;               // de stam kromt naar +X
@@ -394,26 +450,29 @@ function maakStamGeometrie(){
     r *= 1 + 0.06 * Math.sin(t * RINGEN * Math.PI);       // ribbels van oude bladvoeten
     if(t < 0.10) r += (0.10 - t) * 0.75;                  // dikkere voet in het zand
     const helling = Math.atan(2 * BOOG * t / HOOG);       // de ring staat haaks op de stam
-    for(let j = 0; j < ZIJDEN; j++){
-      const a = j / ZIJDEN * Math.PI * 2;
+    for(let j = 0; j <= ZIJDEN; j++){
+      const a = (j % ZIJDEN) / ZIJDEN * Math.PI * 2;
       const px = Math.cos(a) * r, pz = Math.sin(a) * r;
       pos.push(cx + px * Math.cos(helling), cy - px * Math.sin(helling), pz);
+      uv.push(j / ZIJDEN * 1.6, t * 3.2);
       // lichte en donkere ringen onder elkaar = de typische palmstam-tekening
       const band = 0.5 + 0.5 * Math.sin(t * RINGEN * Math.PI * 2);
-      const g = 0.62 + band * 0.42 + Math.cos(a) * 0.08;
-      c.setRGB(g * 0.60, g * 0.46, g * 0.32);
+      const g = 0.72 + band * 0.30 + Math.cos(a) * 0.07;
+      c.setRGB(g * 0.92, g * 0.88, g * 0.82);
       kleur.push(c.r, c.g, c.b);
     }
   }
+  const KOL = ZIJDEN + 1;
   for(let i = 0; i < RINGEN; i++){
     for(let j = 0; j < ZIJDEN; j++){
-      const a = i*ZIJDEN + j, b = i*ZIJDEN + (j+1)%ZIJDEN;
-      idx.push(a, b, a+ZIJDEN, b, b+ZIJDEN, a+ZIJDEN);
+      const a = i*KOL + j, b = i*KOL + j + 1;
+      idx.push(a, b, a+KOL, b, b+KOL, a+KOL);
     }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(kleur, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;
@@ -422,7 +481,7 @@ function maakStamGeometrie(){
 // ── 2) één palmblad: een doorbuigende steel met losse blaadjes ──
 // Het blad wijst naar +X en hangt naar beneden door, precies zoals echt.
 function maakBladGeometrie(){
-  const N = IS_TOUCH ? 9 : 12;       // aantal blaadjes-paren
+  const N = IS_TOUCH ? 13 : 19;      // aantal blaadjes-paren
   const L = 3.9;                      // lengte van het blad
   const pos = [], kleur = [], idx = [];
   let v = 0;
@@ -439,17 +498,20 @@ function maakBladGeometrie(){
     ]){ pos.push(px, py, pz); kleur.push(l, l, l); }
     idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
 
-    // de blaadjes: breed in het midden, smal bij de voet en bij de punt
-    const br = Math.sin(Math.PI * Math.pow(t0, 0.7)) * 0.62 + 0.06;
+    // De blaadjes zijn nu SPITSE driehoekjes: breed waar ze aan de steel
+    // vastzitten en uitlopend in een punt, zoals bij een echt palmblad.
+    // Een driehoek kost ook nog eens de helft van een rechthoekje, dus er
+    // kunnen er meer op één blad.
+    const br = Math.sin(Math.PI * Math.pow(t0, 0.7)) * 0.66 + 0.06;
     for(const kant of [1, -1]){
       // de punt wijst naar buiten, iets naar achteren en een stukje omlaag
-      const ux = -0.30, uy = -0.16 - 0.48 * br, uz = kant * br * 0.92;
-      const q0 = [p0.x + ux, p0.y + uy, p0.z + uz];
-      const q1 = [p1.x + ux, p1.y + uy, p1.z + uz];
-      pos.push(p0.x, p0.y, p0.z,  p1.x, p1.y, p1.z,  q1[0], q1[1], q1[2],  q0[0], q0[1], q0[2]);
-      // donkerder bij de steel, lichter aan de buitenrand → mooi diepte-effect
-      for(const l of [0.72, 0.72, 1.0, 1.0]) kleur.push(l, l, l);
-      idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
+      const ux = -0.32, uy = -0.18 - 0.52 * br, uz = kant * br * 0.94;
+      pos.push(p0.x, p0.y, p0.z,
+               p1.x, p1.y, p1.z,
+               (p0.x + p1.x) * 0.5 + ux, (p0.y + p1.y) * 0.5 + uy, (p0.z + p1.z) * 0.5 + uz);
+      // donkerder bij de steel, lichter aan de punt → diepte in de kruin
+      kleur.push(0.70,0.70,0.70, 0.70,0.70,0.70, 1.06,1.06,1.06);
+      idx.push(v, v+1, v+2); v += 3;
     }
   }
   const g = new THREE.BufferGeometry();
@@ -471,7 +533,12 @@ let bladMesh = null;
 
   const stammen = new THREE.InstancedMesh(
     maakStamGeometrie(),
-    new THREE.MeshLambertMaterial({vertexColors: true}),
+    new THREE.MeshPhongMaterial({
+      vertexColors: true,
+      map: maakBastTextuur(),
+      bumpMap: maakBastTextuur(), bumpScale: 0.05,
+      shininess: 3, specular: 0x1c1815      // hout glimt niet
+    }),
     AANTAL
   );
   bladMesh = new THREE.InstancedMesh(
