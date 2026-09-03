@@ -625,64 +625,158 @@ function ruis(x, y, z){
   return s - Math.floor(s);
 }
 
-// ── STENEN: een bol die we bobbelig maken, afplatten en mos geven ──
-function maakSteenGeometrie(zaadje, mos){
-  const g = new THREE.IcosahedronGeometry(1, 1);       // 80 vlakjes om mee te kneden
+// ── STENEN (Brian: "10x realistischer") ──
+//
+// Een echte rots is geen bobbelige bol. Hij is ooit ergens vanaf gebroken,
+// en dan krijg je PLATTE VLAKKEN met SCHERPE RANDEN ertussen.
+//
+// Zo maken we dat na: we bedenken een stuk of tien willekeurige vlakken
+// rondom het midden en snijden de bol daarmee af — wat overblijft is een
+// echt rotsblok. Daarna nog wat kleine bobbels erop (zodat het geen
+// kristal wordt), platter drukken en een vlakke onderkant, want een steen
+// LIGT ergens op.
+//
+// De kleur zetten we per driehoekje: vlakjes die naar boven kijken vangen
+// regen en zon → daar groeit mos. Vlakjes die schuin staan blijven kaal.
+// Plus donkere adertjes door de steen heen.
+function maakSteenGeometrie(zaadje, mos, detail){
+  const g = new THREE.IcosahedronGeometry(1, detail);
   const pos = g.attributes.position;
+
+  // ── de breukvlakken bedenken ──
+  // Gelijkmatig verdeeld over de bol (gulden hoek), elk op een eigen
+  // afstand van het midden. Hoe dichterbij, hoe platter dat vlak snijdt.
+  const VLAKKEN = 9 + Math.floor(ruis(zaadje, 3.1, 7.7) * 5);
+  const vlakken = [];
+  const goud = Math.PI * (3 - Math.sqrt(5));
+  for(let i = 0; i < VLAKKEN; i++){
+    const y = 1 - (i / (VLAKKEN - 1)) * 2;
+    const r = Math.sqrt(Math.max(0, 1 - y * y));
+    const a = goud * i + zaadje;
+    const n = new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r);
+    // scheef trekken zodat het geen keurige veelvlak wordt
+    n.x += (ruis(i, zaadje, 1.3) - 0.5) * 0.5;
+    n.y += (ruis(i, zaadje, 2.7) - 0.5) * 0.5;
+    n.z += (ruis(i, zaadje, 5.1) - 0.5) * 0.5;
+    n.normalize();
+    vlakken.push({n, d: 0.62 + ruis(i * 1.7, zaadje, 9.3) * 0.42});
+  }
+
   const n = new THREE.Vector3();
-  const kleuren = new Float32Array(pos.count * 3);
-  const steenKleur = new THREE.Color(), mosKleur = new THREE.Color(0x5c7f3a), c = new THREE.Color();
   for(let i = 0; i < pos.count; i++){
     n.set(pos.getX(i), pos.getY(i), pos.getZ(i)).normalize();
-    // drie lagen bobbels over elkaar = een natuurlijke, onregelmatige steen
-    const r = 1
-      + 0.28 * Math.sin(n.x * 2.9 + zaadje)       * Math.cos(n.y * 3.3 + zaadje * 1.7)
-      + 0.16 * Math.sin(n.z * 5.1 + zaadje * 2.3) * Math.cos(n.x * 4.7 + zaadje)
-      + 0.09 * Math.sin(n.y * 8.3 + zaadje * 3.1) * Math.cos(n.z * 7.1);
-    const x = n.x * r, z = n.z * r;
-    let y = n.y * r * 0.68;                            // stenen zijn platter dan een bol
-    if(y < -0.42) y = -0.42;                           // platte onderkant: hij LIGT ergens op
-    pos.setXYZ(i, x, y, z);
+    // hoe ver mag deze richting reiken? Tot het dichtstbijzijnde breukvlak.
+    let r = 3;
+    for(const v of vlakken){
+      const dp = n.dot(v.n);
+      if(dp > 0.02) r = Math.min(r, v.d / dp);
+    }
+    // kleine oneffenheden op de vlakken — anders lijkt het een edelsteen
+    r *= 1 + 0.07 * Math.sin(n.x * 7.3 + zaadje) * Math.cos(n.z * 6.1)
+           + 0.04 * Math.sin(n.y * 11.7 + zaadje * 2);
+    let y = n.y * r * 0.74;                 // stenen zijn platter dan een bol
+    if(y < -0.40) y = -0.40;                // vlakke onderkant: hij LIGT ergens op
+    pos.setXYZ(i, n.x * r, y, n.z * r);
+  }
 
-    // kleur: grijs met korrels, en groen mos op de bovenkant
-    const korrel = 0.80 + ruis(x * 7, y * 7, z * 7) * 0.32;
-    steenKleur.setRGB(korrel * 0.56, korrel * 0.55, korrel * 0.51);
-    const bovenop = Math.max(0, Math.min(1, (y - 0.10) / 0.55));
-    const mosVlek = ruis(x * 2.6 + 9, y * 2.6, z * 2.6);
-    c.copy(steenKleur).lerp(mosKleur, bovenop * mos * (0.35 + mosVlek * 0.65));
-    kleuren[i*3] = c.r; kleuren[i*3+1] = c.g; kleuren[i*3+2] = c.b;
+  // ── de kleur per driehoekje ──
+  const kleuren = new Float32Array(pos.count * 3);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const ab = new THREE.Vector3(), ac = new THREE.Vector3(), vn = new THREE.Vector3();
+  const steen = new THREE.Color(), mosKleur = new THREE.Color(0x5f8038), kl = new THREE.Color();
+  for(let i = 0; i < pos.count; i += 3){
+    a.set(pos.getX(i), pos.getY(i), pos.getZ(i));
+    b.set(pos.getX(i+1), pos.getY(i+1), pos.getZ(i+1));
+    c.set(pos.getX(i+2), pos.getY(i+2), pos.getZ(i+2));
+    vn.crossVectors(ab.subVectors(b, a), ac.subVectors(c, a)).normalize();
+    const mx = (a.x + b.x + c.x) / 3, my = (a.y + b.y + c.y) / 3, mz = (a.z + b.z + c.z) / 3;
+
+    // basiskleur: grijs met korrel, en donkere adertjes door de steen
+    const korrel = 0.82 + ruis(mx * 5.5, my * 5.5, mz * 5.5) * 0.30;
+    const ader = Math.max(0, Math.sin(mx * 6.1 + my * 3.7 + mz * 4.9 + zaadje) - 0.72) * 1.8;
+    const g2 = korrel * (1 - ader * 0.35);
+    steen.setRGB(g2 * 0.47, g2 * 0.465, g2 * 0.435);
+
+    // mos: alleen op vlakjes die omhoog kijken én hoog op de steen liggen
+    const omhoog = Math.max(0, vn.y);
+    const hoog = Math.max(0, Math.min(1, (my + 0.1) / 0.6));
+    const vlek = ruis(mx * 2.2 + 9, my * 2.2, mz * 2.2);
+    const hoeveel = Math.pow(omhoog, 1.25) * hoog * mos * (0.40 + vlek * 0.95);
+    kl.copy(steen).lerp(mosKleur, Math.min(0.92, hoeveel));
+
+    for(let j = 0; j < 3; j++){
+      kleuren[(i+j)*3] = kl.r; kleuren[(i+j)*3+1] = kl.g; kleuren[(i+j)*3+2] = kl.b;
+    }
   }
   g.setAttribute('color', new THREE.BufferAttribute(kleuren, 3));
   g.computeVertexNormals();
   return g;
 }
 
-// drie verschillende steenvormen, zodat je nooit twee dezelfde ziet liggen
+// drie verschillende rotsvormen: één grote met veel vlakjes, twee kleinere
+// die grover mogen zijn. Zo zie je nooit twee dezelfde stenen liggen.
 {
-  const VORMEN = 3, PER_VORM = IS_TOUCH ? 9 : 13;
-  for(let v = 0; v < VORMEN; v++){
+  const SOORTEN = [
+    {zaadje: 0.9, mos: 0.80, detail: 2, aantal: IS_TOUCH ? 4 : 6,  maat: [1.6, 2.6]},
+    {zaadje: 3.6, mos: 1.15, detail: 1, aantal: IS_TOUCH ? 7 : 10, maat: [0.7, 1.5]},
+    {zaadje: 6.3, mos: 0.45, detail: 1, aantal: IS_TOUCH ? 7 : 11, maat: [0.5, 1.2]},
+  ];
+  const gruisPlek = [];
+  for(const soort of SOORTEN){
     const mesh = new THREE.InstancedMesh(
-      maakSteenGeometrie(v * 2.7 + 0.9, v === 1 ? 0.9 : 0.45),   // eentje flink bemost
+      maakSteenGeometrie(soort.zaadje, soort.mos, soort.detail),
       new THREE.MeshLambertMaterial({vertexColors: true, flatShading: true}),
-      PER_VORM
+      soort.aantal
     );
     mesh.castShadow = mesh.receiveShadow = true;
     const d = new THREE.Object3D(), c = new THREE.Color();
-    for(let i = 0; i < PER_VORM; i++){
+    for(let i = 0; i < soort.aantal; i++){
       const p = zoekPlek(-0.8, 10, 68) || {x: 5, z: 5, h: 0};
-      const m = 0.6 + rnd() * 2.4;
+      const m = soort.maat[0] + rnd() * (soort.maat[1] - soort.maat[0]);
       // de steen zakt een stukje in de grond, alsof hij er al jaren ligt
-      d.position.set(p.x, p.h + m * 0.30, p.z);
-      d.rotation.set((rnd() - 0.5) * 0.5, rnd() * 6.28, (rnd() - 0.5) * 0.5);
-      d.scale.set(m * (0.85 + rnd() * 0.45), m * (0.75 + rnd() * 0.5), m * (0.85 + rnd() * 0.45));
+      d.position.set(p.x, p.h + m * 0.26, p.z);
+      d.rotation.set((rnd() - 0.5) * 0.45, rnd() * 6.28, (rnd() - 0.5) * 0.45);
+      d.scale.set(m * (0.85 + rnd() * 0.45), m * (0.72 + rnd() * 0.5), m * (0.85 + rnd() * 0.45));
       d.updateMatrix();
       mesh.setMatrixAt(i, d.matrix);
-      const g = 0.88 + rnd() * 0.26;
-      c.setRGB(g, g * 0.99, g * 0.96);
+      // de ene steen is grijzer, de andere warmer bruin — net als in het echt
+      const warm = rnd();
+      const g2 = 0.86 + rnd() * 0.28;
+      c.setRGB(g2 * (1 + warm * 0.10), g2, g2 * (1 - warm * 0.07));
       mesh.setColorAt(i, c);
+      if(m > 1.1) gruisPlek.push({x: p.x, z: p.z, r: m});
     }
     scene.add(mesh);
   }
+
+  // ── gruis: kleine brokjes die van de grote stenen zijn afgebroken ──
+  const GRUIS = gruisPlek.length * (IS_TOUCH ? 3 : 5);
+  const gruis = new THREE.InstancedMesh(
+    maakSteenGeometrie(8.1, 0.35, 0),
+    new THREE.MeshLambertMaterial({vertexColors: true, flatShading: true}),
+    Math.max(1, GRUIS)
+  );
+  gruis.castShadow = true;
+  const d = new THREE.Object3D(), c = new THREE.Color();
+  let k = 0;
+  for(const g of gruisPlek){
+    for(let j = 0; j < (IS_TOUCH ? 3 : 5); j++){
+      const a = rnd() * 6.28, af = g.r * (0.9 + rnd() * 1.6);
+      const x = g.x + Math.cos(a) * af, z = g.z + Math.sin(a) * af;
+      const m = 0.10 + rnd() * 0.22;
+      d.position.set(x, hoogteOp(x, z) + m * 0.3, z);
+      d.rotation.set(rnd() * 6.28, rnd() * 6.28, rnd() * 6.28);
+      d.scale.setScalar(m);
+      d.updateMatrix();
+      gruis.setMatrixAt(k, d.matrix);
+      const g2 = 0.85 + rnd() * 0.3;
+      c.setRGB(g2, g2 * 0.99, g2 * 0.95);
+      gruis.setColorAt(k, c);
+      k++;
+    }
+  }
+  gruis.count = k;
+  scene.add(gruis);
 }
 
 // ── STRUIKEN: bollen bladeren met dezelfde bobbel-truc ──
