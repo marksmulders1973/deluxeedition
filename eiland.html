@@ -639,15 +639,12 @@ function ruis(x, y, z){
 // De kleur zetten we per driehoekje: vlakjes die naar boven kijken vangen
 // regen en zon → daar groeit mos. Vlakjes die schuin staan blijven kaal.
 // Plus donkere adertjes door de steen heen.
-function maakSteenGeometrie(zaadje, mos, detail){
+// Eén BROK: een bol die met een paar breukvlakken is afgesneden.
+// Weinig vlakken en diep insnijden = grote platte vlakken met scherpe
+// ribben. Veel vlakken zou kleine facetjes geven en dan blijft het rond.
+function maakBrok(zaadje, detail){
   const g = new THREE.IcosahedronGeometry(1, detail);
   const pos = g.attributes.position;
-
-  // ── de breukvlakken ──
-  // WEINIG vlakken, en dicht bij het midden. Dat is het hele geheim: veel
-  // vlakken geven kleine facetjes en dan blijft het een ronde kei. Zes tot
-  // negen vlakken die diep insnijden geven grote, platte breukvlakken met
-  // scherpe ribben ertussen — precies zoals een rots die is afgebroken.
   const VLAKKEN = 6 + Math.floor(ruis(zaadje, 3.1, 7.7) * 4);
   const vlakken = [];
   const goud = Math.PI * (3 - Math.sqrt(5));
@@ -656,15 +653,12 @@ function maakSteenGeometrie(zaadje, mos, detail){
     const r = Math.sqrt(Math.max(0, 1 - y * y));
     const a = goud * i + zaadje;
     const n = new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r);
-    // flink scheeftrekken: een rots is nooit symmetrisch
     n.x += (ruis(i, zaadje, 1.3) - 0.5) * 0.9;
     n.y += (ruis(i, zaadje, 2.7) - 0.5) * 0.9;
     n.z += (ruis(i, zaadje, 5.1) - 0.5) * 0.9;
     n.normalize();
-    // het ene vlak snijdt diep in (groot plat vlak), het andere raakt amper
     vlakken.push({n, d: 0.40 + Math.pow(ruis(i * 1.7, zaadje, 9.3), 0.7) * 0.55});
   }
-
   const n = new THREE.Vector3();
   for(let i = 0; i < pos.count; i++){
     n.set(pos.getX(i), pos.getY(i), pos.getZ(i)).normalize();
@@ -673,17 +667,61 @@ function maakSteenGeometrie(zaadje, mos, detail){
       const dp = n.dot(v.n);
       if(dp > 0.02) r = Math.min(r, v.d / dp);
     }
-    // héél lichte oneffenheid — de vlakken moeten PLAT blijven, anders
-    // wordt het weer een kei
     r *= 1 + 0.016 * Math.sin(n.x * 9.3 + zaadje) * Math.cos(n.z * 8.1);
-    let y = n.y * r * 0.86;
-    if(y < -0.34) y = -0.34;                // vlakke onderkant: hij LIGT ergens op
-    pos.setXYZ(i, n.x * r, y, n.z * r);
+    pos.setXYZ(i, n.x * r, n.y * r, n.z * r);
+  }
+  return g;
+}
+
+// EEN HELE ROTS = twee of drie brokken door elkaar heen (Brian: "nog
+// realistischer"). Eén blok blijft altijd een beetje netjes — het is
+// bol of het is een kristal. Een échte rots heeft uitstekende punten,
+// inkepingen en overhangen, en dat krijg je alleen als er meerdere
+// gebroken stukken in elkaar zitten.
+//
+// Verder: sedimentlagen (de strepen die je in echte rotsen ziet, en die
+// scheef lopen omdat de rots ooit gekanteld is), verwering (bovenkant
+// gebleekt door de zon, onderkant donker en vochtig) en mos op alles
+// wat naar boven kijkt.
+function maakSteenGeometrie(zaadje, mos, detail){
+  const BROKKEN = 2 + Math.floor(ruis(zaadje, 1.1, 2.2) * 2);
+  const delen = [];
+  let totaal = 0;
+  for(let b = 0; b < BROKKEN; b++){
+    const brok = maakBrok(zaadje + b * 4.73, detail);
+    if(b > 0){
+      // de extra brokken zijn kleiner en steken er scheef uit
+      const sc = 0.46 + ruis(b, zaadje, 3.3) * 0.44;
+      const a = ruis(b, zaadje, 7.7) * 6.283;
+      const af = 0.34 + ruis(b, zaadje, 9.9) * 0.46;
+      const m = new THREE.Matrix4().compose(
+        new THREE.Vector3(Math.cos(a) * af, (ruis(b, zaadje, 5.5) - 0.32) * 0.55, Math.sin(a) * af),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(
+          ruis(b, zaadje, 1.7) * 3.1, ruis(b, zaadje, 2.9) * 3.1, ruis(b, zaadje, 4.1) * 3.1)),
+        new THREE.Vector3(sc, sc * (0.7 + ruis(b, zaadje, 6.6) * 0.5), sc)
+      );
+      brok.applyMatrix4(m);
+    }
+    delen.push(brok.attributes.position.array);
+    totaal += brok.attributes.position.count;
+  }
+
+  // de brokken aan elkaar plakken tot één rots
+  const arr = new Float32Array(totaal * 3);
+  let off = 0;
+  for(const d of delen){ arr.set(d, off); off += d.length; }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+  const pos = g.attributes.position;
+
+  // platter drukken en een vlakke onderkant — een steen LIGT ergens op
+  for(let i = 0; i < pos.count; i++){
+    let y = pos.getY(i) * 0.86;
+    if(y < -0.34) y = -0.34;
+    pos.setY(i, y);
   }
 
   // ── de kleur per driehoekje ──
-  // Elk breukvlak krijgt zijn eigen tint: een verse breuk is lichter, een
-  // verweerde kant donkerder. Daardoor zie je de vlakken echt van elkaar.
   const kleuren = new Float32Array(pos.count * 3);
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
   const ab = new THREE.Vector3(), ac = new THREE.Vector3(), vn = new THREE.Vector3();
@@ -695,20 +733,27 @@ function maakSteenGeometrie(zaadje, mos, detail){
     vn.crossVectors(ab.subVectors(b, a), ac.subVectors(c, a)).normalize();
     const mx = (a.x + b.x + c.x) / 3, my = (a.y + b.y + c.y) / 3, mz = (a.z + b.z + c.z) / 3;
 
-    // bij welk breukvlak hoort dit driehoekje?
-    let welk = 0, besteDot = -2;
-    for(let k = 0; k < vlakken.length; k++){
-      const dp = vn.dot(vlakken[k].n);
-      if(dp > besteDot){ besteDot = dp; welk = k; }
-    }
-    const vlakTint = 0.78 + ruis(welk * 3.7, zaadje, 1.9) * 0.46;
+    // Alle driehoekjes op hetzelfde breukvlak hebben dezelfde normaal, dus
+    // die gebruiken we als "sleutel": zo krijgt elk vlak zijn eigen tint.
+    // Een verse breuk is licht, een verweerde kant donker.
+    const sleutel = Math.round(vn.x * 6) * 31 + Math.round(vn.y * 6) * 17 + Math.round(vn.z * 6) * 11;
+    const vlakTint = 0.74 + ruis(sleutel * 0.37, zaadje, 2.3) * 0.52;
 
-    const korrel = 0.88 + ruis(mx * 5.5, my * 5.5, mz * 5.5) * 0.22;
-    const ader = Math.max(0, Math.sin(mx * 6.1 + my * 3.7 + mz * 4.9 + zaadje) - 0.72) * 1.8;
-    const g2 = korrel * vlakTint * (1 - ader * 0.32);
+    // sedimentlagen: de strepen in een rots. Ze lopen scheef, want de rots
+    // is ooit gekanteld toen hij afbrak.
+    const laagRichting = my * 0.88 + mx * 0.34 + mz * 0.21;
+    const laag = 0.90 + Math.pow(Math.sin(laagRichting * 7.5 + zaadje * 2.3) * 0.5 + 0.5, 1.6) * 0.22;
+
+    // verwering: de bovenkant is gebleekt door de zon, onderin blijft het
+    // vochtig en donker
+    const verwering = 1 + Math.max(-1, Math.min(1, my * 1.4)) * 0.13;
+
+    const korrel = 0.90 + ruis(mx * 5.5, my * 5.5, mz * 5.5) * 0.20;
+    const ader = Math.max(0, Math.sin(mx * 6.1 + my * 3.7 + mz * 4.9 + zaadje) - 0.74) * 2.0;
+    const g2 = korrel * vlakTint * laag * verwering * (1 - ader * 0.34);
     steen.setRGB(g2 * 0.50, g2 * 0.495, g2 * 0.46);
 
-    // mos: alleen op vlakken die omhoog kijken, en het meest in de naden
+    // mos op alles wat naar boven kijkt
     const omhoog = Math.max(0, vn.y);
     const hoog = Math.max(0, Math.min(1, (my + 0.1) / 0.6));
     const vlek = ruis(mx * 2.2 + 9, my * 2.2, mz * 2.2);
