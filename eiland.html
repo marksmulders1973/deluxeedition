@@ -273,58 +273,218 @@ function zoekPlek(minH, maxH, maxD){
   return null;
 }
 
-const BLADEREN_PER_PALM = 8;
-const palmen = [];                     // om tegenaan te botsen
+// ══════════════════════════════════════════════════════════════════
+// 5b. DE PALMBOMEN — helemaal opnieuw gebouwd (Brian: "10× realistischer")
+//
+// Een echte palm bestaat uit drie dingen:
+//  1) een STAM die kromt en vol ribbels zit (littekens van oude bladeren)
+//  2) BLADEREN met tientallen losse blaadjes aan een doorbuigende steel
+//  3) een KRUIN met jonge bladeren omhoog, oude bladeren omlaag,
+//     bruine dode bladeren eronder en trossen kokosnoten
+//
+// Alles zit in "InstancedMesh": duizenden blaadjes, maar de telefoon
+// hoeft er maar drie tekenbeurten voor te doen.
+// ══════════════════════════════════════════════════════════════════
+
+// ── 1) de stam: gebogen, dikker aan de voet, met ribbels ──
+function maakStamGeometrie(){
+  const RINGEN = 16, ZIJDEN = 9, HOOG = 5, BOOG = 1.05;   // maten voor een palm van 5 m
+  const pos = [], kleur = [], idx = [];
+  const c = new THREE.Color();
+  for(let i = 0; i <= RINGEN; i++){
+    const t = i / RINGEN;
+    const cx = BOOG * t * t, cy = HOOG * t;               // de stam kromt naar +X
+    let r = 0.155 - 0.070 * t;                            // naar boven toe dunner
+    r *= 1 + 0.06 * Math.sin(t * RINGEN * Math.PI);       // ribbels van oude bladvoeten
+    if(t < 0.10) r += (0.10 - t) * 0.75;                  // dikkere voet in het zand
+    const helling = Math.atan(2 * BOOG * t / HOOG);       // de ring staat haaks op de stam
+    for(let j = 0; j < ZIJDEN; j++){
+      const a = j / ZIJDEN * Math.PI * 2;
+      const px = Math.cos(a) * r, pz = Math.sin(a) * r;
+      pos.push(cx + px * Math.cos(helling), cy - px * Math.sin(helling), pz);
+      // lichte en donkere ringen onder elkaar = de typische palmstam-tekening
+      const band = 0.5 + 0.5 * Math.sin(t * RINGEN * Math.PI * 2);
+      const g = 0.62 + band * 0.42 + Math.cos(a) * 0.08;
+      c.setRGB(g * 0.60, g * 0.46, g * 0.32);
+      kleur.push(c.r, c.g, c.b);
+    }
+  }
+  for(let i = 0; i < RINGEN; i++){
+    for(let j = 0; j < ZIJDEN; j++){
+      const a = i*ZIJDEN + j, b = i*ZIJDEN + (j+1)%ZIJDEN;
+      idx.push(a, b, a+ZIJDEN, b, b+ZIJDEN, a+ZIJDEN);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(kleur, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+// ── 2) één palmblad: een doorbuigende steel met losse blaadjes ──
+// Het blad wijst naar +X en hangt naar beneden door, precies zoals echt.
+function maakBladGeometrie(){
+  const N = IS_TOUCH ? 10 : 14;      // aantal blaadjes-paren
+  const L = 3.9;                      // lengte van het blad
+  const pos = [], kleur = [], idx = [];
+  let v = 0;
+  // de middensteel: gaat naar buiten en zakt steeds sneller door
+  const steel = t => new THREE.Vector3(L * t, -(2.0 * t * t * t + 0.18 * t), 0);
+
+  for(let i = 0; i < N; i++){
+    const t0 = i / N, t1 = (i + 1) / N;
+    const p0 = steel(t0), p1 = steel(t1);
+    // de steel zelf: een smal bruingroen bandje
+    for(const [px, py, pz, l] of [
+      [p0.x, p0.y + 0.02, -0.035, 0.55], [p1.x, p1.y + 0.02, -0.035, 0.55],
+      [p1.x, p1.y + 0.02,  0.035, 0.55], [p0.x, p0.y + 0.02,  0.035, 0.55]
+    ]){ pos.push(px, py, pz); kleur.push(l, l, l); }
+    idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
+
+    // de blaadjes: breed in het midden, smal bij de voet en bij de punt
+    const br = Math.sin(Math.PI * Math.pow(t0, 0.7)) * 0.62 + 0.06;
+    for(const kant of [1, -1]){
+      // de punt wijst naar buiten, iets naar achteren en een stukje omlaag
+      const ux = -0.30, uy = -0.16 - 0.48 * br, uz = kant * br * 0.92;
+      const q0 = [p0.x + ux, p0.y + uy, p0.z + uz];
+      const q1 = [p1.x + ux, p1.y + uy, p1.z + uz];
+      pos.push(p0.x, p0.y, p0.z,  p1.x, p1.y, p1.z,  q1[0], q1[1], q1[2],  q0[0], q0[1], q0[2]);
+      // donkerder bij de steel, lichter aan de buitenrand → mooi diepte-effect
+      for(const l of [0.72, 0.72, 1.0, 1.0]) kleur.push(l, l, l);
+      idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(kleur, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+const palmen = [];        // om tegenaan te botsen + om kokosnoten onder te leggen
+const bladData = [];      // alles wat een blad nodig heeft om in de wind te wiegen
+let bladMesh = null;
 {
-  // stam: staat met zijn voet op de grond (basis op y=0, top op y=1 × schaal)
-  const stamGeo = new THREE.CylinderGeometry(0.16, 0.30, 1, 7);
-  stamGeo.translate(0, 0.5, 0);
-  // blad: een platte punt die naar +X wijst
-  const bladGeo = new THREE.ConeGeometry(0.5, 3.4, 4);
-  bladGeo.scale(1, 1, 0.3);
-  bladGeo.translate(0, 1.7, 0);
-  bladGeo.rotateZ(-Math.PI/2);
+  const AANTAL = IS_TOUCH ? 34 : 46;
+  const BLAD_JONG = IS_TOUCH ? 9 : 11;   // groene bladeren in de kruin
+  const BLAD_DOOD = 2;                   // bruine, afhangende oude bladeren
+  const PER_PALM = BLAD_JONG + BLAD_DOOD;
 
-  const AANTAL = 46;
-  const stammen = new THREE.InstancedMesh(stamGeo,
-    new THREE.MeshLambertMaterial({color: 0x8a6238}), AANTAL);
-  const bladeren = new THREE.InstancedMesh(bladGeo,
-    new THREE.MeshLambertMaterial({color: 0x3f9c37, side: THREE.DoubleSide}), AANTAL * BLADEREN_PER_PALM);
-  stammen.castShadow = bladeren.castShadow = true;
-  bladeren.receiveShadow = true;
+  const stammen = new THREE.InstancedMesh(
+    maakStamGeometrie(),
+    new THREE.MeshLambertMaterial({vertexColors: true}),
+    AANTAL
+  );
+  bladMesh = new THREE.InstancedMesh(
+    maakBladGeometrie(),
+    new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide}),
+    AANTAL * PER_PALM
+  );
+  // kokosnoten die nog aan de boom hangen
+  const NOTEN_PER = 4;
+  const hangNoten = new THREE.InstancedMesh(
+    new THREE.SphereGeometry(0.15, 8, 6),
+    new THREE.MeshLambertMaterial({color: 0x6b4a26}),
+    AANTAL * NOTEN_PER
+  );
+  stammen.castShadow = stammen.receiveShadow = true;
+  bladMesh.castShadow = true;
+  hangNoten.castShadow = true;
 
-  const d = new THREE.Object3D();
-  const kleur = new THREE.Color();
-  let b = 0;
+  const d = new THREE.Object3D(), kleur = new THREE.Color();
+  let b = 0, n = 0;
   for(let i = 0; i < AANTAL; i++){
     const p = zoekPlek(0.4, 7.5, 52) || {x: 0, z: 0, h: hoogteOp(0, 0)};
-    const hoogte = 4.8 + rnd() * 3.2;
-    const kant = rnd() * Math.PI * 2, scheef = rnd() * 0.17;   // palmen staan altijd een beetje scheef
-    const richting = new THREE.Vector3(Math.sin(scheef)*Math.cos(kant), Math.cos(scheef), Math.sin(scheef)*Math.sin(kant));
+    const hoogte = 7.0 + rnd() * 4.5;             // van jonge palmpjes tot hoge reuzen
+    const s = hoogte / 5;                          // de stam is getekend voor 5 m
+    const draai = rnd() * Math.PI * 2;             // naar welke kant hij overhelt
 
     d.position.set(p.x, p.h, p.z);
-    d.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), richting);
-    d.scale.set(0.85 + rnd()*0.4, hoogte, 0.85 + rnd()*0.4);
+    d.rotation.set(0, draai, 0);
+    d.scale.setScalar(s);
     d.updateMatrix();
     stammen.setMatrixAt(i, d.matrix);
 
-    // de kruin komt precies bovenop de (scheve) stam
-    const top = new THREE.Vector3(p.x, p.h, p.z).addScaledVector(richting, hoogte);
+    // waar zit de kruin? = de top van de gebogen stam, meegedraaid
+    const top = new THREE.Vector3(
+      p.x + Math.cos(draai) * 1.05 * s,
+      p.h + 5 * s,
+      p.z - Math.sin(draai) * 1.05 * s
+    );
     palmen.push({x: top.x, z: top.z, voetX: p.x, voetZ: p.z});
-    const draai = rnd() * Math.PI * 2;
-    for(let j = 0; j < BLADEREN_PER_PALM; j++){
-      d.position.copy(top);
-      d.rotation.set(0, draai + j * (Math.PI*2/BLADEREN_PER_PALM), -(0.35 + rnd()*0.5));
-      d.quaternion.setFromEuler(d.rotation);
-      d.scale.setScalar(0.85 + rnd()*0.45);
+
+    // ── de bladeren van de kruin ──
+    const start = rnd() * Math.PI * 2;
+    for(let j = 0; j < PER_PALM; j++){
+      const dood = j >= BLAD_JONG;
+      // jonge bladeren staan omhoog, oudere zakken steeds verder door
+      const leeftijd = dood ? 1 : j / BLAD_JONG;
+      const droop = dood ? (1.50 + rnd() * 0.35) : (-1.10 + leeftijd * 2.25 + (rnd() - 0.5) * 0.30);
+      const info = {
+        top: top.clone(),
+        hoek: start + (j / PER_PALM) * Math.PI * 2 + (rnd() - 0.5) * 0.4,
+        droop,
+        sx: (dood ? 0.58 : 0.72) + rnd() * 0.26,
+        sy: (dood ? 0.58 : 0.72) + rnd() * 0.30,
+        fase: rnd() * 6.28,
+        wieg: 0.5 + rnd() * 0.8          // hoe hard dit blad meewiegt in de wind
+      };
+      bladData.push(info);
+      d.position.copy(info.top);
+      d.rotation.set(0, info.hoek, -info.droop);
+      d.scale.set(info.sx, info.sy, info.sx);
       d.updateMatrix();
-      bladeren.setMatrixAt(b, d.matrix);
-      kleur.setHSL(0.28 + rnd()*0.05, 0.5, 0.30 + rnd()*0.12);
-      bladeren.setColorAt(b, kleur);
+      bladMesh.setMatrixAt(b, d.matrix);
+      // groen voor jonge bladeren, bruin/geel voor de dode
+      if(dood) kleur.setHSL(0.09 + rnd() * 0.03, 0.45, 0.30 + rnd() * 0.08);
+      else     kleur.setHSL(0.27 + rnd() * 0.05, 0.60, 0.26 + rnd() * 0.14);
+      bladMesh.setColorAt(b, kleur);
       b++;
     }
+
+    // ── trossen kokosnoten onder de kruin (niet elke palm draagt vrucht) ──
+    const draagt = rnd() < 0.55;
+    for(let k = 0; k < NOTEN_PER; k++){
+      if(draagt){
+        const a = rnd() * Math.PI * 2, r = 0.18 + rnd() * 0.28;
+        d.position.set(top.x + Math.cos(a) * r, top.y - 0.20 - rnd() * 0.25, top.z + Math.sin(a) * r);
+        d.rotation.set(0, 0, 0);
+        d.scale.setScalar(0.9 + rnd() * 0.3);
+      } else {
+        d.position.set(0, -999, 0);            // deze palm draagt niets: uit beeld
+        d.scale.setScalar(0.001);
+      }
+      d.updateMatrix();
+      hangNoten.setMatrixAt(n++, d.matrix);
+    }
   }
-  scene.add(stammen); scene.add(bladeren);
+  scene.add(stammen); scene.add(bladMesh); scene.add(hangNoten);
+}
+
+// ── 3) de wind: de bladeren wiegen zachtjes heen en weer ──
+const bladDummy = new THREE.Object3D();
+let windTeller = 0;
+function updateWind(t){
+  // niet elk beeldje opnieuw — dat scheelt rekenwerk en je ziet het verschil niet
+  if(++windTeller % (IS_TOUCH ? 3 : 2) !== 0) return;
+  const vlaag = 0.6 + 0.4 * Math.sin(t * 0.23);     // de wind wordt sterker en zwakker
+  for(let i = 0; i < bladData.length; i++){
+    const bd = bladData[i];
+    const w = bd.wieg * vlaag;
+    bladDummy.position.copy(bd.top);
+    bladDummy.rotation.set(
+      0,
+      bd.hoek + Math.sin(t * 1.3 + bd.fase) * 0.05 * w,
+      -(bd.droop + Math.sin(t * 1.7 + bd.fase) * 0.075 * w)
+    );
+    bladDummy.scale.set(bd.sx, bd.sy, bd.sx);
+    bladDummy.updateMatrix();
+    bladMesh.setMatrixAt(i, bladDummy.matrix);
+  }
+  bladMesh.instanceMatrix.needsUpdate = true;
 }
 
 // ── rotsen ──
@@ -800,9 +960,10 @@ function loop(nu){
     updateSpullen(dt, t);
   }
   golfZee(t);
+  updateWind(t);
   lucht.position.copy(camera.position);   // de hemel reist met je mee
   // schaduwen ~4× per seconde bijwerken (voor de krabben en het kistdeksel)
-  if((schaduwTeller++ % 15) === 0) renderer.shadowMap.needsUpdate = true;
+  if((schaduwTeller++ % 20) === 0) renderer.shadowMap.needsUpdate = true;
 
   camera.rotation.set(0, 0, 0);
   camera.rotateY(yaw);
