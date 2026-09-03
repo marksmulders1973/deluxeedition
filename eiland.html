@@ -643,10 +643,12 @@ function maakSteenGeometrie(zaadje, mos, detail){
   const g = new THREE.IcosahedronGeometry(1, detail);
   const pos = g.attributes.position;
 
-  // ── de breukvlakken bedenken ──
-  // Gelijkmatig verdeeld over de bol (gulden hoek), elk op een eigen
-  // afstand van het midden. Hoe dichterbij, hoe platter dat vlak snijdt.
-  const VLAKKEN = 9 + Math.floor(ruis(zaadje, 3.1, 7.7) * 5);
+  // ── de breukvlakken ──
+  // WEINIG vlakken, en dicht bij het midden. Dat is het hele geheim: veel
+  // vlakken geven kleine facetjes en dan blijft het een ronde kei. Zes tot
+  // negen vlakken die diep insnijden geven grote, platte breukvlakken met
+  // scherpe ribben ertussen — precies zoals een rots die is afgebroken.
+  const VLAKKEN = 6 + Math.floor(ruis(zaadje, 3.1, 7.7) * 4);
   const vlakken = [];
   const goud = Math.PI * (3 - Math.sqrt(5));
   for(let i = 0; i < VLAKKEN; i++){
@@ -654,32 +656,34 @@ function maakSteenGeometrie(zaadje, mos, detail){
     const r = Math.sqrt(Math.max(0, 1 - y * y));
     const a = goud * i + zaadje;
     const n = new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r);
-    // scheef trekken zodat het geen keurige veelvlak wordt
-    n.x += (ruis(i, zaadje, 1.3) - 0.5) * 0.5;
-    n.y += (ruis(i, zaadje, 2.7) - 0.5) * 0.5;
-    n.z += (ruis(i, zaadje, 5.1) - 0.5) * 0.5;
+    // flink scheeftrekken: een rots is nooit symmetrisch
+    n.x += (ruis(i, zaadje, 1.3) - 0.5) * 0.9;
+    n.y += (ruis(i, zaadje, 2.7) - 0.5) * 0.9;
+    n.z += (ruis(i, zaadje, 5.1) - 0.5) * 0.9;
     n.normalize();
-    vlakken.push({n, d: 0.62 + ruis(i * 1.7, zaadje, 9.3) * 0.42});
+    // het ene vlak snijdt diep in (groot plat vlak), het andere raakt amper
+    vlakken.push({n, d: 0.40 + Math.pow(ruis(i * 1.7, zaadje, 9.3), 0.7) * 0.55});
   }
 
   const n = new THREE.Vector3();
   for(let i = 0; i < pos.count; i++){
     n.set(pos.getX(i), pos.getY(i), pos.getZ(i)).normalize();
-    // hoe ver mag deze richting reiken? Tot het dichtstbijzijnde breukvlak.
     let r = 3;
     for(const v of vlakken){
       const dp = n.dot(v.n);
       if(dp > 0.02) r = Math.min(r, v.d / dp);
     }
-    // kleine oneffenheden op de vlakken — anders lijkt het een edelsteen
-    r *= 1 + 0.07 * Math.sin(n.x * 7.3 + zaadje) * Math.cos(n.z * 6.1)
-           + 0.04 * Math.sin(n.y * 11.7 + zaadje * 2);
-    let y = n.y * r * 0.74;                 // stenen zijn platter dan een bol
-    if(y < -0.40) y = -0.40;                // vlakke onderkant: hij LIGT ergens op
+    // héél lichte oneffenheid — de vlakken moeten PLAT blijven, anders
+    // wordt het weer een kei
+    r *= 1 + 0.016 * Math.sin(n.x * 9.3 + zaadje) * Math.cos(n.z * 8.1);
+    let y = n.y * r * 0.86;
+    if(y < -0.34) y = -0.34;                // vlakke onderkant: hij LIGT ergens op
     pos.setXYZ(i, n.x * r, y, n.z * r);
   }
 
   // ── de kleur per driehoekje ──
+  // Elk breukvlak krijgt zijn eigen tint: een verse breuk is lichter, een
+  // verweerde kant donkerder. Daardoor zie je de vlakken echt van elkaar.
   const kleuren = new Float32Array(pos.count * 3);
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
   const ab = new THREE.Vector3(), ac = new THREE.Vector3(), vn = new THREE.Vector3();
@@ -691,13 +695,20 @@ function maakSteenGeometrie(zaadje, mos, detail){
     vn.crossVectors(ab.subVectors(b, a), ac.subVectors(c, a)).normalize();
     const mx = (a.x + b.x + c.x) / 3, my = (a.y + b.y + c.y) / 3, mz = (a.z + b.z + c.z) / 3;
 
-    // basiskleur: grijs met korrel, en donkere adertjes door de steen
-    const korrel = 0.82 + ruis(mx * 5.5, my * 5.5, mz * 5.5) * 0.30;
-    const ader = Math.max(0, Math.sin(mx * 6.1 + my * 3.7 + mz * 4.9 + zaadje) - 0.72) * 1.8;
-    const g2 = korrel * (1 - ader * 0.35);
-    steen.setRGB(g2 * 0.47, g2 * 0.465, g2 * 0.435);
+    // bij welk breukvlak hoort dit driehoekje?
+    let welk = 0, besteDot = -2;
+    for(let k = 0; k < vlakken.length; k++){
+      const dp = vn.dot(vlakken[k].n);
+      if(dp > besteDot){ besteDot = dp; welk = k; }
+    }
+    const vlakTint = 0.78 + ruis(welk * 3.7, zaadje, 1.9) * 0.46;
 
-    // mos: alleen op vlakjes die omhoog kijken én hoog op de steen liggen
+    const korrel = 0.88 + ruis(mx * 5.5, my * 5.5, mz * 5.5) * 0.22;
+    const ader = Math.max(0, Math.sin(mx * 6.1 + my * 3.7 + mz * 4.9 + zaadje) - 0.72) * 1.8;
+    const g2 = korrel * vlakTint * (1 - ader * 0.32);
+    steen.setRGB(g2 * 0.50, g2 * 0.495, g2 * 0.46);
+
+    // mos: alleen op vlakken die omhoog kijken, en het meest in de naden
     const omhoog = Math.max(0, vn.y);
     const hoog = Math.max(0, Math.min(1, (my + 0.1) / 0.6));
     const vlek = ruis(mx * 2.2 + 9, my * 2.2, mz * 2.2);
@@ -717,9 +728,15 @@ function maakSteenGeometrie(zaadje, mos, detail){
 // die grover mogen zijn. Zo zie je nooit twee dezelfde stenen liggen.
 {
   const SOORTEN = [
-    {zaadje: 0.9, mos: 0.80, detail: 2, aantal: IS_TOUCH ? 4 : 6,  maat: [1.6, 2.6]},
-    {zaadje: 3.6, mos: 1.15, detail: 1, aantal: IS_TOUCH ? 7 : 10, maat: [0.7, 1.5]},
-    {zaadje: 6.3, mos: 0.45, detail: 1, aantal: IS_TOUCH ? 7 : 11, maat: [0.5, 1.2]},
+    // grote liggende rotsblokken
+    {zaadje: 0.9,  mos: 0.80, detail: 1, aantal: IS_TOUCH ? 3 : 4, maat: [1.7, 2.7], vorm: [1.15, 0.62, 1.35]},
+    // rechtopstaande rotspunten
+    {zaadje: 2.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 2 : 3, maat: [1.2, 2.0], vorm: [0.72, 1.55, 0.80]},
+    // gedrongen keien
+    {zaadje: 3.6,  mos: 1.15, detail: 1, aantal: IS_TOUCH ? 5 : 8, maat: [0.8, 1.6], vorm: [1.10, 0.78, 1.00]},
+    // kleine brokken
+    {zaadje: 6.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 5 : 8, maat: [0.5, 1.2], vorm: [1.00, 0.85, 1.20]},
+    {zaadje: 11.7, mos: 0.65, detail: 1, aantal: IS_TOUCH ? 4 : 6, maat: [0.6, 1.4], vorm: [1.30, 0.70, 0.90]},
   ];
   const gruisPlek = [];
   for(const soort of SOORTEN){
@@ -736,7 +753,8 @@ function maakSteenGeometrie(zaadje, mos, detail){
       // de steen zakt een stukje in de grond, alsof hij er al jaren ligt
       d.position.set(p.x, p.h + m * 0.26, p.z);
       d.rotation.set((rnd() - 0.5) * 0.45, rnd() * 6.28, (rnd() - 0.5) * 0.45);
-      d.scale.set(m * (0.85 + rnd() * 0.45), m * (0.72 + rnd() * 0.5), m * (0.85 + rnd() * 0.45));
+      const vf = soort.vorm;
+      d.scale.set(m * vf[0] * (0.82 + rnd() * 0.4), m * vf[1] * (0.82 + rnd() * 0.4), m * vf[2] * (0.82 + rnd() * 0.4));
       d.updateMatrix();
       mesh.setMatrixAt(i, d.matrix);
       // de ene steen is grijzer, de andere warmer bruin — net als in het echt
