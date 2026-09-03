@@ -738,25 +738,35 @@ function maakStruikGeometrie(zaadje){
 // Eén pol = 6 sprietjes die naar buiten waaieren. Onderaan donker,
 // bovenaan lichtgroen — daardoor lijkt het gras diep in plaats van plat.
 function maakGrasGeometrie(){
-  const SPRIETEN = IS_TOUCH ? 4 : 6;
+  const SPRIETEN = IS_TOUCH ? 5 : 7;
   const pos = [], kleur = [], idx = [];
   let v = 0, t = 0;
   const beetje = () => { t += 1.37; return (Math.sin(t * 91.7) * 0.5 + 0.5); };
   for(let i = 0; i < SPRIETEN; i++){
-    const a = (i / SPRIETEN) * Math.PI * 2 + beetje() * 0.8;
-    const H = 0.26 + beetje() * 0.30;              // niet elke spriet is even lang
-    const buig = 0.10 + beetje() * 0.16;            // hoe ver hij overhangt
+    const a = (i / SPRIETEN) * Math.PI * 2 + beetje() * 0.9;
+    const H = 0.24 + beetje() * 0.36;               // niet elke spriet is even lang
+    const buig = 0.09 + beetje() * 0.22;            // hoe ver hij overhangt
     const dx = Math.cos(a), dz = Math.sin(a);
-    const W = 0.028;
-    // knik in het midden zodat de spriet doorbuigt
-    const mx = dx * buig * 0.35, my = H * 0.55, mz = dz * buig * 0.35;
-    const tx = dx * buig,        ty = H,         tz = dz * buig;
-    // onderste stuk (breed) + bovenste stuk (spits)
-    pos.push(-dz*W, 0, dx*W,   dz*W, 0, -dx*W,   mx + dz*W*0.55, my, mz - dx*W*0.55,   mx - dz*W*0.55, my, mz + dx*W*0.55);
-    for(const l of [0.80, 0.80, 1.12, 1.12]) kleur.push(l, l, l);
+    const W = 0.019;
+    // Een echte grasspriet is breed onderaan en loopt spits toe, en hij
+    // buigt niet in één knik maar in een boog. Daarom drie stukjes:
+    // breed → smaller → punt, elk verder overhangend dan het vorige.
+    const p1 = 0.42, p2 = 0.76;
+    const x1 = dx * buig * p1 * p1, y1 = H * p1, z1 = dz * buig * p1 * p1;
+    const x2 = dx * buig * p2 * p2, y2 = H * p2, z2 = dz * buig * p2 * p2;
+    const tx = dx * buig,           ty = H,      tz = dz * buig;
+    const w0 = W, w1 = W * 0.72, w2 = W * 0.40;
+    // stuk 1: van de grond naar de eerste knik
+    pos.push(-dz*w0, 0, dx*w0,   dz*w0, 0, -dx*w0,   x1 + dz*w1, y1, z1 - dx*w1,   x1 - dz*w1, y1, z1 + dx*w1);
+    for(const l of [0.74, 0.74, 1.02, 1.02]) kleur.push(l, l, l);
     idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
-    pos.push(mx - dz*W*0.55, my, mz + dx*W*0.55,   mx + dz*W*0.55, my, mz - dx*W*0.55,   tx, ty, tz);
-    for(const l of [1.12, 1.12, 1.42]) kleur.push(l, l, l);
+    // stuk 2: verder omhoog en verder overhangend
+    pos.push(x1 - dz*w1, y1, z1 + dx*w1,   x1 + dz*w1, y1, z1 - dx*w1,   x2 + dz*w2, y2, z2 - dx*w2,   x2 - dz*w2, y2, z2 + dx*w2);
+    for(const l of [1.02, 1.02, 1.24, 1.24]) kleur.push(l, l, l);
+    idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
+    // stuk 3: de spitse punt
+    pos.push(x2 - dz*w2, y2, z2 + dx*w2,   x2 + dz*w2, y2, z2 - dx*w2,   tx, ty, tz);
+    for(const l of [1.24, 1.24, 1.52]) kleur.push(l, l, l);
     idx.push(v, v+1, v+2); v += 3;
   }
   const g = new THREE.BufferGeometry();
@@ -766,23 +776,29 @@ function maakGrasGeometrie(){
   g.computeVertexNormals();
   return g;
 }
-// ── HET GRASVELD DAT MET JE MEEREIST (Brian: "overal grassprietjes") ──
+
+// ── HET GRASVELD DAT MET JE MEEREIST (Brian: "overal gras, net echt") ──
 //
 // Overal op het hele eiland gras zetten zou tienduizenden plukjes kosten
-// en je telefoon laten hikken. De truc: we tekenen alleen een vierkant
-// lapje gras RONDOM jou, en schuiven dat mee terwijl je loopt.
+// en je telefoon laten hikken. De truc: we tekenen alleen een lapje gras
+// RONDOM jou en schuiven dat mee terwijl je loopt.
 //
 // Elke plek in het raster heeft een vaste plek en maat, berekend uit zijn
 // eigen vakje-nummer. Daardoor staat het gras altijd op precies dezelfde
 // plaats — het springt niet als je heen en weer loopt.
 //
-// Gras groeit alléén op gras: niet op het zand (te laag), niet op de kale
-// bergtop (te hoog) en niet tegen steile rotswanden.
-const GRAS_CEL    = IS_TOUCH ? 1.45 : 1.20;   // afstand tussen twee plukjes
-const GRAS_RASTER = IS_TOUCH ? 24 : 32;       // aantal vakjes in de breedte
-const GRAS_MIN_H  = 1.15;                     // hieronder is het strand → zand
-const GRAS_MAX_H  = 9.2;                      // hierboven is het kale rots
-const GRAS_STEIL  = 1.7;                      // steiler dan dit = rotswand
+// Dichtbij staat élk vakje vol (dicht gras), verder weg om het andere
+// vakje met een grotere pol. Zo is het waar je kijkt lekker dicht, zonder
+// dat het aantal plukjes ontploft.
+//
+// En ze WUIVEN: er loopt een echte windvlaag door het veld, want de golf
+// hangt af van waar een pluk staat. Dat is wat gras pas echt maakt.
+const GRAS_CEL      = IS_TOUCH ? 1.05 : 0.82;  // afstand tussen twee plukjes
+const GRAS_RASTER   = IS_TOUCH ? 30 : 42;      // aantal vakjes in de breedte
+const GRAS_DICHTBIJ = IS_TOUCH ? 9 : 13;       // binnen deze ring staat élk vakje vol
+const GRAS_MIN_H    = 1.15;                    // hieronder is het strand → zand
+const GRAS_MAX_H    = 9.2;                     // hierboven is het kale rots
+const GRAS_STEIL    = 1.7;                     // steiler dan dit = rotswand
 
 // een vast "toevalsgetal" per vakje: zelfde vakje = altijd hetzelfde getal
 function celRuis(a, b){
@@ -790,9 +806,35 @@ function celRuis(a, b){
   return s - Math.floor(s);
 }
 
+// 🌬️ De wind zit in de SHADER. Eerst rekende de computer elk beeldje alle
+// duizend plukjes opnieuw uit — dat kostte de helft van de snelheid. Nu
+// krijgt de grafische kaart één getal (de tijd) en buigt hij elke spriet
+// zelf: hoe hoger in de spriet, hoe verder hij meebuigt, en de golf hangt
+// af van wáár de pluk staat. Zo loopt er een echte windvlaag over het veld.
+const grasMateriaal = new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide});
+let grasTijd = null;
+grasMateriaal.onBeforeCompile = (shader) => {
+  shader.uniforms.tijd = {value: 0};
+  grasTijd = shader.uniforms.tijd;
+  shader.vertexShader = 'uniform float tijd;\n' + shader.vertexShader.replace(
+    '#include <project_vertex>',
+    `vec4 mvPosition = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        mvPosition = instanceMatrix * mvPosition;
+      #endif
+      // hoe hoger in de spriet, hoe verder hij meebuigt
+      float hoog = max(transformed.y, 0.0);
+      float vlaag = 0.55 + 0.45 * sin(tijd * 0.31);
+      float golf = sin(tijd * 1.9 + mvPosition.x * 0.55 + mvPosition.z * 0.42);
+      mvPosition.x += golf * hoog * 0.42 * vlaag;
+      mvPosition.z += golf * hoog * 0.27 * vlaag;
+      mvPosition = modelViewMatrix * mvPosition;
+      gl_Position = projectionMatrix * mvPosition;`
+  );
+};
 const grasVeld = new THREE.InstancedMesh(
   maakGrasGeometrie(),
-  new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide}),
+  grasMateriaal,
   GRAS_RASTER * GRAS_RASTER
 );
 grasVeld.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -801,17 +843,25 @@ scene.add(grasVeld);
 
 let grasVakX = 1e9, grasVakZ = 1e9;
 const grasDummy = new THREE.Object3D(), grasKleur = new THREE.Color();
+const grasData = [];      // per pluk: waar hij staat, hoe groot, en zijn golf-fase
 
+// Bepaalt welke plukjes er om je heen staan. Draait alleen als je een
+// vakje verder loopt — niet elk beeldje.
 function updateGrasVeld(){
   const vx = Math.round(camera.position.x / GRAS_CEL);
   const vz = Math.round(camera.position.z / GRAS_CEL);
-  if(vx === grasVakX && vz === grasVakZ) return;   // nog in hetzelfde vakje → niets te doen
+  if(vx === grasVakX && vz === grasVakZ) return;
   grasVakX = vx; grasVakZ = vz;
 
   const half = GRAS_RASTER >> 1;
-  let i = 0;
+  grasData.length = 0;
   for(let a = -half; a < half; a++){
     for(let b = -half; b < half; b++){
+      const ring = Math.max(Math.abs(a), Math.abs(b));
+      // verder weg: om het andere vakje, maar dan wel een grotere pol
+      const ver = ring > GRAS_DICHTBIJ;
+      if(ver && ((a + b) & 1)) continue;
+
       const gx = vx + a, gz = vz + b;
       const r1 = celRuis(gx, gz), r2 = celRuis(gx + 7.1, gz - 3.3), r3 = celRuis(gx * 1.7, gz * 2.3);
       const x = (gx + (r1 - 0.5) * 0.95) * GRAS_CEL;
@@ -820,30 +870,54 @@ function updateGrasVeld(){
       if(h < GRAS_MIN_H || h > GRAS_MAX_H) continue;                  // zand of kale top
       const steil = Math.abs(hoogteOp(x + 1.6, z) - h) + Math.abs(hoogteOp(x, z + 1.6) - h);
       if(steil > GRAS_STEIL) continue;                                // rotswand
-      // aan de rand van het lapje worden de plukjes kleiner, zodat je nooit
+      // aan de rand van het lapje krimpen de plukjes weg, zodat je nooit
       // een harde cirkel om je heen ziet staan
-      const rand = Math.max(Math.abs(a), Math.abs(b)) / half;
-      const fade = 1 - Math.max(0, Math.min(1, (rand - 0.72) / 0.28));
+      const fade = 1 - Math.max(0, Math.min(1, (ring / half - 0.74) / 0.26));
       if(fade <= 0.02) continue;
       // net boven het strand groeit het gras dunner (helmgras in de duinen)
       const duin = Math.min(1, (h - GRAS_MIN_H) / 1.2);
-      if(r3 > 0.25 + duin * 0.75) continue;
+      if(r3 > 0.22 + duin * 0.78) continue;
 
-      const m = (0.85 + r3 * 1.05) * fade;
-      grasDummy.position.set(x, h - 0.03, z);
-      grasDummy.rotation.set(0, r1 * 6.28, 0);
-      grasDummy.scale.set(m, m * (0.8 + r2 * 0.55), m);
-      grasDummy.updateMatrix();
-      grasVeld.setMatrixAt(i, grasDummy.matrix);
-      grasKleur.setHSL(0.24 + r2 * 0.07, 0.52, 0.38 + r1 * 0.16);
+      const m = (0.72 + r3 * 0.80) * (ver ? 1.45 : 1) * fade;
+      grasData.push({
+        x, y: h - 0.03, z,
+        draai: r1 * 6.28,
+        mx: m,
+        my: m * (0.75 + r2 * 0.7),
+        // de golf loopt schuin over het veld: plukjes verderop wuiven later
+        fase: x * 0.55 + z * 0.42
+      });
+      const i = grasData.length - 1;
+      // meestal groen, af en toe een gelige droge pluk ertussen
+      if(r3 > 0.93) grasKleur.setHSL(0.16 + r1 * 0.03, 0.30, 0.40 + r2 * 0.08);
+      else          grasKleur.setHSL(0.24 + r2 * 0.07, 0.52, 0.36 + r1 * 0.18);
       grasVeld.setColorAt(i, grasKleur);
-      i++;
     }
   }
-  grasVeld.count = i;                       // alleen de gevulde plekjes tekenen
-  grasVeld.instanceMatrix.needsUpdate = true;
+  grasVeld.count = grasData.length;      // alleen de gevulde plekjes tekenen
   if(grasVeld.instanceColor) grasVeld.instanceColor.needsUpdate = true;
+  zetGrasMatrices();
 }
+
+// Zet alle plukjes op hun plek. Dit hoeft alleen als je een vakje verder
+// loopt — het wuiven doet de grafische kaart zelf.
+function zetGrasMatrices(){
+  for(let i = 0; i < grasData.length; i++){
+    const g = grasData[i];
+    grasDummy.position.set(g.x, g.y, g.z);
+    grasDummy.rotation.set(0, g.draai, 0);
+    grasDummy.scale.set(g.mx, g.my, g.mx);
+    grasDummy.updateMatrix();
+    grasVeld.setMatrixAt(i, grasDummy.matrix);
+  }
+  // alleen het gebruikte stuk van de buffer naar de grafische kaart sturen
+  grasVeld.instanceMatrix.updateRange.offset = 0;
+  grasVeld.instanceMatrix.updateRange.count = grasData.length * 16;
+  grasVeld.instanceMatrix.needsUpdate = true;
+}
+
+// de klok doorgeven aan de shader — dat is alles wat de wind nog kost
+function updateGrasWind(t){ if(grasTijd) grasTijd.value = t; }
 
 // ── BLOEMEN: vijf blaadjes rond een geel hartje, op een steeltje ──
 // Twee losse meshes: de steeltjes blijven groen, de bloemhoofdjes
@@ -1387,6 +1461,7 @@ function loop(nu){
   golfZee(t);
   updateWind(t);
   updateGrasVeld();
+  updateGrasWind(t);
   lucht.position.copy(camera.position);   // de hemel reist met je mee
   // schaduwen ~4× per seconde bijwerken (voor de krabben en het kistdeksel)
   if((schaduwTeller++ % 20) === 0) renderer.shadowMap.needsUpdate = true;
