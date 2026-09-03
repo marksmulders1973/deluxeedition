@@ -964,17 +964,27 @@ function maakSteenGeometrie(zaadje, mos, detail, uvSchaal){
 // rafelig in plaats van een gladde bal. Binnenin donker (daar komt geen
 // zon), naar de punten toe lichtgroen, precies als op de foto.
 function maakStruikGeometrie(zaadje){
-  const TAKJES = IS_TOUCH ? 24 : 34;
+  // Brian: "het zijn nu maar spijkers, het moeten krullen zijn — net zo
+  // goed als bij de boom." Klopt: het waren rechte driehoeken.
+  //
+  // Nu is elk takje gebouwd zoals een palmblad: een steel die KROMT naar
+  // buiten en omlaag, met langs die steel vijf paar kleine naaldjes die
+  // schuin naar voren wijzen. Dat is wat een conifeer zijn veerachtige,
+  // krullende uiterlijk geeft.
+  const TAKKEN = IS_TOUCH ? 16 : 24;
+  const BLAADJES = IS_TOUCH ? 5 : 6;      // paren naaldjes langs elke steel
   const pos = [], kleur = [], idx = [];
   let v = 0;
   const goud = Math.PI * (3 - Math.sqrt(5));
-  const d = new THREE.Vector3(), zij = new THREE.Vector3(), op = new THREE.Vector3(0, 1, 0);
-  for(let i = 0; i < TAKJES; i++){
-    // gelijkmatig over de bol verdeeld, maar nauwelijks aan de onderkant
-    const y = 1 - (i / (TAKJES - 1)) * 1.65;
-    const r = Math.sqrt(Math.max(0, 1 - y * y));
+  const d = new THREE.Vector3(), zij = new THREE.Vector3(), krul = new THREE.Vector3();
+  const op = new THREE.Vector3(0, 1, 0);
+  const p0 = new THREE.Vector3(), p1 = new THREE.Vector3();
+
+  for(let i = 0; i < TAKKEN; i++){
+    const y = 1 - (i / (TAKKEN - 1)) * 1.6;
+    const rr = Math.sqrt(Math.max(0, 1 - y * y));
     const a = goud * i + zaadje;
-    d.set(Math.cos(a) * r, y * 0.95, Math.sin(a) * r);
+    d.set(Math.cos(a) * rr, y * 0.95, Math.sin(a) * rr);
     d.x += (ruis(i, zaadje, 1.1) - 0.5) * 0.5;
     d.y += (ruis(i, zaadje, 2.2) - 0.5) * 0.4;
     d.z += (ruis(i, zaadje, 3.3) - 0.5) * 0.5;
@@ -982,34 +992,57 @@ function maakStruikGeometrie(zaadje){
     zij.crossVectors(d, op);
     if(zij.lengthSq() < 0.01) zij.set(1, 0, 0);
     zij.normalize();
+    // de richting waarin de steel doorbuigt: omlaag én een beetje opzij,
+    // zodat geen twee takken dezelfde kant op krullen
+    krul.set(0, -1, 0).addScaledVector(zij, (ruis(i, zaadje, 8.8) - 0.5) * 1.1).normalize();
 
-    // het ene takje steekt verder uit dan het andere → rafelig silhouet
-    const lang = 0.70 + ruis(i * 1.7, zaadje, 4.4) * 0.62;
-    const bx = d.x * 0.20, by = d.y * 0.20, bz = d.z * 0.20;
-    const px = d.x * lang, py = d.y * lang, pz = d.z * lang;
-    const bw = 0.20 + ruis(i, zaadje, 5.5) * 0.10;   // breed bij de voet
-    const pw = 0.035;                                 // spits bij de punt
+    const L = 0.66 + ruis(i * 1.7, zaadje, 4.4) * 0.46;   // lengte van de tak
+    const buiging = (0.22 + ruis(i, zaadje, 7.7) * 0.30) * L;
 
-    // het takje zelf
-    pos.push(bx + zij.x*bw, by + zij.y*bw, bz + zij.z*bw,
-             bx - zij.x*bw, by - zij.y*bw, bz - zij.z*bw,
-             px - zij.x*pw, py - zij.y*pw, pz - zij.z*pw,
-             px + zij.x*pw, py + zij.y*pw, pz + zij.z*pw);
-    for(const l of [0.42, 0.42, 1.25, 1.25]) kleur.push(l, l, l);
-    idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
+    // de gekromde steel: hij loopt naar buiten en zakt steeds sneller door
+    const opSteel = (t) => new THREE.Vector3(
+      d.x * L * t + krul.x * buiging * t * t + d.x * 0.16,
+      d.y * L * t + krul.y * buiging * t * t + d.y * 0.16,
+      d.z * L * t + krul.z * buiging * t * t + d.z * 0.16
+    );
 
-    // twee zijtakjes halverwege, dwars erop — dat geeft de pluizige bos
-    const hx = (bx + px) * 0.5, hy = (by + py) * 0.5, hz = (bz + pz) * 0.5;
-    const kruis = new THREE.Vector3().crossVectors(d, zij).normalize();
-    for(const kant of [1, -1]){
-      const tw = 0.30 + ruis(i, zaadje, 6.6) * 0.24;
-      pos.push(hx, hy, hz,
-               bx + kruis.x*0.05*kant, by + kruis.y*0.05*kant, bz + kruis.z*0.05*kant,
-               hx + kruis.x*tw*kant + d.x*0.24, hy + kruis.y*tw*kant + d.y*0.24, hz + kruis.z*tw*kant + d.z*0.24);
-      for(const l of [0.72, 0.50, 1.15]) kleur.push(l, l, l);
-      idx.push(v, v+1, v+2); v += 3;
+    // ── de steel zelf: een dun, doorbuigend bandje ──
+    const STUKKEN = 3;
+    for(let k = 0; k < STUKKEN; k++){
+      p0.copy(opSteel(k / STUKKEN)); p1.copy(opSteel((k + 1) / STUKKEN));
+      const w0 = 0.030 * (1 - k / STUKKEN) + 0.008, w1 = 0.030 * (1 - (k+1) / STUKKEN) + 0.008;
+      pos.push(p0.x + zij.x*w0, p0.y + zij.y*w0, p0.z + zij.z*w0,
+               p0.x - zij.x*w0, p0.y - zij.y*w0, p0.z - zij.z*w0,
+               p1.x - zij.x*w1, p1.y - zij.y*w1, p1.z - zij.z*w1,
+               p1.x + zij.x*w1, p1.y + zij.y*w1, p1.z + zij.z*w1);
+      const l0 = 0.45 + (k / STUKKEN) * 0.5, l1 = 0.45 + ((k+1) / STUKKEN) * 0.5;
+      kleur.push(l0,l0,l0, l0,l0,l0, l1,l1,l1, l1,l1,l1);
+      idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
+    }
+
+    // ── de naaldjes langs de steel, paar voor paar ──
+    for(let b = 0; b < BLAADJES; b++){
+      const t = 0.16 + (b / BLAADJES) * 0.78;
+      p0.copy(opSteel(t));
+      p1.copy(opSteel(Math.min(1, t + 0.13)));       // richting van de steel hier
+      const richt = p1.clone().sub(p0).normalize();
+      // naaldjes worden korter naar de punt van de tak toe
+      const lang = (0.36 - b * 0.032) * (0.78 + ruis(i * 3.1 + b, zaadje, 2.5) * 0.55);
+      const breed = 0.055;
+      for(const kant of [1, -1]){
+        // de punt wijst naar buiten (opzij) én mee met de steel naar voren
+        const px = p0.x + zij.x * lang * kant * 0.85 + richt.x * lang * 0.55;
+        const py = p0.y + zij.y * lang * kant * 0.85 + richt.y * lang * 0.55 - lang * 0.12;
+        const pz = p0.z + zij.z * lang * kant * 0.85 + richt.z * lang * 0.55;
+        pos.push(p0.x + richt.x*breed, p0.y + richt.y*breed, p0.z + richt.z*breed,
+                 p0.x - richt.x*breed, p0.y - richt.y*breed, p0.z - richt.z*breed,
+                 px, py, pz);
+        kleur.push(0.58,0.58,0.58, 0.58,0.58,0.58, 1.32,1.32,1.32);
+        idx.push(v, v+1, v+2); v += 3;
+      }
     }
   }
+
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(kleur, 3));
@@ -1038,7 +1071,7 @@ function maakStruikGeometrie(zaadje){
     );
   };
   for(let vorm = 0; vorm < 2; vorm++){
-    const AANTAL = IS_TOUCH ? 24 : 36;
+    const AANTAL = IS_TOUCH ? 18 : 26;
     const mesh = new THREE.InstancedMesh(maakStruikGeometrie(vorm * 3.3 + 1.4), struikMat, AANTAL);
     mesh.castShadow = true;
     const d = new THREE.Object3D(), c = new THREE.Color();
@@ -1053,7 +1086,7 @@ function maakStruikGeometrie(zaadje){
       d.scale.set(m, m * (0.72 + rnd() * 0.42), m);
       d.updateMatrix();
       mesh.setMatrixAt(i, d.matrix);
-      c.setHSL(0.27 + rnd() * 0.05, 0.52, 0.30 + rnd() * 0.14);
+      c.setHSL(0.28 + rnd() * 0.05, 0.58, 0.26 + rnd() * 0.13);
       mesh.setColorAt(i, c);
     }
     scene.add(mesh);
