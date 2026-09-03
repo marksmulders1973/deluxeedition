@@ -478,55 +478,78 @@ function maakStamGeometrie(){
   return g;
 }
 
-// ── 2) één palmblad: een doorbuigende steel met losse blaadjes ──
-// Het blad wijst naar +X en hangt naar beneden door, precies zoals echt.
-function maakBladGeometrie(){
-  const N = IS_TOUCH ? 10 : 14;      // aantal blaadjes-paren
-  const L = 3.9;                      // lengte van het blad
-  const pos = [], kleur = [], idx = [];
-  let v = 0;
-  // de middensteel: gaat naar buiten en zakt steeds sneller door
-  const steel = t => new THREE.Vector3(L * t, -(2.0 * t * t * t + 0.18 * t), 0);
+// ── 2) HET PALMBLAD (Brian, met een foto van echte kokospalmen) ──
+//
+// Op zijn foto heeft elk blad tientallen haarfijne blaadjes. Die stuk
+// voor stuk als driehoekjes bouwen kan niet: dan zou één palm meer
+// driehoekjes kosten dan het hele eiland.
+//
+// Daarom de truc die echte games gebruiken: we TEKENEN het blad één keer
+// op een doorzichtig plaatje — een middenrib met 110 fijne blaadjes aan
+// weerszijden — en plakken dat op een simpele gebogen strook. Waar het
+// plaatje doorzichtig is, is er geen blad. Zo krijg je honderden blaadjes
+// voor de prijs van acht rechthoekjes, en kunnen er véél meer bladeren
+// in de kruin.
+let _bladTex = null;
+function maakBladTextuur(){
+  if(_bladTex) return _bladTex;
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 256;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 512, 256);          // begint helemaal doorzichtig
 
+  // de middenrib
+  g.strokeStyle = '#7d7433'; g.lineWidth = 5; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(2, 128); g.lineTo(505, 128); g.stroke();
+  g.strokeStyle = '#a89a45'; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(2, 126); g.lineTo(505, 126); g.stroke();
+
+  // de blaadjes: fijn, dicht op elkaar, schuin naar de punt van het blad
+  const N = 110;
+  for(let i = 0; i < N; i++){
+    const t = i / N;
+    const x = 6 + t * 500;
+    // lang in het midden van het blad, korter bij de voet en de punt
+    const lang = 118 * Math.sin(Math.PI * Math.pow(t, 0.62)) * (0.80 + Math.random() * 0.3);
+    for(const kant of [1, -1]){
+      const groen = 122 + Math.random() * 88;
+      g.strokeStyle = 'rgb(' + Math.round(groen * 0.42) + ',' + Math.round(groen) + ',' + Math.round(groen * 0.36) + ')';
+      g.lineWidth = 1.5 + Math.random() * 1.7;
+      g.beginPath();
+      g.moveTo(x, 128 + kant * 2);
+      // licht gebogen: eerst schuin weg, dan een beetje terugvallend
+      g.quadraticCurveTo(
+        x + lang * 0.34, 128 + kant * lang * 0.55,
+        x + lang * 0.52, 128 + kant * lang
+      );
+      g.stroke();
+    }
+  }
+  _bladTex = new THREE.CanvasTexture(c);
+  _bladTex.anisotropy = 4;
+  return _bladTex;
+}
+
+// De drager: een simpele strook die netjes doorbuigt. De vorm van het
+// blad komt volledig uit het plaatje hierboven.
+function maakBladGeometrie(){
+  const N = IS_TOUCH ? 6 : 8;          // segmenten langs de steel
+  const L = 3.9;
+  const pos = [], uv = [], idx = [];
+  let v = 0;
+  const steel = t => ({x: L * t, y: -(2.0 * t * t * t + 0.18 * t)});
+  const breed = t => Math.sin(Math.PI * Math.pow(t, 0.55)) * 0.92 + 0.10;
   for(let i = 0; i < N; i++){
     const t0 = i / N, t1 = (i + 1) / N;
     const p0 = steel(t0), p1 = steel(t1);
-    // de steel zelf: een smal bruingroen bandje
-    for(const [px, py, pz, l] of [
-      [p0.x, p0.y + 0.02, -0.035, 0.55], [p1.x, p1.y + 0.02, -0.035, 0.55],
-      [p1.x, p1.y + 0.02,  0.035, 0.55], [p0.x, p0.y + 0.02,  0.035, 0.55]
-    ]){ pos.push(px, py, pz); kleur.push(l, l, l); }
+    const b0 = breed(t0), b1 = breed(t1);
+    pos.push(p0.x, p0.y, -b0,  p1.x, p1.y, -b1,  p1.x, p1.y, b1,  p0.x, p0.y, b0);
+    uv.push(t0, 0,  t1, 0,  t1, 1,  t0, 1);
     idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
-
-    // ⚠️ Brian: "dit zijn spijkers, scherpe punten". Klopt — driehoekjes
-    // die dwars uit de steel steken worden zaagtanden. Een echt palmblaadje
-    // is een LANG SMAL LINTJE dat langs de steel naar achteren wijst en
-    // naar beneden hangt, met een licht toelopende punt. Dus: een smalle
-    // vierhoek, breed genoeg aan de voet om aan te sluiten op de buren
-    // (geen gaten in de kruin), en smal aan het uiteinde.
-    const br = Math.sin(Math.PI * Math.pow(t0, 0.62)) * 0.86 + 0.10;   // lengte van dit lintje
-    // de richting langs de steel, om het uiteinde een beetje breedte te geven
-    const sx = p1.x - p0.x, sy = p1.y - p0.y, sz = p1.z - p0.z;
-    const sl = Math.hypot(sx, sy, sz) || 1;
-    const ex = sx / sl * 0.115, ey = sy / sl * 0.115, ez = sz / sl * 0.115;
-    const oz = 0.42;                                   // overlap met de buren
-    const mx = (p0.x + p1.x) * 0.5, my = (p0.y + p1.y) * 0.5, mz = (p0.z + p1.z) * 0.5;
-    for(const kant of [1, -1]){
-      // naar achteren (richting de voet van het blad), naar buiten en omlaag
-      const ux = -0.26 * br, uy = -0.18 - 0.42 * br, uz = kant * br * 1.08;
-      const tx = mx + ux, ty = my + uy, tz = mz + uz;
-      pos.push(p0.x - sx*oz, p0.y - sy*oz, p0.z - sz*oz,
-               p1.x + sx*oz, p1.y + sy*oz, p1.z + sz*oz,
-               tx + ex, ty + ey, tz + ez,
-               tx - ex, ty - ey, tz - ez);
-      // donkerder bij de steel, lichter naar de punt → diepte in de kruin
-      kleur.push(0.70,0.70,0.70, 0.70,0.70,0.70, 1.04,1.04,1.04, 1.04,1.04,1.04);
-      idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
-    }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(kleur, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;
@@ -537,8 +560,8 @@ const bladData = [];      // alles wat een blad nodig heeft om in de wind te wie
 let bladMesh = null;
 {
   const AANTAL = IS_TOUCH ? 36 : 52;
-  const BLAD_JONG = IS_TOUCH ? 8 : 10;   // groene bladeren in de kruin
-  const BLAD_DOOD = 2;                   // bruine, afhangende oude bladeren
+  const BLAD_JONG = IS_TOUCH ? 13 : 17;  // groene bladeren in de kruin
+  const BLAD_DOOD = 3;                   // bruine, afhangende oude bladeren
   const PER_PALM = BLAD_JONG + BLAD_DOOD;
 
   const stammen = new THREE.InstancedMesh(
@@ -553,7 +576,11 @@ let bladMesh = null;
   );
   bladMesh = new THREE.InstancedMesh(
     maakBladGeometrie(),
-    new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide}),
+    new THREE.MeshLambertMaterial({
+      map: maakBladTextuur(),
+      alphaTest: 0.28,               // doorzichtig = geen blad, zonder sorteer-gedoe
+      side: THREE.DoubleSide
+    }),
     AANTAL * PER_PALM
   );
   // kokosnoten die nog aan de boom hangen
@@ -595,7 +622,7 @@ let bladMesh = null;
       const dood = j >= BLAD_JONG;
       // jonge bladeren staan omhoog, oudere zakken steeds verder door
       const leeftijd = dood ? 1 : j / BLAD_JONG;
-      const droop = dood ? (1.50 + rnd() * 0.35) : (-1.10 + leeftijd * 2.25 + (rnd() - 0.5) * 0.30);
+      const droop = dood ? (1.50 + rnd() * 0.35) : (-0.95 + rnd() * 2.10);
       const info = {
         top: top.clone(),
         hoek: start + (j / PER_PALM) * Math.PI * 2 + (rnd() - 0.5) * 0.4,
@@ -612,8 +639,8 @@ let bladMesh = null;
       d.updateMatrix();
       bladMesh.setMatrixAt(b, d.matrix);
       // groen voor jonge bladeren, bruin/geel voor de dode
-      if(dood) kleur.setHSL(0.09 + rnd() * 0.03, 0.45, 0.30 + rnd() * 0.08);
-      else     kleur.setHSL(0.27 + rnd() * 0.05, 0.60, 0.26 + rnd() * 0.14);
+      if(dood) kleur.setHSL(0.09 + rnd() * 0.03, 0.55, 0.42 + rnd() * 0.10);
+      else     kleur.setHSL(0.26 + rnd() * 0.06, 0.22, 0.72 + rnd() * 0.22);
       bladMesh.setColorAt(b, kleur);
       b++;
     }
