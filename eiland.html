@@ -93,8 +93,8 @@
 const IS_TOUCH = matchMedia('(pointer:coarse)').matches;
 
 // ── de wereld-instellingen ──
-const EILAND_R   = 70;    // hoe ver het eiland "reikt" (de kust ligt rond 52 m)
-const ZEE_GRENS  = 105;   // verder de zee in mag je niet (haaien! 🦈)
+const EILAND_R   = 88;    // hoe ver het eiland "reikt" (de kust ligt rond 66 m)
+const ZEE_GRENS  = 128;   // verder de zee in mag je niet (haaien! 🦈)
 const OOG        = 1.65;  // hoe hoog je ogen zitten
 const LOOP       = 4.2, REN = 7.4, ZWEM = 2.6;
 const ZWAARTE    = 16;
@@ -114,7 +114,17 @@ function hoogteOp(x, z){
   h += Math.sin(x * 0.26 + 1.7) * Math.cos(z * 0.23) * 0.8 * val; // kleine bobbels
   h += Math.sin(Math.atan2(z, x) * 3.4 + d * 0.05) * 2.2 * Math.pow(val, 0.55); // grillige kustlijn
   h += Math.sin(x * 0.62 + 1.3) * Math.cos(z * 0.58) * 0.14 * val;      // kleine bobbels onder je voeten
-  return h - 2.2;                                      // de rand zakt onder water = strand
+  h -= 2.2;                                            // de rand zakt onder water = strand
+  // 🏖️ BREED STRAND (Brian 3 sep): vlak bij zeeniveau drukken we de hoogte
+  // samen, zodat de kust héél flauw afloopt. Daardoor wordt de zandvlakte
+  // ruim 2x zo breed - en de lagune ernaast net zo ondiep en turkoois.
+  // Bij h = 4 is de factor precies 1, dus de overgang is naadloos.
+  if(h > 0 && h < 4) h = h * (0.42 + 0.145 * h);
+  // ⚠️ ONDER water maar een klein beetje afvlakken: de lagune blijft mooi
+  // ondiep en turkoois, maar een paar meter verderop kun je écht zwemmen.
+  // (Eerst drukten we ook de zeebodem plat — toen liep je dwars door de zee.)
+  else if(h < 0) h = h * 0.72;
+  return h;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -128,7 +138,7 @@ const renderer = new THREE.WebGLRenderer({antialias:!IS_TOUCH});
 renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 // De zon staat stil en de palmbomen ook, dus de schaduwen hoeven niet elk beeldje
 // opnieuw getekend te worden. Een paar keer per seconde is genoeg — dat scheelt
 // een hoop rekenwerk (vooral op een telefoon).
@@ -158,7 +168,7 @@ scene.fog = new THREE.Fog(0xa9dcef, 90, 300);
 const zon = new THREE.DirectionalLight(0xfff3d0, 0.95);
 zon.position.set(70, 95, 45);
 zon.castShadow = true;
-zon.shadow.mapSize.set(IS_TOUCH ? 1024 : 2048, IS_TOUCH ? 1024 : 2048);
+zon.shadow.mapSize.set(IS_TOUCH ? 1024 : 1536, IS_TOUCH ? 1024 : 1536);
 zon.shadow.camera.left = -70; zon.shadow.camera.right = 70;
 zon.shadow.camera.top  =  70; zon.shadow.camera.bottom = -70;
 zon.shadow.camera.far = 250;
@@ -226,8 +236,8 @@ function korrelTextuur(){
   return t;
 }
 
-const GROND_VAKJES = IS_TOUCH ? 120 : 168;
-const grondGeo = new THREE.PlaneGeometry(230, 230, GROND_VAKJES, GROND_VAKJES);
+const GROND_VAKJES = IS_TOUCH ? 102 : 142;
+const grondGeo = new THREE.PlaneGeometry(290, 290, GROND_VAKJES, GROND_VAKJES);
 grondGeo.rotateX(-Math.PI/2);
 {
   const pos = grondGeo.attributes.position;
@@ -454,7 +464,7 @@ const palmen = [];        // om tegenaan te botsen + om kokosnoten onder te legg
 const bladData = [];      // alles wat een blad nodig heeft om in de wind te wiegen
 let bladMesh = null;
 {
-  const AANTAL = IS_TOUCH ? 34 : 46;
+  const AANTAL = IS_TOUCH ? 36 : 52;
   const BLAD_JONG = IS_TOUCH ? 8 : 10;   // groene bladeren in de kruin
   const BLAD_DOOD = 2;                   // bruine, afhangende oude bladeren
   const PER_PALM = BLAD_JONG + BLAD_DOOD;
@@ -483,7 +493,7 @@ let bladMesh = null;
   const d = new THREE.Object3D(), kleur = new THREE.Color();
   let b = 0, n = 0;
   for(let i = 0; i < AANTAL; i++){
-    const p = zoekPlek(0.4, 7.5, 52) || {x: 0, z: 0, h: hoogteOp(0, 0)};
+    const p = zoekPlek(0.4, 7.5, 64) || {x: 0, z: 0, h: hoogteOp(0, 0)};
     const hoogte = 7.0 + rnd() * 4.5;             // van jonge palmpjes tot hoge reuzen
     const s = hoogte / 5;                          // de stam is getekend voor 5 m
     const draai = rnd() * Math.PI * 2;             // naar welke kant hij overhelt
@@ -649,7 +659,7 @@ function maakSteenGeometrie(zaadje, mos){
 
 // drie verschillende steenvormen, zodat je nooit twee dezelfde ziet liggen
 {
-  const VORMEN = 3, PER_VORM = IS_TOUCH ? 8 : 11;
+  const VORMEN = 3, PER_VORM = IS_TOUCH ? 9 : 13;
   for(let v = 0; v < VORMEN; v++){
     const mesh = new THREE.InstancedMesh(
       maakSteenGeometrie(v * 2.7 + 0.9, v === 1 ? 0.9 : 0.45),   // eentje flink bemost
@@ -659,7 +669,7 @@ function maakSteenGeometrie(zaadje, mos){
     mesh.castShadow = mesh.receiveShadow = true;
     const d = new THREE.Object3D(), c = new THREE.Color();
     for(let i = 0; i < PER_VORM; i++){
-      const p = zoekPlek(-0.8, 10, 56) || {x: 5, z: 5, h: 0};
+      const p = zoekPlek(-0.8, 10, 68) || {x: 5, z: 5, h: 0};
       const m = 0.6 + rnd() * 2.4;
       // de steen zakt een stukje in de grond, alsof hij er al jaren ligt
       d.position.set(p.x, p.h + m * 0.30, p.z);
@@ -701,7 +711,7 @@ function maakStruikGeometrie(zaadje){
 }
 {
   for(let v = 0; v < 2; v++){
-    const AANTAL = IS_TOUCH ? 22 : 32;
+    const AANTAL = IS_TOUCH ? 28 : 42;
     const mesh = new THREE.InstancedMesh(
       maakStruikGeometrie(v * 3.3 + 1.4),
       new THREE.MeshLambertMaterial({vertexColors: true, flatShading: true}),
@@ -710,7 +720,7 @@ function maakStruikGeometrie(zaadje){
     mesh.castShadow = true;
     const d = new THREE.Object3D(), c = new THREE.Color();
     for(let i = 0; i < AANTAL; i++){
-      const p = zoekPlek(1.0, 9, 52) || {x: 8, z: 8, h: 1};
+      const p = zoekPlek(1.0, 9, 63) || {x: 8, z: 8, h: 1};
       const m = 0.45 + rnd() * 0.85;
       d.position.set(p.x, p.h + m * 0.45, p.z);
       d.rotation.set(0, rnd() * 6.28, (rnd() - 0.5) * 0.25);
@@ -756,33 +766,83 @@ function maakGrasGeometrie(){
   g.computeVertexNormals();
   return g;
 }
-{
-  // gras groeit in plukken bij elkaar, niet netjes verspreid
-  const PLEKKEN = IS_TOUCH ? 48 : 78, PER_PLEK = 10;
-  const mesh = new THREE.InstancedMesh(
-    maakGrasGeometrie(),
-    new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide}),
-    PLEKKEN * PER_PLEK
-  );
-  const d = new THREE.Object3D(), c = new THREE.Color();
+// ── HET GRASVELD DAT MET JE MEEREIST (Brian: "overal grassprietjes") ──
+//
+// Overal op het hele eiland gras zetten zou tienduizenden plukjes kosten
+// en je telefoon laten hikken. De truc: we tekenen alleen een vierkant
+// lapje gras RONDOM jou, en schuiven dat mee terwijl je loopt.
+//
+// Elke plek in het raster heeft een vaste plek en maat, berekend uit zijn
+// eigen vakje-nummer. Daardoor staat het gras altijd op precies dezelfde
+// plaats — het springt niet als je heen en weer loopt.
+//
+// Gras groeit alléén op gras: niet op het zand (te laag), niet op de kale
+// bergtop (te hoog) en niet tegen steile rotswanden.
+const GRAS_CEL    = IS_TOUCH ? 1.45 : 1.20;   // afstand tussen twee plukjes
+const GRAS_RASTER = IS_TOUCH ? 24 : 32;       // aantal vakjes in de breedte
+const GRAS_MIN_H  = 1.15;                     // hieronder is het strand → zand
+const GRAS_MAX_H  = 9.2;                      // hierboven is het kale rots
+const GRAS_STEIL  = 1.7;                      // steiler dan dit = rotswand
+
+// een vast "toevalsgetal" per vakje: zelfde vakje = altijd hetzelfde getal
+function celRuis(a, b){
+  const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+const grasVeld = new THREE.InstancedMesh(
+  maakGrasGeometrie(),
+  new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide}),
+  GRAS_RASTER * GRAS_RASTER
+);
+grasVeld.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+grasVeld.frustumCulled = false;
+scene.add(grasVeld);
+
+let grasVakX = 1e9, grasVakZ = 1e9;
+const grasDummy = new THREE.Object3D(), grasKleur = new THREE.Color();
+
+function updateGrasVeld(){
+  const vx = Math.round(camera.position.x / GRAS_CEL);
+  const vz = Math.round(camera.position.z / GRAS_CEL);
+  if(vx === grasVakX && vz === grasVakZ) return;   // nog in hetzelfde vakje → niets te doen
+  grasVakX = vx; grasVakZ = vz;
+
+  const half = GRAS_RASTER >> 1;
   let i = 0;
-  for(let p = 0; p < PLEKKEN; p++){
-    const plek = zoekPlek(1.1, 9.5, 52) || {x: 0, z: 0, h: 2};
-    for(let j = 0; j < PER_PLEK; j++){
-      const hx = plek.x + (rnd() - 0.5) * 3.6, hz = plek.z + (rnd() - 0.5) * 3.6;
-      const h = hoogteOp(hx, hz);
-      const m = 1.05 + rnd() * 0.95;
-      d.position.set(hx, h - 0.03, hz);
-      d.rotation.set(0, rnd() * 6.28, 0);
-      d.scale.set(m, m * (0.8 + rnd() * 0.5), m);
-      d.updateMatrix();
-      mesh.setMatrixAt(i, d.matrix);
-      c.setHSL(0.24 + rnd() * 0.07, 0.52, 0.40 + rnd() * 0.14);
-      mesh.setColorAt(i, c);
+  for(let a = -half; a < half; a++){
+    for(let b = -half; b < half; b++){
+      const gx = vx + a, gz = vz + b;
+      const r1 = celRuis(gx, gz), r2 = celRuis(gx + 7.1, gz - 3.3), r3 = celRuis(gx * 1.7, gz * 2.3);
+      const x = (gx + (r1 - 0.5) * 0.95) * GRAS_CEL;
+      const z = (gz + (r2 - 0.5) * 0.95) * GRAS_CEL;
+      const h = hoogteOp(x, z);
+      if(h < GRAS_MIN_H || h > GRAS_MAX_H) continue;                  // zand of kale top
+      const steil = Math.abs(hoogteOp(x + 1.6, z) - h) + Math.abs(hoogteOp(x, z + 1.6) - h);
+      if(steil > GRAS_STEIL) continue;                                // rotswand
+      // aan de rand van het lapje worden de plukjes kleiner, zodat je nooit
+      // een harde cirkel om je heen ziet staan
+      const rand = Math.max(Math.abs(a), Math.abs(b)) / half;
+      const fade = 1 - Math.max(0, Math.min(1, (rand - 0.72) / 0.28));
+      if(fade <= 0.02) continue;
+      // net boven het strand groeit het gras dunner (helmgras in de duinen)
+      const duin = Math.min(1, (h - GRAS_MIN_H) / 1.2);
+      if(r3 > 0.25 + duin * 0.75) continue;
+
+      const m = (0.85 + r3 * 1.05) * fade;
+      grasDummy.position.set(x, h - 0.03, z);
+      grasDummy.rotation.set(0, r1 * 6.28, 0);
+      grasDummy.scale.set(m, m * (0.8 + r2 * 0.55), m);
+      grasDummy.updateMatrix();
+      grasVeld.setMatrixAt(i, grasDummy.matrix);
+      grasKleur.setHSL(0.24 + r2 * 0.07, 0.52, 0.38 + r1 * 0.16);
+      grasVeld.setColorAt(i, grasKleur);
       i++;
     }
   }
-  scene.add(mesh);
+  grasVeld.count = i;                       // alleen de gevulde plekjes tekenen
+  grasVeld.instanceMatrix.needsUpdate = true;
+  if(grasVeld.instanceColor) grasVeld.instanceColor.needsUpdate = true;
 }
 
 // ── BLOEMEN: vijf blaadjes rond een geel hartje, op een steeltje ──
@@ -827,7 +887,7 @@ function maakBloemGeometrie(){
   return g;
 }
 {
-  const PLEKKEN = IS_TOUCH ? 20 : 32, PER_PLEK = 8;
+  const PLEKKEN = IS_TOUCH ? 26 : 40, PER_PLEK = 8;
   const AANTAL = PLEKKEN * PER_PLEK;
   const hoofdjes = new THREE.InstancedMesh(
     maakBloemGeometrie(),
@@ -844,7 +904,7 @@ function maakBloemGeometrie(){
   const d = new THREE.Object3D(), c = new THREE.Color();
   let i = 0;
   for(let p = 0; p < PLEKKEN; p++){
-    const plek = zoekPlek(1.3, 8.5, 50) || {x: 0, z: 0, h: 2};
+    const plek = zoekPlek(1.3, 8.5, 62) || {x: 0, z: 0, h: 2};
     const soort = KLEUREN[Math.floor(rnd() * KLEUREN.length)];   // één soort per veldje
     for(let j = 0; j < PER_PLEK; j++){
       const hx = plek.x + (rnd() - 0.5) * 3.4, hz = plek.z + (rnd() - 0.5) * 3.4;
@@ -882,9 +942,9 @@ const kokossen = [];
       const p = palmen[Math.floor(rnd() * palmen.length)];
       x = p.voetX + (rnd()-0.5) * 5; z = p.voetZ + (rnd()-0.5) * 5;
       h = hoogteOp(x, z);
-      if(h < 0.2){ const q = zoekPlek(0.5, 8, 50); if(q){ x = q.x; z = q.z; h = q.h; } }
+      if(h < 0.2){ const q = zoekPlek(0.5, 8, 62); if(q){ x = q.x; z = q.z; h = q.h; } }
     } else {
-      const q = zoekPlek(0.5, 8, 50) || {x: 0, z: 0, h: 0}; x = q.x; z = q.z; h = q.h;
+      const q = zoekPlek(0.5, 8, 62) || {x: 0, z: 0, h: 0}; x = q.x; z = q.z; h = q.h;
     }
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, h + 0.34, z);
@@ -901,7 +961,7 @@ const kokossen = [];
 const kist = new THREE.Group();
 let kistDeksel, kistPlek = {x: 0, z: 0};
 {
-  const p = zoekPlek(0.8, 5, 44) || {x: 20, z: -20, h: 1};
+  const p = zoekPlek(0.8, 5, 56) || {x: 20, z: -20, h: 1};
   kistPlek = {x: p.x, z: p.z};
   const hout = new THREE.MeshLambertMaterial({color: 0x7a4a22});
   const goud = new THREE.MeshLambertMaterial({color: 0xd4af37});
@@ -974,7 +1034,7 @@ for(let i = 0; i < 4; i++){
   }
   // zoek van buiten naar binnen waar het zand boven water komt = de kustlijn
   const hoekStart = rnd() * 6.28;
-  let straal = 95;
+  let straal = 118;
   while(straal > 10 && hoogteOp(Math.cos(hoekStart)*straal, Math.sin(hoekStart)*straal) < 0.15) straal -= 0.5;
   g.userData = {
     hoek: hoekStart, r: straal, pootjes,
@@ -1092,8 +1152,8 @@ springKnop.addEventListener('touchend',   e => { touchSpring = false; });
 // je start op het strand, met de zee in je rug en het eiland vóór je
 let spelerY = 0, velY = 0, opGrond = true, zwemt = false, loopBob = 0;
 {
-  let z = 56;
-  while(z > 20 && hoogteOp(0, z) < 0.35) z -= 0.5;   // zoek de kustlijn
+  let z = 105;
+  while(z > 20 && hoogteOp(0, z) < 0.35) z -= 0.5;  // zoek de kustlijn
   camera.position.set(0, hoogteOp(0, z) + OOG, z);
   spelerY = hoogteOp(0, z);
 }
@@ -1326,6 +1386,7 @@ function loop(nu){
   }
   golfZee(t);
   updateWind(t);
+  updateGrasVeld();
   lucht.position.copy(camera.position);   // de hemel reist met je mee
   // schaduwen ~4× per seconde bijwerken (voor de krabben en het kistdeksel)
   if((schaduwTeller++ % 20) === 0) renderer.shadowMap.needsUpdate = true;
