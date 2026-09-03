@@ -113,6 +113,7 @@ function hoogteOp(x, z){
   h += Math.sin(x * 0.085) * Math.cos(z * 0.075) * 2.4 * val;   // grote heuvels
   h += Math.sin(x * 0.26 + 1.7) * Math.cos(z * 0.23) * 0.8 * val; // kleine bobbels
   h += Math.sin(Math.atan2(z, x) * 3.4 + d * 0.05) * 2.2 * Math.pow(val, 0.55); // grillige kustlijn
+  h += Math.sin(x * 0.62 + 1.3) * Math.cos(z * 0.58) * 0.14 * val;      // kleine bobbels onder je voeten
   return h - 2.2;                                      // de rand zakt onder water = strand
 }
 
@@ -174,36 +175,121 @@ zonBol.position.set(150, 190, 95);
 scene.add(zonBol);
 
 // ══════════════════════════════════════════════════════════════════
-// 3. DE GROND — één groot vlak dat we omhoog duwen tot een eiland
-// De kleur per punt: nat zand → strand → gras → donker gras → rots.
+// 3. DE GROND (Brian: "maak de grond NOG beter")
+//
+// Vier dingen maken een grond echt in plaats van een groen vlak:
+//  1) ZACHTE overgangen — geen harde streep tussen zand en gras
+//  2) VLEKKEN — natuurlijke ruis, zodat geen twee plekken gelijk zijn
+//  3) KORREL — een fijne zandtextuur die over alles heen ligt
+//  4) DIEPTE — dalen zijn een tikje donkerder dan bulten (net licht)
 // ══════════════════════════════════════════════════════════════════
-const grondGeo = new THREE.PlaneGeometry(230, 230, 150, 150);
+
+// Drie lagen ruis over elkaar: grote vlekken, middelgrote en kleine.
+// Zo krijg je een patroon dat nergens herhaalt maar wel rustig oogt.
+function vlekRuis(x, z){
+  return 0.52 * Math.sin(x * 0.083 + Math.cos(z * 0.071) * 2.1)
+       + 0.30 * Math.sin(x * 0.29 + 2.1) * Math.cos(z * 0.24 + 0.9)
+       + 0.18 * Math.sin(x * 0.77 + 4.3) * Math.cos(z * 0.81 + 2.2);
+}
+// zachte overgang van 0 naar 1 tussen a en b (geen harde randen meer)
+function zacht(a, b, x){
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
+// Een fijne korrel-textuur die over de hele grond herhaalt. Hij maakt de
+// kleur alleen een tikje lichter of donkerder — net als echte zandkorrels
+// en grassprietjes van een afstandje.
+function korrelTextuur(){
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const beeld = g.createImageData(128, 128);
+  for(let i = 0; i < beeld.data.length; i += 4){
+    const n = 214 + Math.random() * 41;
+    beeld.data[i] = beeld.data[i+1] = beeld.data[i+2] = n;
+    beeld.data[i+3] = 255;
+  }
+  g.putImageData(beeld, 0, 0);
+  // wat grotere, zachte vlekken erover zodat het niet als ruis oogt
+  for(let i = 0; i < 90; i++){
+    const x = Math.random() * 128, y = Math.random() * 128, r = 3 + Math.random() * 11;
+    const v = g.createRadialGradient(x, y, 0, x, y, r);
+    const licht = Math.random() > 0.5;
+    v.addColorStop(0, licht ? 'rgba(255,255,255,0.30)' : 'rgba(150,150,150,0.26)');
+    v.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = v; g.beginPath(); g.arc(x, y, r, 0, 6.3); g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(85, 85);
+  return t;
+}
+
+const GROND_VAKJES = IS_TOUCH ? 120 : 168;
+const grondGeo = new THREE.PlaneGeometry(230, 230, GROND_VAKJES, GROND_VAKJES);
 grondGeo.rotateX(-Math.PI/2);
 {
   const pos = grondGeo.attributes.position;
   const kleuren = new Float32Array(pos.count * 3);
-  const c = new THREE.Color();
+  const c = new THREE.Color(), hulp = new THREE.Color();
+  // het kleurenpalet van het eiland
+  const NAT_ZAND  = new THREE.Color(0xc4ab74);
+  const ZAND      = new THREE.Color(0xe9d9a6);
+  const DROOG_GRAS= new THREE.Color(0xb8c064);
+  const GRAS      = new THREE.Color(0x5cab46);
+  const BOS_GRAS  = new THREE.Color(0x3f7d33);
+  const AARDE     = new THREE.Color(0x8a6b45);
+  const ROTS      = new THREE.Color(0x8e887c);
+  const DIEP_ZAND = new THREE.Color(0xd8c98f);
+
   for(let i = 0; i < pos.count; i++){
     const x = pos.getX(i), z = pos.getZ(i);
     const h = hoogteOp(x, z);
     pos.setY(i, h);
-    // steilheid: hoe snel loopt de hoogte hier op? Steil = rots.
-    const steil = Math.abs(hoogteOp(x + 1.5, z) - h) + Math.abs(hoogteOp(x, z + 1.5) - h);
-    if(h < -0.6)      c.setHex(0xc9b98a);          // zand onder water
-    else if(h < 0.9)  c.setHex(0xe8d6a4);          // strand
-    else if(h < 2.0)  c.setHex(0x9dbf6a);          // duin-gras
-    else if(steil > 1.9) c.setHex(0x8b8478);       // steile rotswand
-    else if(h < 6.5)  c.setHex(0x5fae4a);          // gras
-    else if(h < 9.5)  c.setHex(0x47883a);          // donker bos-gras
-    else              c.setHex(0x9a9186);          // kale bergtop
-    // een klein beetje kleurruis zodat het niet plat oogt
-    const r = (Math.sin(x*3.1 + z*1.7) * 0.5 + 0.5) * 0.09 - 0.045;
-    kleuren[i*3] = c.r + r; kleuren[i*3+1] = c.g + r; kleuren[i*3+2] = c.b + r;
+
+    const n  = vlekRuis(x, z);                 // -1 .. 1, grote vlekken
+    const n2 = vlekRuis(z * 1.7 + 40, x * 1.3 - 25);   // een tweede, ander patroon
+
+    // steilheid: hoe snel loopt de grond hier op? Steil = kale rots.
+    const steil = Math.abs(hoogteOp(x + 1.4, z) - h) + Math.abs(hoogteOp(x, z + 1.4) - h);
+
+    // ── de kleur opbouwen, van laag naar hoog, met ZACHTE overgangen ──
+    c.copy(GRAS);
+    // vlekken: zonnige plekken zijn geler, schaduwrijke plekken donkerder
+    c.lerp(DROOG_GRAS, Math.max(0, n) * 0.42 + Math.max(0, n2) * 0.14);
+    c.lerp(BOS_GRAS,   Math.max(0, -n) * 0.38 + Math.max(0, -n2) * 0.16);
+    // droger, geliger gras vlak boven het strand
+    c.lerp(DROOG_GRAS, zacht(2.6, 0.6, h) * 0.55);
+    // donkerder bos-gras op de hogere hellingen
+    c.lerp(BOS_GRAS, zacht(4.5, 8.5, h) * (0.75 + n2 * 0.2));
+    // kale aarde-plekken waar het gras dun is
+    c.lerp(AARDE, Math.max(0, n2 - 0.55) * 0.75 * zacht(1.4, 2.6, h));
+    // het strand: de grens golft mee met de ruis, dus geen liniaal-rechte lijn
+    c.lerp(ZAND, zacht(2.0 + n * 0.6, 0.7 + n * 0.35, h));
+    // nat, donkerder zand vlak bij de vloedlijn
+    c.lerp(NAT_ZAND, zacht(0.35 + n * 0.10, -0.15, h));
+    // onder water wordt het zand weer lichter (helder tropisch water)
+    c.lerp(DIEP_ZAND, zacht(-0.3, -1.6, h));
+    // steile wanden en de kale bergtop worden rots
+    c.lerp(ROTS, Math.min(1, zacht(1.5, 2.6, steil) * 0.85 + zacht(8.5, 11, h) * 0.9));
+
+    // ── diepte: ligt dit punt lager dan zijn omgeving? Dan iets donkerder.
+    // Dat is hetzelfde trucje als schaduw in een holletje — het geeft het
+    // landschap vorm, ook waar geen boom staat.
+    const rondom = (hoogteOp(x + 3, z) + hoogteOp(x - 3, z) + hoogteOp(x, z + 3) + hoogteOp(x, z - 3)) / 4;
+    const holte = Math.max(-0.25, Math.min(0.18, (h - rondom) * 0.22));
+    hulp.setRGB(c.r * (1 + holte), c.g * (1 + holte), c.b * (1 + holte));
+
+    kleuren[i*3] = hulp.r; kleuren[i*3+1] = hulp.g; kleuren[i*3+2] = hulp.b;
   }
   grondGeo.setAttribute('color', new THREE.BufferAttribute(kleuren, 3));
   grondGeo.computeVertexNormals();
 }
-const grond = new THREE.Mesh(grondGeo, new THREE.MeshLambertMaterial({vertexColors: true}));
+const grond = new THREE.Mesh(grondGeo, new THREE.MeshLambertMaterial({
+  vertexColors: true,
+  map: korrelTextuur()
+}));
 grond.receiveShadow = true;
 scene.add(grond);
 
@@ -464,6 +550,32 @@ let bladMesh = null;
   scene.add(stammen); scene.add(bladMesh); scene.add(hangNoten);
 }
 
+// ── de grond onder de palmen: daar groeit minder gras ──
+// Nu we weten waar elke palm staat, kleuren we de grond eromheen wat
+// kaler en aardachtiger. Dat maakt meteen duidelijk dat de bomen er
+// écht staan en niet als stickers op het gras zijn geplakt.
+{
+  const pos = grondGeo.attributes.position;
+  const kl = grondGeo.attributes.color;
+  const AARDE_ONDER_BOOM = new THREE.Color(0x8f7048);
+  const c = new THREE.Color();
+  for(let i = 0; i < pos.count; i++){
+    const x = pos.getX(i), z = pos.getZ(i);
+    if(pos.getY(i) < 0.4) continue;                 // op het natte strand niet
+    let dichtst = 999;
+    for(const pa of palmen){
+      const d = Math.hypot(x - pa.voetX, z - pa.voetZ);
+      if(d < dichtst) dichtst = d;
+      if(dichtst < 0.6) break;
+    }
+    if(dichtst > 3.2) continue;
+    const sterkte = (1 - dichtst / 3.2) * 0.55;
+    c.setRGB(kl.getX(i), kl.getY(i), kl.getZ(i)).lerp(AARDE_ONDER_BOOM, sterkte);
+    kl.setXYZ(i, c.r, c.g, c.b);
+  }
+  kl.needsUpdate = true;
+}
+
 // ── 3) de wind: de bladeren wiegen zachtjes heen en weer ──
 const bladDummy = new THREE.Object3D();
 let windTeller = 0;
@@ -579,7 +691,7 @@ function maakStruikGeometrie(zaadje){
     if(y < -0.5) y = -0.5;
     pos.setXYZ(i, n.x * r * 1.15, y, n.z * r * 1.15);
     // onderin donker (daar komt geen zon), bovenop lichter
-    const licht = 0.62 + Math.max(0, y) * 0.5 + ruis(n.x*5, n.y*5, n.z*5) * 0.18;
+    const licht = 0.58 + Math.max(0, y) * 0.42 + ruis(n.x*5, n.y*5, n.z*5) * 0.16;
     c.setRGB(licht * 0.42, licht * 0.78, licht * 0.34);
     kleuren[i*3] = c.r; kleuren[i*3+1] = c.g; kleuren[i*3+2] = c.b;
   }
@@ -605,7 +717,7 @@ function maakStruikGeometrie(zaadje){
       d.scale.set(m, m * (0.7 + rnd() * 0.4), m);
       d.updateMatrix();
       mesh.setMatrixAt(i, d.matrix);
-      c.setHSL(0.26 + rnd() * 0.07, 0.5, 0.42 + rnd() * 0.2);
+      c.setHSL(0.25 + rnd() * 0.06, 0.40, 0.28 + rnd() * 0.13);
       mesh.setColorAt(i, c);
     }
     scene.add(mesh);
