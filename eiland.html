@@ -236,7 +236,7 @@ function korrelTextuur(){
   return t;
 }
 
-const GROND_VAKJES = IS_TOUCH ? 102 : 142;
+const GROND_VAKJES = IS_TOUCH ? 96 : 128;
 const grondGeo = new THREE.PlaneGeometry(290, 290, GROND_VAKJES, GROND_VAKJES);
 grondGeo.rotateX(-Math.PI/2);
 {
@@ -738,35 +738,26 @@ function maakStruikGeometrie(zaadje){
 // Eén pol = 6 sprietjes die naar buiten waaieren. Onderaan donker,
 // bovenaan lichtgroen — daardoor lijkt het gras diep in plaats van plat.
 function maakGrasGeometrie(){
-  const SPRIETEN = IS_TOUCH ? 5 : 7;
+  const SPRIETEN = IS_TOUCH ? 4 : 5;
   const pos = [], kleur = [], idx = [];
   let v = 0, t = 0;
   const beetje = () => { t += 1.37; return (Math.sin(t * 91.7) * 0.5 + 0.5); };
   for(let i = 0; i < SPRIETEN; i++){
     const a = (i / SPRIETEN) * Math.PI * 2 + beetje() * 0.9;
-    const H = 0.24 + beetje() * 0.36;               // niet elke spriet is even lang
-    const buig = 0.09 + beetje() * 0.22;            // hoe ver hij overhangt
+    const H = 0.19 + beetje() * 0.34;               // niet elke spriet is even lang
+    const buig = 0.15 + beetje() * 0.30;            // hoe ver hij overhangt
     const dx = Math.cos(a), dz = Math.sin(a);
-    const W = 0.019;
-    // Een echte grasspriet is breed onderaan en loopt spits toe, en hij
-    // buigt niet in één knik maar in een boog. Daarom drie stukjes:
-    // breed → smaller → punt, elk verder overhangend dan het vorige.
-    const p1 = 0.42, p2 = 0.76;
+    const W = 0.021;
+    // twee stukken: een breed onderstuk dat al meebuigt, en een spitse punt
+    const p1 = 0.58;
     const x1 = dx * buig * p1 * p1, y1 = H * p1, z1 = dz * buig * p1 * p1;
-    const x2 = dx * buig * p2 * p2, y2 = H * p2, z2 = dz * buig * p2 * p2;
     const tx = dx * buig,           ty = H,      tz = dz * buig;
-    const w0 = W, w1 = W * 0.72, w2 = W * 0.40;
-    // stuk 1: van de grond naar de eerste knik
-    pos.push(-dz*w0, 0, dx*w0,   dz*w0, 0, -dx*w0,   x1 + dz*w1, y1, z1 - dx*w1,   x1 - dz*w1, y1, z1 + dx*w1);
-    for(const l of [0.74, 0.74, 1.02, 1.02]) kleur.push(l, l, l);
+    const w1 = W * 0.55;
+    pos.push(-dz*W, 0, dx*W,   dz*W, 0, -dx*W,   x1 + dz*w1, y1, z1 - dx*w1,   x1 - dz*w1, y1, z1 + dx*w1);
+    for(const l of [0.72, 0.72, 1.10, 1.10]) kleur.push(l, l, l);
     idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
-    // stuk 2: verder omhoog en verder overhangend
-    pos.push(x1 - dz*w1, y1, z1 + dx*w1,   x1 + dz*w1, y1, z1 - dx*w1,   x2 + dz*w2, y2, z2 - dx*w2,   x2 - dz*w2, y2, z2 + dx*w2);
-    for(const l of [1.02, 1.02, 1.24, 1.24]) kleur.push(l, l, l);
-    idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
-    // stuk 3: de spitse punt
-    pos.push(x2 - dz*w2, y2, z2 + dx*w2,   x2 + dz*w2, y2, z2 - dx*w2,   tx, ty, tz);
-    for(const l of [1.24, 1.24, 1.52]) kleur.push(l, l, l);
+    pos.push(x1 - dz*w1, y1, z1 + dx*w1,   x1 + dz*w1, y1, z1 - dx*w1,   tx, ty, tz);
+    for(const l of [1.10, 1.10, 1.50]) kleur.push(l, l, l);
     idx.push(v, v+1, v+2); v += 3;
   }
   const g = new THREE.BufferGeometry();
@@ -776,6 +767,7 @@ function maakGrasGeometrie(){
   g.computeVertexNormals();
   return g;
 }
+
 
 // ── HET GRASVELD DAT MET JE MEEREIST (Brian: "overal gras, net echt") ──
 //
@@ -793,9 +785,9 @@ function maakGrasGeometrie(){
 //
 // En ze WUIVEN: er loopt een echte windvlaag door het veld, want de golf
 // hangt af van waar een pluk staat. Dat is wat gras pas echt maakt.
-const GRAS_CEL      = IS_TOUCH ? 1.05 : 0.82;  // afstand tussen twee plukjes
-const GRAS_RASTER   = IS_TOUCH ? 30 : 42;      // aantal vakjes in de breedte
-const GRAS_DICHTBIJ = IS_TOUCH ? 9 : 13;       // binnen deze ring staat élk vakje vol
+const GRAS_CEL      = IS_TOUCH ? 0.66 : 0.47;  // afstand tussen twee plukjes
+const GRAS_RASTER   = IS_TOUCH ? 42 : 62;      // aantal vakjes in de breedte
+const GRAS_DICHTBIJ = IS_TOUCH ? 14 : 22;      // binnen deze ring staat élk vakje vol
 const GRAS_MIN_H    = 1.15;                    // hieronder is het strand → zand
 const GRAS_MAX_H    = 9.2;                     // hierboven is het kale rots
 const GRAS_STEIL    = 1.7;                     // steiler dan dit = rotswand
@@ -848,8 +840,9 @@ const grasData = [];      // per pluk: waar hij staat, hoe groot, en zijn golf-f
 // Bepaalt welke plukjes er om je heen staan. Draait alleen als je een
 // vakje verder loopt — niet elk beeldje.
 function updateGrasVeld(){
-  const vx = Math.round(camera.position.x / GRAS_CEL);
-  const vz = Math.round(camera.position.z / GRAS_CEL);
+  const STAP = 3;
+  const vx = Math.round(camera.position.x / (GRAS_CEL * STAP)) * STAP;
+  const vz = Math.round(camera.position.z / (GRAS_CEL * STAP)) * STAP;
   if(vx === grasVakX && vz === grasVakZ) return;
   grasVakX = vx; grasVakZ = vz;
 
@@ -878,7 +871,7 @@ function updateGrasVeld(){
       const duin = Math.min(1, (h - GRAS_MIN_H) / 1.2);
       if(r3 > 0.22 + duin * 0.78) continue;
 
-      const m = (0.72 + r3 * 0.80) * (ver ? 1.45 : 1) * fade;
+      const m = (0.58 + r3 * r3 * 1.25) * (ver ? 1.5 : 1) * fade;
       grasData.push({
         x, y: h - 0.03, z,
         draai: r1 * 6.28,
