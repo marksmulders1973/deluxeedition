@@ -639,6 +639,106 @@ function ruis(x, y, z){
 // De kleur zetten we per driehoekje: vlakjes die naar boven kijken vangen
 // regen en zon → daar groeit mos. Vlakjes die schuin staan blijven kaal.
 // Plus donkere adertjes door de steen heen.
+// ── DE GRANIET-TEXTUUR (Brian 3 sep: "het bestaat nog steeds uit
+// vierkantjes") ──
+// Hij had gelijk, en niet over de vorm: op zijn foto van een echte steen
+// zie je KORREL, SPIKKELS en WITTE ADERS. Mijn rotsen hadden gladde
+// gekleurde vlakken — daardoor bleven het vlakjes.
+//
+// Dus tekenen we hier één keer een echt granieten oppervlak: duizenden
+// kleine korrels, lichte kwartskristallen, donkere mineraalvlekken en
+// witte aders die er dwars doorheen lopen. Dezelfde tekening gebruiken we
+// óók als "bult-kaart", zodat het licht op elke korrel anders valt en het
+// oppervlak echt ruw aanvoelt.
+let _steenTex = null, _steenBump = null;
+function maakGranietTextuur(){
+  if(_steenTex) return _steenTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#8e8c84'; g.fillRect(0, 0, 256, 256);
+
+  // fijne korrel over het hele vlak
+  const beeld = g.getImageData(0, 0, 256, 256);
+  for(let i = 0; i < beeld.data.length; i += 4){
+    const n = (Math.random() - 0.5) * 62;
+    beeld.data[i]   = Math.max(0, Math.min(255, beeld.data[i] + n));
+    beeld.data[i+1] = Math.max(0, Math.min(255, beeld.data[i+1] + n));
+    beeld.data[i+2] = Math.max(0, Math.min(255, beeld.data[i+2] + n * 0.9));
+  }
+  g.putImageData(beeld, 0, 0);
+
+  // grotere kristallen: lichte kwarts en donkere mineralen
+  for(let i = 0; i < 1400; i++){
+    const x = Math.random() * 256, y = Math.random() * 256;
+    const r = 0.8 + Math.random() * 3.4;
+    const licht = Math.random() > 0.45;
+    g.fillStyle = licht
+      ? 'rgba(232,229,220,' + (0.30 + Math.random() * 0.45) + ')'
+      : 'rgba(52,50,46,'    + (0.25 + Math.random() * 0.40) + ')';
+    g.beginPath();
+    g.ellipse(x, y, r, r * (0.45 + Math.random() * 0.8), Math.random() * 3.14, 0, 6.3);
+    g.fill();
+  }
+
+  // donkere verweringsvlekken
+  for(let i = 0; i < 34; i++){
+    const x = Math.random() * 256, y = Math.random() * 256, r = 8 + Math.random() * 30;
+    const v = g.createRadialGradient(x, y, 0, x, y, r);
+    v.addColorStop(0, 'rgba(48,46,42,0.30)');
+    v.addColorStop(1, 'rgba(48,46,42,0)');
+    g.fillStyle = v; g.beginPath(); g.arc(x, y, r, 0, 6.3); g.fill();
+  }
+
+  // witte aders die dwars door de steen lopen
+  g.lineCap = 'round';
+  for(let i = 0; i < 9; i++){
+    let x = Math.random() * 256, y = Math.random() * 256;
+    let hoek = Math.random() * 6.3;
+    g.strokeStyle = 'rgba(238,235,226,' + (0.35 + Math.random() * 0.45) + ')';
+    g.lineWidth = 0.6 + Math.random() * 2.4;
+    g.beginPath(); g.moveTo(x, y);
+    for(let j = 0; j < 26; j++){
+      hoek += (Math.random() - 0.5) * 0.9;
+      x += Math.cos(hoek) * 11; y += Math.sin(hoek) * 11;
+      g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+
+  _steenTex = new THREE.CanvasTexture(c);
+  _steenTex.wrapS = _steenTex.wrapT = THREE.RepeatWrapping;
+  _steenTex.anisotropy = 4;
+  _steenBump = _steenTex;      // dezelfde tekening als bult-kaart
+  return _steenTex;
+}
+
+// Elk driehoekje krijgt zijn eigen stukje textuur, recht vooruit geprojecteerd
+// vanaf de kant waar het vlak naar toe kijkt. Zo wordt de korrel nergens
+// uitgerekt — ook niet op de schuine breukvlakken.
+function zetSteenUV(g, schaal){
+  const pos = g.attributes.position;
+  const uv = new Float32Array(pos.count * 2);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const ab = new THREE.Vector3(), ac = new THREE.Vector3(), vn = new THREE.Vector3();
+  for(let i = 0; i < pos.count; i += 3){
+    a.set(pos.getX(i), pos.getY(i), pos.getZ(i));
+    b.set(pos.getX(i+1), pos.getY(i+1), pos.getZ(i+1));
+    c.set(pos.getX(i+2), pos.getY(i+2), pos.getZ(i+2));
+    vn.crossVectors(ab.subVectors(b, a), ac.subVectors(c, a)).normalize();
+    const ax = Math.abs(vn.x), ay = Math.abs(vn.y), az = Math.abs(vn.z);
+    for(let j = 0; j < 3; j++){
+      const x = pos.getX(i+j), y = pos.getY(i+j), z = pos.getZ(i+j);
+      let u, v;
+      if(ax >= ay && ax >= az){ u = z; v = y; }
+      else if(ay >= az){ u = x; v = z; }
+      else { u = x; v = y; }
+      uv[(i+j)*2] = u * schaal; uv[(i+j)*2+1] = v * schaal;
+    }
+  }
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+}
+
 // Eén BROK: een bol die met een paar breukvlakken is afgesneden.
 // Weinig vlakken en diep insnijden = grote platte vlakken met scherpe
 // ribben. Veel vlakken zou kleine facetjes geven en dan blijft het rond.
@@ -683,7 +783,7 @@ function maakBrok(zaadje, detail){
 // scheef lopen omdat de rots ooit gekanteld is), verwering (bovenkant
 // gebleekt door de zon, onderkant donker en vochtig) en mos op alles
 // wat naar boven kijkt.
-function maakSteenGeometrie(zaadje, mos, detail){
+function maakSteenGeometrie(zaadje, mos, detail, uvSchaal){
   const BROKKEN = 2 + Math.floor(ruis(zaadje, 1.1, 2.2) * 2);
   const delen = [];
   let totaal = 0;
@@ -751,7 +851,7 @@ function maakSteenGeometrie(zaadje, mos, detail){
     const korrel = 0.90 + ruis(mx * 5.5, my * 5.5, mz * 5.5) * 0.20;
     const ader = Math.max(0, Math.sin(mx * 6.1 + my * 3.7 + mz * 4.9 + zaadje) - 0.74) * 2.0;
     const g2 = korrel * vlakTint * laag * verwering * (1 - ader * 0.34);
-    steen.setRGB(g2 * 0.50, g2 * 0.495, g2 * 0.46);
+    steen.setRGB(g2 * 0.86, g2 * 0.85, g2 * 0.80);
 
     // mos op alles wat naar boven kijkt
     const omhoog = Math.max(0, vn.y);
@@ -765,6 +865,7 @@ function maakSteenGeometrie(zaadje, mos, detail){
     }
   }
   g.setAttribute('color', new THREE.BufferAttribute(kleuren, 3));
+  zetSteenUV(g, uvSchaal || 1.6);
   g.computeVertexNormals();
   return g;
 }
@@ -774,20 +875,25 @@ function maakSteenGeometrie(zaadje, mos, detail){
 {
   const SOORTEN = [
     // grote liggende rotsblokken
-    {zaadje: 0.9,  mos: 0.80, detail: 1, aantal: IS_TOUCH ? 3 : 4, maat: [1.7, 2.7], vorm: [1.15, 0.62, 1.35]},
+    {zaadje: 0.9,  mos: 0.80, detail: 1, aantal: IS_TOUCH ? 3 : 4, maat: [1.7, 2.7], vorm: [1.15, 0.62, 1.35], uv: 3.4},
     // rechtopstaande rotspunten
-    {zaadje: 2.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 2 : 3, maat: [1.2, 2.0], vorm: [0.72, 1.55, 0.80]},
+    {zaadje: 2.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 2 : 3, maat: [1.2, 2.0], vorm: [0.72, 1.55, 0.80], uv: 2.8},
     // gedrongen keien
-    {zaadje: 3.6,  mos: 1.15, detail: 1, aantal: IS_TOUCH ? 5 : 8, maat: [0.8, 1.6], vorm: [1.10, 0.78, 1.00]},
+    {zaadje: 3.6,  mos: 1.15, detail: 1, aantal: IS_TOUCH ? 5 : 8, maat: [0.8, 1.6], vorm: [1.10, 0.78, 1.00], uv: 2.2},
     // kleine brokken
-    {zaadje: 6.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 5 : 8, maat: [0.5, 1.2], vorm: [1.00, 0.85, 1.20]},
-    {zaadje: 11.7, mos: 0.65, detail: 1, aantal: IS_TOUCH ? 4 : 6, maat: [0.6, 1.4], vorm: [1.30, 0.70, 0.90]},
+    {zaadje: 6.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 5 : 8, maat: [0.5, 1.2], vorm: [1.00, 0.85, 1.20], uv: 1.8},
+    {zaadje: 11.7, mos: 0.65, detail: 1, aantal: IS_TOUCH ? 4 : 6, maat: [0.6, 1.4], vorm: [1.30, 0.70, 0.90], uv: 2.0},
   ];
   const gruisPlek = [];
   for(const soort of SOORTEN){
     const mesh = new THREE.InstancedMesh(
-      maakSteenGeometrie(soort.zaadje, soort.mos, soort.detail),
-      new THREE.MeshLambertMaterial({vertexColors: true, flatShading: true}),
+      maakSteenGeometrie(soort.zaadje, soort.mos, soort.detail, soort.uv),
+      new THREE.MeshPhongMaterial({
+        vertexColors: true, flatShading: true,
+        map: maakGranietTextuur(),
+        bumpMap: _steenBump, bumpScale: 0.055,
+        shininess: 6, specular: 0x2a2a26      // steen glimt bijna niet
+      }),
       soort.aantal
     );
     mesh.castShadow = mesh.receiveShadow = true;
@@ -815,8 +921,12 @@ function maakSteenGeometrie(zaadje, mos, detail){
   // ── gruis: kleine brokjes die van de grote stenen zijn afgebroken ──
   const GRUIS = gruisPlek.length * (IS_TOUCH ? 3 : 5);
   const gruis = new THREE.InstancedMesh(
-    maakSteenGeometrie(8.1, 0.35, 0),
-    new THREE.MeshLambertMaterial({vertexColors: true, flatShading: true}),
+    maakSteenGeometrie(8.1, 0.35, 0, 5.5),
+    new THREE.MeshPhongMaterial({
+      vertexColors: true, flatShading: true,
+      map: maakGranietTextuur(), bumpMap: _steenBump, bumpScale: 0.035,
+      shininess: 6, specular: 0x2a2a26
+    }),
     Math.max(1, GRUIS)
   );
   gruis.castShadow = true;
