@@ -187,10 +187,13 @@ function vulkaanInfo(x, z){
   // helling steil was, waardoor het midden hóger lag dan de rand: geen gat.
   const rr = VULKAAN.kraterR * 1.15;
   if(r < rr){
-    const uR = Math.max(0, 1 - rr / (VULKAAN.R * rond));
-    const basis = VULKAAN.H * Math.pow(uR, 1.5);                       // hoogte van de helling waar de kom begint
     const z1 = Math.min(1, Math.max(0, (rr - r) / (rr - VULKAAN.kraterR)));   // 0 buiten → 1 op de kraterrand
     const lip = z1 * z1 * (3 - 2 * z1);
+    // hoogte van de helling waar de kom begint; binnen de rand wordt hij rondom gelijk
+    // (de uitstulpingen van de voet tellen daar niet meer), zodat de bodem echt waterpas ligt
+    const basisRond = VULKAAN.H * Math.pow(Math.max(0, 1 - rr / (VULKAAN.R * rond)), 1.5);
+    const basisVlak = VULKAAN.H * Math.pow(Math.max(0, 1 - rr / VULKAAN.R), 1.5);
+    const basis = basisRond + (basisVlak - basisRond) * lip;
     const z2 = Math.min(1, Math.max(0, (VULKAAN.kraterR - r) / (VULKAAN.kraterR * 0.3)));   // 0 op de rand → 1 vanaf 0.7R
     const kom = z2 * z2 * (3 - 2 * z2);
     h = basis + 8 * lip - kom * (VULKAAN.kraterDiep + 8);
@@ -216,7 +219,7 @@ function gatDiepte(x, z){
   }
   return d;
 }
-function hoogteOp(x, z){
+function eilandBasis(x, z){
   // de vorm zelf staat in hoogteBasis, op de oude maat (kust rond 66)
   const hb = hoogteBasis(x / SCHAAL, z / SCHAAL);
   // op het grote eiland komen daar zachte, glooiende heuvels bij (80-250 m breed),
@@ -225,9 +228,21 @@ function hoogteOp(x, z){
   const glooi = (Math.sin(x * 0.012 + 0.4) * Math.cos(z * 0.009 + 1.1) * 2.4
                + Math.sin(x * 0.031 + 2.0) * Math.cos(z * 0.026 + 0.3) * 1.0
                + Math.sin(x * 0.070 + 1.0) * Math.cos(z * 0.061 + 2.6) * 0.35) * land * land * (3 - 2 * land);
+  return hb + glooi;
+}
+let kraterBasis = null;   // eilandhoogte onder het midden van de krater (één keer uitgerekend)
+function hoogteOp(x, z){
+  let basis = eilandBasis(x, z);
   // en de vulkaan komt er bovenop
   const vi = vulkaanInfo(x, z);
-  return hb + glooi + (vi ? vi.h * vulkaanFactor : 0) - (gaten.length ? gatDiepte(x, z) : 0);
+  // in de krater is de bodem echt vlak: de heuvels van het eiland lopen daar niet door
+  // (anders ligt het lavameer scheef en steekt het uit de vloer)
+  if(vi && vi.r < VULKAAN.kraterR * 1.15){
+    if(kraterBasis === null) kraterBasis = eilandBasis(VULKAAN.x, VULKAAN.z);
+    const f = Math.min(1, Math.max(0, (VULKAAN.kraterR * 1.15 - vi.r) / (VULKAAN.kraterR * 0.45)));
+    basis += (kraterBasis - basis) * f * f * (3 - 2 * f);
+  }
+  return basis + (vi ? vi.h * vulkaanFactor : 0) - (gaten.length ? gatDiepte(x, z) : 0);
 }
 function hoogteBasis(x, z){
   const d = Math.hypot(x, z);
@@ -2504,6 +2519,56 @@ tik('kokos+kist');
 // ══════════════════════════════════════════════════════════════════
 let kraterTop = hoogteOp(VULKAAN.x, VULKAAN.z);
 let lavaMesh = null, gloedSprite = null, lavaMat = null, lavaLicht = null;
+// de lavakaart (zie het lavameer hieronder): 512×512, herhaalbaar
+function lavaKaart(){
+  const N = 512, c = document.createElement('canvas'); c.width = c.height = N;
+  const g = c.getContext('2d'), img = g.createImageData(N, N), d = img.data;
+  let zaad = 4242;
+  const rnd = () => { zaad = (zaad * 1664525 + 1013904223) >>> 0; return zaad / 4294967296; };
+  // herhaalbare waarde-ruis: per octaaf een roostertje met toevalsgetallen
+  function rooster(per){ const a = new Float32Array(per * per); for(let i = 0; i < a.length; i++) a[i] = rnd(); return {a, per}; }
+  function ruis(ro, x, y){
+    const per = ro.per, ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const w = (i, j) => ro.a[((j % per + per) % per) * per + ((i % per + per) % per)];
+    const a = w(ix, iy), b = w(ix + 1, iy), c2 = w(ix, iy + 1), d2 = w(ix + 1, iy + 1);
+    return (a + (b - a) * sx) * (1 - sy) + (c2 + (d2 - c2) * sx) * sy;
+  }
+  function fbmMaker(basis, oct){ const lagen = []; let per = basis; for(let o = 0; o < oct; o++){ lagen.push(rooster(per)); per *= 2; }
+    return (u, v) => { let s = 0, amp = 0.5, tot = 0; for(const ro of lagen){ s += amp * ruis(ro, u * ro.per, v * ro.per); tot += amp; amp *= 0.5; } return s / tot; }; }
+  const warpU = fbmMaker(4, 3), warpV = fbmMaker(4, 3), stroomF = fbmMaker(3, 4), touwF = fbmMaker(6, 2), fijnF = fbmMaker(32, 2);
+  // Worley-punten: elk punt wordt een kussen
+  const punten = []; for(let i = 0; i < 90; i++) punten.push([rnd(), rnd()]);
+  // eerste ronde: de stroom-ruis per pixel, daarna omzetten naar een rang (0..1 gelijk verdeeld)
+  const stroomRuw = new Float32Array(N * N);
+  for(let y = 0, q = 0; y < N; y++) for(let x = 0; x < N; x++, q++) stroomRuw[q] = stroomF(x / N, y / N);
+  const bins = new Uint32Array(4096);
+  for(let q = 0; q < stroomRuw.length; q++) bins[Math.min(4095, Math.floor(stroomRuw[q] * 4095))]++;
+  const cdf = new Float32Array(4096); let som = 0;
+  for(let b = 0; b < 4096; b++){ som += bins[b]; cdf[b] = som / stroomRuw.length; }
+  let p = 0;
+  for(let y = 0; y < N; y++) for(let x = 0; x < N; x++, p += 4){
+    const u = x / N, v = y / N;
+    const wu = u + (warpU(u, v) - 0.5) * 0.10, wv = v + (warpV(u, v) - 0.5) * 0.10;
+    let f1 = 9, f2 = 9;
+    for(let i = 0; i < punten.length; i++){
+      let dx = wu - punten[i][0], dy = wv - punten[i][1];
+      dx -= Math.round(dx); dy -= Math.round(dy);                 // herhaalbaar over de rand
+      const dd = dx * dx + dy * dy;
+      if(dd < f1){ f2 = f1; f1 = dd; } else if(dd < f2) f2 = dd;
+    }
+    f1 = Math.sqrt(f1); f2 = Math.sqrt(f2);
+    const kussen = Math.sqrt(Math.max(0, (f2 - f1) / (f2 + f1 + 1e-6)));   // 1 midden op het kussen, 0 op de naad
+    const hoogte = Math.min(1, kussen * 0.92 + (fijnF(u, v) - 0.5) * 0.10);
+    const stroom = cdf[Math.min(4095, Math.floor(stroomRuw[p >> 2] * 4095))];
+    const touw = 0.5 + 0.5 * Math.sin((v * 34 + touwF(u, v) * 5) * Math.PI * 2);
+    d[p] = hoogte * 255; d[p + 1] = stroom * 255; d[p + 2] = touw * 255; d[p + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
 {
   // ── HET LAVAMEER (Brian, 5 sep, met een foto van een echte krater) ──
   // Echte lava is geen oranje vlak: het is een donkere, gebarsten korst met
@@ -2511,39 +2576,83 @@ let lavaMesh = null, gloedSprite = null, lavaMat = null, lavaLicht = null;
   // fel geel-oranje omhoog borrelt. Dat doet deze shader: twee lagen ruis
   // bepalen waar korst en waar vloeibare lava is, het lijntjes-netwerk uit de
   // ruis-textuur wordt gloeiende scheuren, en alles stroomt en pulseert.
+  // ── HET LAVAMEER v2 (Brian 5 sep, naar een foto van Hawaiiaanse lava) ──
+  // Echte lava (pahoehoe) ziet er zo uit: een zilvergrijze, gladde korst van
+  // bolle kussens met donkere naden ertussen, en daartussen grote banen
+  // gloeiende lava — geel-wit in het hart, oranje-rood aan de randen, met
+  // touwachtige rimpels. Waar de korst aan de lava grenst gloeit hij rood door.
+  // We maken daarvoor één "lavakaart": R = kussenhoogte (Worley-cellen: elke
+  // cel een kussen, de celgrenzen zijn de naden), G = waar lava stroomt
+  // (grote zachte ruis), B = touw-rimpels. De shader zet de kussens ook echt
+  // omhoog (vertex-verplaatsing) en belicht ze met een reliëf-normaal.
   lavaMat = new THREE.ShaderMaterial({
-    uniforms: {tijd: {value: 0}, ruis: {value: zeeRuisTextuur()}},
+    uniforms: {tijd: {value: 0}, kaart: {value: lavaKaart()}, tegel: {value: 2.6}},
     vertexShader: `
-      varying vec2 vUv;
-      void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `
-      uniform float tijd; uniform sampler2D ruis;
-      varying vec2 vUv;
+      uniform sampler2D kaart; uniform float tijd; uniform float tegel;
+      varying vec2 vUv; varying vec3 vPos;
       void main(){
-        vec2 uv = vUv * 1.45;
-        float n1 = texture2D(ruis, uv * 1.4 + tijd * vec2(0.010, 0.006)).r;          // grote korst-eilanden
-        float n2 = texture2D(ruis, uv * 3.1 - tijd * vec2(0.007, 0.012)).r;          // fijnere structuur
-        vec2 w = (vec2(n1, n2) - 0.5) * 0.45;                                          // verbuigt het netwerk: geen honingraat
-        float lijn = texture2D(ruis, uv * 1.6 + w + tijd * vec2(0.004, -0.003)).b;     // scheuren-netwerk
-        float lijn2 = texture2D(ruis, uv * 3.4 - w * 0.6 - tijd * vec2(0.002, 0.005)).b;
-        // 0 = donkere korst, 1 = vloeibaar; de grens ademt langzaam
-        float heet = smoothstep(0.34, 0.62, n1 * 0.62 + n2 * 0.38 + 0.06 * sin(tijd * 0.6 + n2 * 9.0));
-        vec3 korst = vec3(0.075, 0.045, 0.035);
-        vec3 gloei = mix(vec3(1.0, 0.24, 0.02), vec3(1.0, 0.82, 0.22), smoothstep(0.5, 0.95, n2));
-        vec3 kleur = mix(korst, gloei, heet);
-        // gloeiende scheuren in de korst (rood-oranje), fijner netwerk zwakker
-        kleur += vec3(1.0, 0.36, 0.05) * (lijn * 0.85 + lijn2 * 0.25) * (1.0 - heet);
-        // borrelend geel in het hart van de hete plekken
-        kleur += vec3(1.0, 0.90, 0.50) * pow(heet, 3.0) * (0.50 + 0.50 * sin(tijd * 2.6 + n1 * 25.0));
-        // naar de kraterwand toe donkerder en meer korst
-        float r = length(vUv - 0.5) * 2.0;
-        kleur = mix(kleur, korst, smoothstep(0.78, 1.0, r) * 0.85);
+        vUv = uv;
+        vec4 k = texture2D(kaart, uv * tegel);
+        vec2 stroom = uv * tegel * 0.5 + tijd * vec2(0.0035, 0.002);
+        float m = texture2D(kaart, stroom).g;
+        float heet = smoothstep(0.71, 0.74, m);
+        vec3 p = position;
+        p.y += k.r * 1.3 * (1.0 - heet);                    // kussens omhoog, de lava ligt vlak
+        vPos = (modelMatrix * vec4(p, 1.0)).xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      }`,
+    fragmentShader: `
+      uniform sampler2D kaart; uniform float tijd; uniform float tegel;
+      varying vec2 vUv; varying vec3 vPos;
+      void main(){
+        float rand = length(vUv - 0.5) * 2.0;
+        vec2 kuv = vUv * tegel;
+        vec4 k = texture2D(kaart, kuv);
+        if(rand > 0.95 + 0.05 * k.r) discard;                 // onregelmatige rand van het meer
+        vec2 stroom = vUv * tegel * 0.5 + tijd * vec2(0.0035, 0.002);
+        float m = texture2D(kaart, stroom).g;
+        float heet = smoothstep(0.71, 0.74, m);
+        float warm = smoothstep(0.55, 0.71, m);                // hitte die door de korst heen gloeit
+        // reliëf-normaal uit de kussenkaart
+        float e = 1.0 / 512.0;
+        float hr = texture2D(kaart, kuv + vec2(e, 0.0)).r, hl = texture2D(kaart, kuv - vec2(e, 0.0)).r;
+        float hu = texture2D(kaart, kuv + vec2(0.0, e)).r, hd = texture2D(kaart, kuv - vec2(0.0, e)).r;
+        vec3 n = normalize(vec3((hl - hr) * 7.0, 1.0, (hd - hu) * 7.0));
+        vec3 L = normalize(vec3(0.35, 0.8, 0.5));
+        vec3 V = normalize(cameraPosition - vPos);
+        float dif = max(dot(n, L), 0.0);
+        float spec = pow(max(dot(n, normalize(L + V)), 0.0), 22.0);
+        // de korst: zilvergrijs en glad, donkere naden tussen de kussens
+        float naad = 1.0 - smoothstep(0.0, 0.20, k.r);
+        vec3 korst = mix(vec3(0.36, 0.36, 0.38), vec3(0.15, 0.14, 0.14), naad) * (0.38 + 0.72 * dif) + vec3(0.32) * spec;
+        // de naden gloeien (vooral vlak bij de lava) en de korst kleurt rood door van de hitte
+        korst += vec3(1.0, 0.30, 0.03) * naad * (0.25 + 0.75 * warm);
+        korst += vec3(0.95, 0.20, 0.02) * warm * warm * 0.85;
+        // de lava zelf: heet hart geel-wit, randen oranje-rood, touwachtige rimpels
+        float temp = smoothstep(0.76, 0.97, m + 0.02 * sin(tijd * 1.7 + k.b * 6.0));
+        float touw = 0.70 + 0.30 * k.b;
+        vec3 lava = mix(vec3(0.95, 0.16, 0.02), vec3(1.0, 0.60, 0.10), temp) * touw;
+        lava += vec3(1.0, 0.92, 0.62) * pow(temp, 4.0) * 0.7;
+        lava *= 0.85 + 0.15 * sin(tijd * 2.3 + m * 30.0);      // zacht pulseren
+        vec3 kleur = mix(korst, lava, heet);
         gl_FragColor = vec4(kleur, 1.0);
       }`
   });
-  const lava = lavaMesh = new THREE.Mesh(new THREE.CircleGeometry(VULKAAN.kraterR * 0.66, 48), lavaMat);
-  lava.rotation.x = -Math.PI / 2;
-  lava.position.set(VULKAAN.x, kraterTop + 0.6, VULKAAN.z);
+  const lava = lavaMesh = (() => {
+    const R = VULKAAN.kraterR * 0.68;
+    const geo = new THREE.PlaneGeometry(R * 2, R * 2, 110, 110);
+    geo.rotateX(-Math.PI / 2);
+    // het meer volgt de kraterbodem (die is niet perfect vlak), zodat er nergens een kier onder zit
+    const pa = geo.attributes.position;
+    for(let i = 0; i < pa.count; i++){
+      const gy = hoogteOp(VULKAAN.x + pa.getX(i), VULKAAN.z + pa.getZ(i)) - kraterTop;
+      pa.setY(i, Math.min(gy, 2) + 0.3);
+    }
+    const m = new THREE.Mesh(geo, lavaMat);
+    m.position.set(VULKAAN.x, kraterTop, VULKAAN.z);
+    m.frustumCulled = false;
+    return m;
+  })();
   scene.add(lava);
   // oranje licht dat de zwarte kraterwanden van onderaf verlicht (flikkert mee)
   lavaLicht = new THREE.PointLight(0xff6a1a, 0.9, 120, 2);
@@ -3539,7 +3648,7 @@ function updateVulkaan(dt){
       instorten.laatsteBouw = instorten.t;
       herbouwGrond(VULKAAN.x, VULKAAN.z, VULKAAN.R * 1.2);
       kraterTop = hoogteOp(VULKAAN.x, VULKAAN.z);
-      if(lavaMesh) lavaMesh.position.y = kraterTop + 0.6;
+      if(lavaMesh) lavaMesh.position.y = kraterTop;
       if(gloedSprite) gloedSprite.position.y = kraterTop + 6;
       schok = Math.max(schok, 0.8);
     }
