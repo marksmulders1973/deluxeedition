@@ -2901,6 +2901,7 @@ function updateBomen(dt){
 // links boven springt op. Je voorraad wordt bewaard (localStorage).
 // ══════════════════════════════════════════════════════════════════
 const SCRAP_MAX = 400;
+let terreinVersie = 0;    // gaat +1 als de grond verandert; scraps die liggen checken dan of ze nog wel op de grond liggen
 // Een "bak" = één soort scrap: een InstancedMesh + de lijst + de teller.
 // De kopse kanten (eerste 8 hoekpunten van een BoxGeometry) krijgen een lichte kleur: het breukvlak.
 function maakBlokScrapGeo(lengte, hoogte, diep, kop){
@@ -2969,6 +2970,14 @@ function updateScrapBak(bak, dt){
   for(let i = 0; i < bak.lijst.length; i++){
     const sc = bak.lijst[i];
     if(!sc || sc.weg) continue;
+    // Brian 5 sep ("er zijn stenen die vliegen"): is de grond onder een liggende scrap
+    // weggehakt, dan hangt hij in de lucht → opnieuw laten vallen
+    if(sc.rust && sc.versie !== terreinVersie){
+      sc.versie = terreinVersie;
+      const g = hoogteOp(sc.x, sc.z) + sc.rustY;
+      if(sc.y > g + 0.05){ sc.rust = false; sc.vy = 0; sc.vx = 0; sc.vz = 0; }
+      else if(sc.y < g - 0.02){ sc.y = g; zetScrapMatrix(bak, i, sc); veranderd = true; }
+    }
     if(!sc.rust){
       sc.vy -= 14 * dt;
       sc.x += sc.vx * dt; sc.y += sc.vy * dt; sc.z += sc.vz * dt;
@@ -2977,7 +2986,7 @@ function updateScrapBak(bak, dt){
       if(sc.y <= grond){
         sc.y = grond;
         if(sc.vy < -1.6){ sc.vy = -sc.vy * 0.3; sc.vx *= 0.5; sc.vz *= 0.5; sc.wx *= 0.5; sc.wz *= 0.5; }   // stuitertje
-        else { sc.rust = true; sc.rx = Math.round(sc.rx / Math.PI) * Math.PI; sc.rz = Math.round(sc.rz / Math.PI) * Math.PI; }  // plat neerleggen
+        else { sc.rust = true; sc.versie = terreinVersie; sc.rx = Math.round(sc.rx / Math.PI) * Math.PI; sc.rz = Math.round(sc.rz / Math.PI) * Math.PI; }  // plat neerleggen
       }
       zetScrapMatrix(bak, i, sc); veranderd = true;
     }
@@ -3369,6 +3378,7 @@ function herbouwGrond(cx, cz, straal){
   }
   pos.needsUpdate = true; kl.needsUpdate = true;
   grondGeo.computeVertexNormals();
+  terreinVersie++;                                   // liggende scraps checken hun grond opnieuw
 }
 // waar zou je hakken? 2,5 m vóór je, en dat moet op de vulkaan zijn
 function vulkaanVoorJe(){
