@@ -207,32 +207,189 @@ function zacht(a, b, x){
   return t * t * (3 - 2 * t);
 }
 
-// Een fijne korrel-textuur die over de hele grond herhaalt. Hij maakt de
-// kleur alleen een tikje lichter of donkerder — net als echte zandkorrels
-// en grassprietjes van een afstandje.
-function korrelTextuur(){
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
-  const g = c.getContext('2d');
-  const beeld = g.createImageData(128, 128);
-  for(let i = 0; i < beeld.data.length; i += 4){
-    const n = 214 + Math.random() * 41;
-    beeld.data[i] = beeld.data[i+1] = beeld.data[i+2] = n;
-    beeld.data[i+3] = 255;
+// ══════════════════════════════════════════════════════════════════
+// 3a. DE GRASTEXTUUR (Brian, 5 sep: "maak de grond 10× realistischer,
+//     zoals deze foto")
+//
+// Op de foto zie je wat écht gras is: duizenden losse sprietjes in allerlei
+// groenen, plukken lichter wild gras, hier en daar een geel of bruin
+// verdord sprietje, en donkere schaduw tússen de sprieten. Eerst was de
+// grond een groen vlak met wat ruis erover. Nu schilderen we het gras hier
+// zelf, sprietje voor sprietje, op een canvas. Dat plaatje herhaalt zich
+// naadloos over het eiland (wat rechts over de rand gaat, komt links weer
+// binnen), en het zit ook in het reliëf: de sprietjes steken een tikje
+// omhoog en vangen licht.
+//
+// Trucje: alle kleuren zijn opgeslagen "rond 128 = neutraal". In de shader
+// vermenigvuldigen we met 2. Zo kan de textuur de grondkleur lichter óf
+// donkerder maken — een gewone textuur kan alleen maar donkerder.
+// ══════════════════════════════════════════════════════════════════
+let _zaad = 1234567;
+function vast(){ _zaad = (_zaad * 16807) % 2147483647; return _zaad / 2147483647; }
+function enc(f, r, g, b){
+  const k = 128 * f;
+  return 'rgb(' + Math.round(Math.min(255, k * r)) + ',' + Math.round(Math.min(255, k * g)) + ',' + Math.round(Math.min(255, k * b)) + ')';
+}
+// Zet het gemiddelde van een canvas precies op 128 (= "neutraal"). Anders
+// wordt de hele grond stiekem lichter of donkerder dan de grondkleur bedoelt.
+function neutraal(g, N, contrast = 1){
+  const beeld = g.getImageData(0, 0, N, N), d = beeld.data, som = [0, 0, 0];
+  for(let i = 0; i < d.length; i += 4){ som[0] += d[i]; som[1] += d[i+1]; som[2] += d[i+2]; }
+  const n = d.length / 4, k = [128 * n / som[0], 128 * n / som[1], 128 * n / som[2]];
+  for(let i = 0; i < d.length; i += 4){
+    d[i]   = Math.max(0, Math.min(255, 128 + (d[i]   * k[0] - 128) * contrast));
+    d[i+1] = Math.max(0, Math.min(255, 128 + (d[i+1] * k[1] - 128) * contrast));
+    d[i+2] = Math.max(0, Math.min(255, 128 + (d[i+2] * k[2] - 128) * contrast));
   }
   g.putImageData(beeld, 0, 0);
-  // wat grotere, zachte vlekken erover zodat het niet als ruis oogt
-  for(let i = 0; i < 90; i++){
-    const x = Math.random() * 128, y = Math.random() * 128, r = 3 + Math.random() * 11;
-    const v = g.createRadialGradient(x, y, 0, x, y, r);
-    const licht = Math.random() > 0.5;
-    v.addColorStop(0, licht ? 'rgba(255,255,255,0.30)' : 'rgba(150,150,150,0.26)');
-    v.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = v; g.beginPath(); g.arc(x, y, r, 0, 6.3); g.fill();
+}
+// naadloos: alles wat dicht bij een rand ligt tekenen we ook aan de overkant
+function metWrap(N, x, y, r, teken){
+  const xs = [0]; if(x < r) xs.push(N); else if(x > N - r) xs.push(-N);
+  const ys = [0]; if(y < r) ys.push(N); else if(y > N - r) ys.push(-N);
+  for(const ox of xs) for(const oy of ys) teken(ox, oy);
+}
+
+function grasTextuur(){
+  const N = IS_TOUCH ? 512 : 1024;
+  const s = N / 1024;                       // alle maten schalen mee
+  const c = document.createElement('canvas'); c.width = c.height = N;
+  const g = c.getContext('2d');
+
+  // ── de bodem: donkere aarde en schaduw tussen de sprieten ──
+  g.fillStyle = enc(0.42, 0.90, 1.0, 0.70); g.fillRect(0, 0, N, N);
+  for(let i = 0; i < 70; i++){
+    const x = vast() * N, y = vast() * N, r = (40 + vast() * 120) * s;
+    const donker = vast() < 0.5;
+    metWrap(N, x, y, r, (ox, oy) => {
+      const v = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+      v.addColorStop(0, donker ? 'rgba(40,44,28,0.45)' : 'rgba(120,124,80,0.30)');
+      v.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = v; g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+    });
   }
+
+  // ── plukken lichter wild gras (die lichtgroene vlekken op de foto) ──
+  const plukken = [];
+  for(let i = 0; i < 9; i++) plukken.push({x: vast() * N, y: vast() * N, r: (70 + vast() * 150) * s});
+  // ── een paar droge plekken: geel/bruin verdord gras ──
+  const droog = [];
+  for(let i = 0; i < 5; i++) droog.push({x: vast() * N, y: vast() * N, r: (50 + vast() * 90) * s});
+  function inPlek(lijst, x, y){
+    let m = 0;
+    for(const p of lijst){
+      let dx = Math.abs(x - p.x), dy = Math.abs(y - p.y);
+      dx = Math.min(dx, N - dx); dy = Math.min(dy, N - dy);      // ook over de rand heen
+      const d = Math.hypot(dx, dy) / p.r;
+      if(d < 1) m = Math.max(m, 1 - d * d);
+    }
+    return m;
+  }
+
+  // ── de sprietjes zelf ──
+  // Eerst allemaal bedenken, dan sorteren op helderheid: donkere sprieten
+  // onderop (in de schaduw), lichte bovenop (in de zon). Dat geeft diepte.
+  const AANTAL = IS_TOUCH ? 9000 : 30000;
+  const sprieten = [];
+  for(let i = 0; i < AANTAL; i++){
+    const x = vast() * N, y = vast() * N;
+    const wild = inPlek(plukken, x, y), dor = inPlek(droog, x, y);
+    let f = 0.62 + vast() * 0.78;                       // helderheid 0.62 .. 1.40
+    f += wild * 0.40;                                   // wild gras is lichter
+    let r = 0.90, gr = 1.00, b = 0.74;                  // gewoon groen
+    const t = vast();
+    if(t < 0.10 + wild * 0.55){ r = 1.16; gr = 1.08; b = 0.60; }     // geelgroen (wild gras)
+    if(vast() < 0.035 + dor * 0.55){ r = 1.22; gr = 1.00; b = 0.58; f = Math.max(f, 1.0); }  // verdord
+    if(vast() < 0.02){ r = 1.10; gr = 0.82; b = 0.52; f *= 0.9; }    // bruin, dood sprietje
+    sprieten.push({
+      x, y, f, r, gr, b,
+      l: (11 + vast() * 26) * s * (1 + wild * 0.25),
+      w: (1.4 + vast() * 2.0) * s,
+      hoek: vast() * Math.PI * 2,
+      buig: (vast() - 0.5) * 0.9
+    });
+  }
+  sprieten.sort((a, b) => a.f - b.f);
+
+  g.lineCap = 'round';
+  for(const sp of sprieten){
+    const dx = Math.cos(sp.hoek), dz = Math.sin(sp.hoek), px = -dz, pz = dx;
+    const mx = dx * sp.l * 0.5 + px * sp.buig * sp.l * 0.5, my = dz * sp.l * 0.5 + pz * sp.buig * sp.l * 0.5;
+    const ex = dx * sp.l + px * sp.buig * sp.l * 1.4,        ey = dz * sp.l + pz * sp.buig * sp.l * 1.4;
+    metWrap(N, sp.x, sp.y, sp.l * 1.6, (ox, oy) => {
+      const x = sp.x + ox, y = sp.y + oy;
+      // onderste helft: breder en iets donkerder
+      g.strokeStyle = enc(sp.f * 0.86, sp.r, sp.gr, sp.b); g.lineWidth = sp.w;
+      g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + mx * 0.6, y + my * 0.6, x + mx, y + my); g.stroke();
+      // bovenste helft: dunner en lichter (de punt vangt het licht)
+      g.strokeStyle = enc(sp.f * 1.18, sp.r, sp.gr, sp.b); g.lineWidth = sp.w * 0.55;
+      g.beginPath(); g.moveTo(x + mx, y + my); g.quadraticCurveTo(x + (mx + ex) * 0.5, y + (my + ey) * 0.5, x + ex, y + ey); g.stroke();
+    });
+  }
+  // ── pluisjes/zaadjes in het wilde gras: kleine lichte stipjes ──
+  for(let i = 0; i < (IS_TOUCH ? 150 : 500); i++){
+    const x = vast() * N, y = vast() * N;
+    if(vast() > inPlek(plukken, x, y) * 1.4) continue;
+    const r = (1.2 + vast() * 2.2) * s;
+    g.fillStyle = enc(1.55, 1.05, 1.05, 0.85);
+    metWrap(N, x, y, r, (ox, oy) => { g.beginPath(); g.arc(x + ox, y + oy, r, 0, 6.3); g.fill(); });
+  }
+  neutraal(g, N, 1.28);     // iets meer contrast: diepe schaduw tussen de sprieten
+
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(85, 85);
+  t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());   // scherp blijven op afstand (4× = goed én snel)
+  return t;
+}
+
+// ── 3b. HET ZAND: korrels, windribbels en schelpjes ──
+function zandTextuur(){
+  const N = IS_TOUCH ? 256 : 512;
+  const c = document.createElement('canvas'); c.width = c.height = N;
+  const g = c.getContext('2d');
+  const beeld = g.createImageData(N, N), d = beeld.data;
+  for(let y = 0; y < N; y++){
+    // zachte windribbels die netjes over de rand doorlopen
+    const rib = Math.sin((y / N) * Math.PI * 2 * 22 + Math.sin((y / N) * Math.PI * 2 * 3) * 1.5);
+    for(let x = 0; x < N; x++){
+      const ribX = Math.sin(((x / N) * Math.PI * 2 * 3)) * 1.2;
+      const golf = Math.sin((y / N) * Math.PI * 2 * 22 + ribX) * 7 + rib * 2;
+      const korrel = (vast() - 0.5) * 46;
+      let v = 128 + golf + korrel, r = v, gr = v, b = v;
+      if(vast() < 0.012){ r += 40; gr += 36; b += 30; }           // wit schelpgruis
+      else if(vast() < 0.010){ r -= 28; gr -= 30; b -= 26; }      // donker steentje
+      else if(vast() < 0.03){ r += 6; gr += 2; b -= 8; }          // een tikje warmer korreltje
+      const i = (y * N + x) * 4;
+      d[i] = r; d[i+1] = gr; d[i+2] = b; d[i+3] = 255;
+    }
+  }
+  g.putImageData(beeld, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  return t;
+}
+
+// ── 3c. GROTE VLEKKEN: zodat je nooit ziet dat de textuur herhaalt ──
+// Een aparte, veel grotere textuur met zachte licht/donker-wolken erover.
+function vlekTextuur(){
+  const N = 256;
+  const c = document.createElement('canvas'); c.width = c.height = N;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgb(128,128,128)'; g.fillRect(0, 0, N, N);
+  for(let i = 0; i < 90; i++){
+    const x = vast() * N, y = vast() * N, r = 18 + vast() * 70;
+    const licht = vast() < 0.5;
+    metWrap(N, x, y, r, (ox, oy) => {
+      const v = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+      v.addColorStop(0, licht ? 'rgba(168,162,132,0.38)' : 'rgba(90,102,94,0.38)');   // zonnig=geler, schaduw=blauwer
+      v.addColorStop(1, 'rgba(128,128,128,0)');
+      g.fillStyle = v; g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+    });
+  }
+  neutraal(g, N);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
 
@@ -242,12 +399,13 @@ grondGeo.rotateX(-Math.PI/2);
 {
   const pos = grondGeo.attributes.position;
   const kleuren = new Float32Array(pos.count * 3);
+  const grasMix = new Float32Array(pos.count);   // 1 = gras-textuur, 0 = zand/rots-korrel
   const c = new THREE.Color(), hulp = new THREE.Color();
   // het kleurenpalet van het eiland
   const NAT_ZAND  = new THREE.Color(0xc4ab74);
   const ZAND      = new THREE.Color(0xe9d9a6);
   const DROOG_GRAS= new THREE.Color(0xb8c064);
-  const GRAS      = new THREE.Color(0x5cab46);
+  const GRAS      = new THREE.Color(0x478c37);   // dieper groen, zoals echt gazon op de foto
   const BOS_GRAS  = new THREE.Color(0x3f7d33);
   const AARDE     = new THREE.Color(0x8a6b45);
   const ROTS      = new THREE.Color(0x8e887c);
@@ -274,15 +432,20 @@ grondGeo.rotateX(-Math.PI/2);
     // donkerder bos-gras op de hogere hellingen
     c.lerp(BOS_GRAS, zacht(4.5, 8.5, h) * (0.75 + n2 * 0.2));
     // kale aarde-plekken waar het gras dun is
-    c.lerp(AARDE, Math.max(0, n2 - 0.55) * 0.75 * zacht(1.4, 2.6, h));
+    const aardeF = Math.max(0, n2 - 0.55) * 0.75 * zacht(1.4, 2.6, h);
+    c.lerp(AARDE, aardeF);
     // het strand: de grens golft mee met de ruis, dus geen liniaal-rechte lijn
-    c.lerp(ZAND, zacht(2.0 + n * 0.6, 0.7 + n * 0.35, h));
+    const zandF = zacht(2.0 + n * 0.6, 0.7 + n * 0.35, h);
+    c.lerp(ZAND, zandF);
     // nat, donkerder zand vlak bij de vloedlijn
     c.lerp(NAT_ZAND, zacht(0.35 + n * 0.10, -0.15, h));
     // onder water wordt het zand weer lichter (helder tropisch water)
     c.lerp(DIEP_ZAND, zacht(-0.3, -1.6, h));
     // steile wanden en de kale bergtop worden rots
-    c.lerp(ROTS, Math.min(1, zacht(1.5, 2.6, steil) * 0.85 + zacht(8.5, 11, h) * 0.9));
+    const rotsF = Math.min(1, zacht(1.5, 2.6, steil) * 0.85 + zacht(8.5, 11, h) * 0.9);
+    c.lerp(ROTS, rotsF);
+    // waar het zand, rots of kale aarde is, tekenen we korrels in plaats van sprietjes
+    grasMix[i] = (1 - zandF) * (1 - rotsF) * (1 - aardeF * 0.7);
 
     // ── diepte: ligt dit punt lager dan zijn omgeving? Dan iets donkerder.
     // Dat is hetzelfde trucje als schaduw in een holletje — het geeft het
@@ -294,12 +457,68 @@ grondGeo.rotateX(-Math.PI/2);
     kleuren[i*3] = hulp.r; kleuren[i*3+1] = hulp.g; kleuren[i*3+2] = hulp.b;
   }
   grondGeo.setAttribute('color', new THREE.BufferAttribute(kleuren, 3));
+  grondGeo.setAttribute('grasMix', new THREE.BufferAttribute(grasMix, 1));
   grondGeo.computeVertexNormals();
 }
-const grond = new THREE.Mesh(grondGeo, new THREE.MeshLambertMaterial({
+
+// ── 3d. HET GRONDMATERIAAL: gras én zand in één, met reliëf ──
+// Eén tegel van de grastextuur is ongeveer 2,6 m breed (dus een sprietje is
+// een halve centimeter dik — net echt). Per pixel kiest de shader tussen
+// gras en zand (grasMix), legt de grote vlekken eroverheen en rekent uit
+// hoe het licht op de sprietjes valt (bump-mapping).
+const grasTex = grasTextuur();
+const GROND_HERHAAL = 112;
+grasTex.repeat.set(GROND_HERHAAL, GROND_HERHAAL);
+const zandTex = zandTextuur();
+const vlekTex = vlekTextuur();
+const grondMateriaal = new THREE.MeshPhongMaterial({
   vertexColors: true,
-  map: korrelTextuur()
-}));
+  map: grasTex,
+  bumpMap: grasTex,                 // zet het reliëf aan; het rekenwerk vervangen we hieronder
+  bumpScale: IS_TOUCH ? 0.010 : 0.016,
+  shininess: 5,
+  specular: new THREE.Color(0x181810)
+});
+grondMateriaal.onBeforeCompile = (sh) => {
+  sh.uniforms.zandMap = {value: zandTex};
+  sh.uniforms.vlekMap = {value: vlekTex};
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute float grasMix;\nvarying float vGrasMix;')
+    .replace('#include <uv_vertex>', '#include <uv_vertex>\nvGrasMix = grasMix;');
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <bumpmap_pars_fragment>', `
+      uniform sampler2D bumpMap;
+      uniform float bumpScale;
+      uniform sampler2D zandMap;
+      uniform sampler2D vlekMap;
+      varying float vGrasMix;
+      // het reliëf komt uit de gras-textuur (de sprietjes); op zand zwakt het af
+      vec2 dHdxy_fwd(){
+        vec2 dSTdx = dFdx(vUv); vec2 dSTdy = dFdy(vUv);
+        float k = bumpScale * (0.35 + 0.65 * vGrasMix);
+        float Hll = k * texture2D(map, vUv).g;
+        float dBx = k * texture2D(map, vUv + dSTdx).g - Hll;
+        float dBy = k * texture2D(map, vUv + dSTdy).g - Hll;
+        return vec2(dBx, dBy);
+      }
+      vec3 perturbNormalArb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection){
+        vec3 vSigmaX = vec3(dFdx(surf_pos.x), dFdx(surf_pos.y), dFdx(surf_pos.z));
+        vec3 vSigmaY = vec3(dFdy(surf_pos.x), dFdy(surf_pos.y), dFdy(surf_pos.z));
+        vec3 vN = surf_norm;
+        vec3 R1 = cross(vSigmaY, vN);
+        vec3 R2 = cross(vN, vSigmaX);
+        float fDet = dot(vSigmaX, R1) * faceDirection;
+        vec3 vGrad = sign(fDet) * (dHdxy.x * R1 + dHdxy.y * R2);
+        return normalize(abs(fDet) * surf_norm - vGrad);
+      }`)
+    .replace('#include <map_fragment>', `
+      vec3 gras = texture2D(map, vUv).rgb;
+      vec3 zand = texture2D(zandMap, vUv * 0.9).rgb;
+      vec3 vlek = texture2D(vlekMap, vUv / 13.0).rgb;
+      // de texturen staan "rond 128 = neutraal" opgeslagen → ×2
+      diffuseColor.rgb *= mix(zand, gras, vGrasMix) * 2.0 * vlek * 2.0;`);
+};
+const grond = new THREE.Mesh(grondGeo, grondMateriaal);
 grond.receiveShadow = true;
 scene.add(grond);
 
@@ -671,6 +890,7 @@ let bladMesh = null;
 {
   const pos = grondGeo.attributes.position;
   const kl = grondGeo.attributes.color;
+  const gm = grondGeo.attributes.grasMix;
   const AARDE_ONDER_BOOM = new THREE.Color(0x8f7048);
   const c = new THREE.Color();
   for(let i = 0; i < pos.count; i++){
@@ -686,8 +906,10 @@ let bladMesh = null;
     const sterkte = (1 - dichtst / 3.2) * 0.55;
     c.setRGB(kl.getX(i), kl.getY(i), kl.getZ(i)).lerp(AARDE_ONDER_BOOM, sterkte);
     kl.setXYZ(i, c.r, c.g, c.b);
+    gm.setX(i, gm.getX(i) * (1 - sterkte * 0.9));   // kale aarde: korrels, geen sprietjes
   }
   kl.needsUpdate = true;
+  gm.needsUpdate = true;
 }
 
 // ── 3) de wind: de bladeren wiegen zachtjes heen en weer ──
@@ -1220,7 +1442,7 @@ function maakGrasGeometrie(){
     for(const l of [0.72, 0.72, 1.10, 1.10]) kleur.push(l, l, l);
     idx.push(v, v+1, v+2, v, v+2, v+3); v += 4;
     pos.push(x1 - dz*w1, y1, z1 + dx*w1,   x1 + dz*w1, y1, z1 - dx*w1,   tx, ty, tz);
-    for(const l of [1.10, 1.10, 1.50]) kleur.push(l, l, l);
+    for(const l of [1.10, 1.10, 1.32]) kleur.push(l, l, l);
     idx.push(v, v+1, v+2); v += 3;
   }
   const g = new THREE.BufferGeometry();
@@ -1347,7 +1569,7 @@ function updateGrasVeld(){
       const i = grasData.length - 1;
       // meestal groen, af en toe een gelige droge pluk ertussen
       if(r3 > 0.93) grasKleur.setHSL(0.16 + r1 * 0.03, 0.30, 0.40 + r2 * 0.08);
-      else          grasKleur.setHSL(0.24 + r2 * 0.07, 0.52, 0.36 + r1 * 0.18);
+      else          grasKleur.setHSL(0.25 + r2 * 0.07, 0.50, 0.30 + r1 * 0.14);
       grasVeld.setColorAt(i, grasKleur);
     }
   }
