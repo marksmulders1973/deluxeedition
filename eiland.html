@@ -3681,7 +3681,7 @@ function updateVulkaan(dt){
   }
 }
 // ══════════════════════════════════════════════════════════════════
-// 7c. DE UITBARSTING — elke 5 minuten (Brian, 5 sep)
+// 7c. DE UITBARSTING (Brian, 5 sep) — wanneer: zie de ramp-planner (7d)
 // Twaalf seconden van tevoren begint de vulkaan te rommelen (laag gebrom,
 // de grond trilt). Dan barst hij een halve minuut uit: lavabommen vliegen
 // uit de krater en komen gloeiend op de hellingen neer, de aswolk wordt
@@ -3748,10 +3748,8 @@ function updateUitbarsting(dt){
   }
   if(vulkaanKapot || !lavaMesh){ if(uitbarst){ uitbarst = null; stopRommel(); } return; }
   if(!uitbarst){
-    uitbarstTimer += dt;
-    if(!rommelt && uitbarstTimer >= UITBARST_INTERVAL - UITBARST_WAARSCHUW){ rommelt = true; zeg('🌋 de vulkaan rommelt… hij gaat uitbarsten!'); startRommel(); }
+    // (wanneer hij uitbarst bepaalt de RAMP-PLANNER hieronder: 7d)
     if(rommelt) schok = Math.max(schok, 0.10 + 0.12 * Math.random());
-    if(uitbarstTimer >= UITBARST_INTERVAL){ uitbarstTimer = 0; startUitbarsting(); }
     return;
   }
   uitbarst.t += dt;
@@ -4246,6 +4244,269 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+// ====================================================================
+// 7d. RAMPEN: DE KRAKEN OF DE VULKAAN (Brian, 5 sep: "op mijn eiland heb je
+//     kans dat de Kraken uit het water komt óf dat de vulkaan uitbarst")
+// ====================================================================
+// Elke 1,5 tot 3 minuten gebeurt er iets — en het is elke keer een gok:
+//   🐙 DE KRAKEN — de zee begint te borrelen en een reuze-inktvis rijst uit
+//      het water, recht voor je neus. Hij brult, kijkt je aan, zwaait met
+//      acht tentakels en gooit waterballen naar je: een donkere schaduw op
+//      de grond laat zien waar de bal neerkomt — wegrennen! Na een minuut
+//      duikt hij weer onder.
+//   🌋 DE VULKAAN — de gewone uitbarsting (7c): rommelen, lavabommen, as.
+// Testen: open eiland.html?ramp=kraken of ?ramp=vulkaan → begint na 3 sec.
+const RAMP_MIN = 90, RAMP_MAX = 180;         // seconden tussen twee rampen
+const KRAKEN_DUUR = 70, KRAKEN_OPKOMST = 7;   // hoe lang hij blijft / hoe lang het opkomen duurt
+let rampTimer = 0, rampVolgende = 50, rampKeuze = null;   // eerste ramp na ~50 s
+const RAMP_TEST = new URLSearchParams(location.search).get('ramp');
+let rampTestGedaan = false, rampForce = null;
+
+let kraken = null;                 // {groep, kop, ogen, armen, baard, t, fase, plek}
+const krakenBallen = [], krakenSpetters = [];
+const KRAKEN_KLEUR = 0x2f4a40, KRAKEN_DONKER = 0x22362f;
+let _krakenMat = null, _krakenDonkerMat = null;
+function krakenMat(){ return _krakenMat || (_krakenMat = new THREE.MeshLambertMaterial({color: KRAKEN_KLEUR})); }
+function krakenDonkerMat(){ return _krakenDonkerMat || (_krakenDonkerMat = new THREE.MeshLambertMaterial({color: KRAKEN_DONKER})); }
+
+// een tentakel = keten van scharnieren (pivots): elk stuk hangt aan het vorige
+function maakTentakel(aantal, lenBegin, lenEind, dikBegin, dikEind, mat){
+  const stukken = []; let ouder = new THREE.Group();
+  const basis = ouder;
+  for(let j = 0; j < aantal; j++){
+    const f = j / Math.max(1, aantal - 1);
+    const len = lenBegin + (lenEind - lenBegin) * f;
+    const d0 = dikBegin + (dikEind - dikBegin) * f;
+    const d1 = dikBegin + (dikEind - dikBegin) * Math.min(1, (j + 1) / Math.max(1, aantal - 1));
+    const piv = new THREE.Group();
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(d1, d0, len, 9, 1), mat);
+    m.position.y = len / 2; m.castShadow = true; piv.add(m);
+    // zuignapjes: bolletjes aan de onderkant
+    if(j < aantal - 1) for(let k = 0; k < 3; k++){
+      const z = new THREE.Mesh(new THREE.SphereGeometry(d0 * 0.32, 6, 5), krakenDonkerMat());
+      z.position.set(0, len * (0.2 + 0.3 * k), -d0 * 0.9); piv.add(z);
+    }
+    if(j === aantal - 1){ const tip = new THREE.Mesh(new THREE.SphereGeometry(d1 * 1.1, 8, 6), mat); tip.position.y = len; piv.add(tip); }
+    ouder.add(piv); stukken.push(piv);
+    const volgende = new THREE.Group(); volgende.position.y = len; piv.add(volgende); ouder = volgende;
+  }
+  return {basis, stukken};
+}
+
+// waar komt hij op? In de zee, in de richting waar je kijkt (dan zie je 'm!)
+function krakenPlek(){
+  const px = camera.position.x, pz = camera.position.z;
+  const kijk = yaw + Math.PI;                         // de camera kijkt langs -Z bij yaw 0
+  const richtingen = [0, 0.35, -0.35, 0.7, -0.7, 1.1, -1.1, 1.6, -1.6, 2.2, -2.2, Math.PI];
+  for(const off of richtingen){
+    for(let d = 70; d <= 200; d += 12){
+      const x = px + Math.sin(kijk + off) * d, z = pz + Math.cos(kijk + off) * d;
+      if(hoogteOp(x, z) < -4 && Math.hypot(x, z) < ZEE_GRENS + 60) return {x, z};
+    }
+  }
+  const a = Math.atan2(px, pz), r = ZEE_GRENS * 0.85;   // noodgeval: zelfde kant van het eiland
+  return {x: Math.sin(a) * r, z: Math.cos(a) * r};
+}
+
+function startKrakenWaarschuwing(){
+  const plek = krakenPlek();
+  kraken = {fase: 'borrelt', t: 0, plek, groep: null, armen: [], baard: [], ogen: [], gooiTimer: 3, brulTimer: 0, ring: null};
+  zeg('🌊 de zee borrelt… er komt iets uit het water!');
+  geluidBorrel();
+  const ring = new THREE.Mesh(new THREE.RingGeometry(6, 14, 40), new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide}));
+  ring.rotation.x = -Math.PI / 2; ring.position.set(plek.x, 0.25, plek.z);
+  scene.add(ring); kraken.ring = ring;
+}
+
+function startKraken(){
+  if(!kraken) startKrakenWaarschuwing();
+  const plek = kraken.plek;
+  const g = new THREE.Group(); g.position.set(plek.x, -45, plek.z);
+  g.rotation.y = Math.atan2(camera.position.x - plek.x, camera.position.z - plek.z);   // hij kijkt naar jou
+  const mat = krakenMat();
+  // kop: dikke bol met een bult erop
+  const kop = new THREE.Mesh(new THREE.SphereGeometry(9, 22, 16), mat); kop.scale.set(1, 1.15, 1); kop.position.y = 7; kop.castShadow = true; g.add(kop);
+  const kruin = new THREE.Mesh(new THREE.SphereGeometry(6.5, 18, 12), krakenDonkerMat()); kruin.scale.set(1, 1.35, 1); kruin.position.set(0, 14, 1); g.add(kruin);
+  for(let i = 0; i < 9; i++){   // bulten en wratten
+    const b = new THREE.Mesh(new THREE.SphereGeometry(1 + Math.random() * 1.6, 8, 6), krakenDonkerMat());
+    const a = Math.random() * 6.283, h = 4 + Math.random() * 12;
+    b.position.set(Math.sin(a) * 8.2, h, Math.cos(a) * 8.2 * 0.9); g.add(b);
+  }
+  // ogen: geel en gloeiend, met een zwarte spleet en boze wenkbrauwen
+  const oogMat = new THREE.MeshLambertMaterial({color: 0xffcc33, emissive: 0xffaa00, emissiveIntensity: 0.9});
+  const ogen = [];
+  for(const sx of [-1, 1]){
+    const oog = new THREE.Mesh(new THREE.SphereGeometry(1.7, 14, 10), oogMat); oog.position.set(sx * 4.2, 8.5, 7.6); g.add(oog); ogen.push(oog);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.75, 10, 8), new THREE.MeshBasicMaterial({color: 0x050505})); pupil.scale.set(0.55, 1.6, 1); pupil.position.set(sx * 4.2, 8.5, 9.1); g.add(pupil);
+    const wenk = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.1, 1.6), krakenDonkerMat()); wenk.position.set(sx * 4.1, 10.6, 7.6); wenk.rotation.z = -sx * 0.35; g.add(wenk);
+  }
+  // baard: 7 tentakels die voor de mond hangen
+  const baard = [];
+  for(let i = 0; i < 7; i++){
+    const tk = maakTentakel(5, 2.2, 1.6, 1.0, 0.35, krakenDonkerMat());
+    tk.basis.position.set((i - 3) * 2.1, 3.5, 7.2); tk.basis.rotation.x = Math.PI * 0.82 + (Math.random() - 0.5) * 0.2; tk.basis.rotation.z = (i - 3) * 0.12;
+    tk.fase = i * 1.1; g.add(tk.basis); baard.push(tk);
+  }
+  // acht grote armen rondom, uit het water omhoog
+  const armen = [];
+  for(let i = 0; i < 8; i++){
+    const a = (i / 8) * 6.283 + 0.2 + (Math.random() - 0.5) * 0.3;
+    const tk = maakTentakel(9, 4.0, 2.6, 2.1, 0.45, mat);
+    tk.basis.position.set(Math.sin(a) * 8.5, -1.5, Math.cos(a) * 8.5);
+    tk.basis.rotation.y = a;                          // wijst naar buiten
+    tk.hoek = a; tk.fase = Math.random() * 6.283; tk.kromming = 0.16 + Math.random() * 0.08;
+    g.add(tk.basis); armen.push(tk);
+  }
+  scene.add(g);
+  kraken.groep = g; kraken.kop = kop; kraken.ogen = ogen; kraken.armen = armen; kraken.baard = baard;
+  kraken.fase = 'opkomen'; kraken.t = 0;
+  if(kraken.ring){ scene.remove(kraken.ring); kraken.ring.material.dispose(); kraken.ring = null; }
+  zeg('🐙 DE KRAKEN KOMT UIT DE ZEE!!!');
+  geluidBrul(); schok = Math.max(schok, 1.6);
+  spetter(plek.x, plek.z, 60, 1.6);
+}
+
+// waterspetters (witte sprites die opspatten en weer vallen)
+function spetter(x, z, aantal, kracht){
+  for(let i = 0; i < aantal; i++){
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.9, color: 0xeaf6ff}));
+    const hoek = Math.random() * 6.283, vaart = (2 + Math.random() * 9) * kracht;
+    sp.position.set(x + (Math.random() - 0.5) * 10, 0.5, z + (Math.random() - 0.5) * 10);
+    sp.userData = {vx: Math.cos(hoek) * vaart, vy: (6 + Math.random() * 14) * kracht, vz: Math.sin(hoek) * vaart, leeftijd: 0, maat: 1.2 + Math.random() * 2.2};
+    sp.scale.set(sp.userData.maat, sp.userData.maat, 1);
+    scene.add(sp); krakenSpetters.push(sp);
+  }
+}
+
+// waterbal: vliegt in een boog naar de plek waar jij stond; schaduw op de grond = daar komt hij neer
+function gooiWaterbal(){
+  const g = kraken.groep;
+  const doelX = camera.position.x + (Math.random() - 0.5) * 4, doelZ = camera.position.z + (Math.random() - 0.5) * 4;
+  const doelY = Math.max(0, hoogteOp(doelX, doelZ));
+  const start = new THREE.Vector3(g.position.x, g.position.y + 12, g.position.z);
+  const bal = new THREE.Mesh(new THREE.SphereGeometry(1.6, 12, 9), new THREE.MeshLambertMaterial({color: 0x3aa0e0, transparent: true, opacity: 0.85, emissive: 0x0a3a60}));
+  bal.position.copy(start); scene.add(bal);
+  const sch = new THREE.Mesh(new THREE.CircleGeometry(3.4, 24), new THREE.MeshBasicMaterial({color: 0x08202e, transparent: true, opacity: 0.0, depthWrite: false}));
+  sch.rotation.x = -Math.PI / 2; sch.position.set(doelX, doelY + 0.15, doelZ); scene.add(sch);
+  const afst = Math.hypot(doelX - start.x, doelZ - start.z);
+  krakenBallen.push({bal, sch, start, doel: new THREE.Vector3(doelX, doelY, doelZ), t: 0, duur: 1.6 + afst / 60, hoog: 18 + afst * 0.18});
+  geluidPlons(0.35);
+}
+
+function updateKraken(dt, t){
+  // spetters
+  for(let i = krakenSpetters.length - 1; i >= 0; i--){
+    const sp = krakenSpetters[i], u = sp.userData;
+    u.leeftijd += dt; u.vy -= 22 * dt;
+    sp.position.x += u.vx * dt; sp.position.y += u.vy * dt; sp.position.z += u.vz * dt;
+    sp.material.opacity = Math.max(0, 0.9 - u.leeftijd * 0.5);
+    if(sp.position.y < -1 || u.leeftijd > 2.2){ scene.remove(sp); sp.material.dispose(); krakenSpetters.splice(i, 1); }
+  }
+  // waterballen
+  for(let i = krakenBallen.length - 1; i >= 0; i--){
+    const b = krakenBallen[i]; b.t += dt;
+    const u = Math.min(1, b.t / b.duur);
+    b.bal.position.x = b.start.x + (b.doel.x - b.start.x) * u;
+    b.bal.position.z = b.start.z + (b.doel.z - b.start.z) * u;
+    b.bal.position.y = b.start.y + (b.doel.y - b.start.y) * u + b.hoog * 4 * u * (1 - u);
+    b.sch.material.opacity = 0.15 + 0.5 * u;                     // de schaduw wordt donkerder = hij komt eraan
+    b.sch.scale.setScalar(1.3 - 0.3 * u);
+    if(u >= 1){
+      spetter(b.doel.x, b.doel.z, 14, 0.7); geluidPlons(0.9);
+      const d = Math.hypot(b.doel.x - camera.position.x, b.doel.z - camera.position.z);
+      if(d < 12) schok = Math.max(schok, 0.8 * (1 - d / 12));
+      if(d < 3.4 && !dood) gaDood('🐙 Geraakt door de Kraken!');
+      scene.remove(b.bal); scene.remove(b.sch); b.bal.material.dispose(); b.sch.material.dispose(); krakenBallen.splice(i, 1);
+    }
+  }
+  if(!kraken) return;
+  const k = kraken; k.t += dt;
+  if(k.fase === 'borrelt'){
+    if(k.ring){ const s = 1 + 0.25 * Math.sin(t * 4); k.ring.scale.set(s, s, 1); k.ring.material.opacity = 0.3 + 0.25 * Math.sin(t * 6); }
+    if(Math.random() < dt * 6) spetter(k.plek.x, k.plek.z, 3, 0.5);
+    return;
+  }
+  const g = k.groep;
+  if(k.fase === 'opkomen'){
+    const u = Math.min(1, k.t / KRAKEN_OPKOMST); g.position.y = -45 + 45 * (1 - Math.pow(1 - u, 3));
+    if(Math.random() < dt * 10) spetter(k.plek.x, k.plek.z, 4, 1);
+    if(u >= 1){ k.fase = 'vecht'; k.t = 0; }
+  } else if(k.fase === 'vecht'){
+    g.position.y = Math.sin(t * 0.8) * 0.9;
+    k.gooiTimer -= dt;
+    if(k.gooiTimer <= 0 && !dood){ k.gooiTimer = 4 + Math.random() * 3; gooiWaterbal(); }
+    k.brulTimer -= dt;
+    if(k.brulTimer <= 0){ k.brulTimer = 12 + Math.random() * 10; geluidBrul(); schok = Math.max(schok, 0.7); }
+    if(k.t >= KRAKEN_DUUR){ k.fase = 'zakken'; k.t = 0; zeg('🌊 de Kraken duikt weer onder…'); spetter(k.plek.x, k.plek.z, 40, 1.3); }
+  } else if(k.fase === 'zakken'){
+    const u = Math.min(1, k.t / 5); g.position.y = -50 * u * u;
+    if(Math.random() < dt * 8) spetter(k.plek.x, k.plek.z, 3, 0.8);
+    if(u >= 1){ scene.remove(g); kraken = null; return; }
+  }
+  // hij draait langzaam met je mee en deint
+  const doelHoek = Math.atan2(camera.position.x - g.position.x, camera.position.z - g.position.z);
+  let dh = doelHoek - g.rotation.y; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+  g.rotation.y += dh * Math.min(1, dt * 0.8);
+  g.rotation.z = Math.sin(t * 0.6) * 0.03; g.rotation.x = Math.sin(t * 0.45) * 0.03;
+  for(const o of k.ogen) o.material.emissiveIntensity = 0.7 + 0.3 * Math.sin(t * 3);
+  // armen: eerste stuk steil omhoog, daarna elk stuk verder omkrullen, en alles zwaait
+  for(const arm of k.armen){
+    const zw = Math.sin(t * 1.3 + arm.fase) * 0.12, zij = Math.sin(t * 0.7 + arm.fase) * 0.05;
+    arm.stukken.forEach((piv, j) => {
+      piv.rotation.x = (j === 0 ? 1.15 : -arm.kromming) + zw * (j === 0 ? 1 : 0.45) + Math.sin(t * 2.1 + arm.fase + j * 0.6) * 0.04;
+      piv.rotation.z = zij * (j > 0 ? 1 : 0);
+    });
+  }
+  for(const b of k.baard){
+    b.stukken.forEach((piv, j) => { piv.rotation.x = (j === 0 ? 0 : 0.22) + Math.sin(t * 1.7 + b.fase + j * 0.8) * 0.13; piv.rotation.z = Math.sin(t * 1.1 + b.fase) * 0.08; });
+  }
+}
+
+// ── de planner: om de zoveel tijd een gok — kraken of vulkaan ──
+function updateRampen(dt){
+  if(uitbarst || kraken) return;                      // er is al iets aan de hand
+  rampTimer += dt;
+  if(RAMP_TEST && !rampTestGedaan && rampTimer > 3){ rampTestGedaan = true; rampTimer = rampVolgende - UITBARST_WAARSCHUW; rampKeuze = null; rommelt = false; rampForce = RAMP_TEST; }
+  if(!rampKeuze && rampTimer >= rampVolgende - UITBARST_WAARSCHUW){
+    const vulkaanKan = !vulkaanKapot && lavaMesh;
+    rampKeuze = rampForce || ((vulkaanKan && Math.random() < 0.5) ? 'vulkaan' : 'kraken');
+    if(rampKeuze === 'vulkaan' && !vulkaanKan) rampKeuze = 'kraken';
+    rampForce = null;
+    if(rampKeuze === 'vulkaan'){ rommelt = true; zeg('🌋 de vulkaan rommelt… hij gaat uitbarsten!'); startRommel(); }
+    else startKrakenWaarschuwing();
+  }
+  if(rampKeuze && rampTimer >= rampVolgende){
+    rampTimer = 0; rampVolgende = RAMP_MIN + Math.random() * (RAMP_MAX - RAMP_MIN);
+    if(rampKeuze === 'vulkaan') startUitbarsting(); else startKraken();
+    rampKeuze = null;
+  }
+}
+
+// ── geluiden van de Kraken ──
+function geluidBrul(){ metAudio(ac => {             // lage, rauwe brul
+  const o = ac.createOscillator(); o.type = 'sawtooth';
+  o.frequency.setValueAtTime(70, ac.currentTime); o.frequency.exponentialRampToValueAtTime(38, ac.currentTime + 2.4);
+  const o2 = ac.createOscillator(); o2.type = 'square'; o2.frequency.setValueAtTime(52, ac.currentTime); o2.frequency.exponentialRampToValueAtTime(30, ac.currentTime + 2.4);
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(900, ac.currentTime); f.frequency.exponentialRampToValueAtTime(180, ac.currentTime + 2.4);
+  const g = ac.createGain(); g.gain.setValueAtTime(0.0001, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.7, ac.currentTime + 0.25); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 2.6);
+  o.connect(f); o2.connect(f); f.connect(g); g.connect(ac.destination); o.start(); o2.start(); o.stop(ac.currentTime + 2.7); o2.stop(ac.currentTime + 2.7);
+}); }
+function geluidPlons(vol){ metAudio(ac => {          // plons in het water
+  const src = ac.createBufferSource(); src.buffer = ruisBuffer(ac, 0.7);
+  const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(700, ac.currentTime); f.frequency.exponentialRampToValueAtTime(2600, ac.currentTime + 0.5); f.Q.value = 0.8;
+  const g = ac.createGain(); g.gain.setValueAtTime(vol, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.7);
+  src.connect(f); f.connect(g); g.connect(ac.destination); src.start();
+}); }
+function geluidBorrel(){ metAudio(ac => {            // borrelende zee (een reeks blubs)
+  for(let i = 0; i < 14; i++){
+    const o = ac.createOscillator(); o.type = 'sine';
+    const t0 = ac.currentTime + i * 0.55 + Math.random() * 0.3;
+    o.frequency.setValueAtTime(140 + Math.random() * 120, t0); o.frequency.exponentialRampToValueAtTime(60, t0 + 0.25);
+    const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.35, t0 + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
+    o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0 + 0.32);
+  }
+}); }
+
 function loop(nu){
   requestAnimationFrame(loop);
   const t = nu / 1000;
@@ -4264,6 +4525,8 @@ function loop(nu){
     updateStenen(dt);
     updateVulkaan(dt);
     updateUitbarsting(dt);
+    updateRampen(dt);
+    updateKraken(dt, t);
     updateCrafterSpook();
   }
   golfZee(t);
