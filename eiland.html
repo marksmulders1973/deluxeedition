@@ -523,51 +523,276 @@ grond.receiveShadow = true;
 scene.add(grond);
 
 // ══════════════════════════════════════════════════════════════════
-// 4. DE ZEE — golvend water + donkere diepte eronder
+// 4. DE ZEE (Brian, 5 sep: "maak de zee 10× realistischer")
+//
+// Eerst was de zee een blauw vlak dat op en neer deinde. Echt water doet
+// veel meer, en dat zit nu allemaal in één shader op de grafische kaart:
+//  1) GOLVEN  — vier golven uit verschillende richtingen, die op het
+//               strand lager worden (daar breken ze)
+//  2) RIMPELS — kleine kabbel-rimpeltjes die over de golven heen glijden
+//  3) SPIEGEL — het water spiegelt de lucht, méér als je er schuin op kijkt
+//               (dat heet fresnel) en minder als je recht naar beneden kijkt
+//  4) ZON     — een scherpe glinstering plus een brede glans
+//  5) DIEPTE  — ondiep = helder turkoois en doorzichtig (je ziet het zand),
+//               diep = donkerblauw
+//  6) LICHTVLEKKEN — op de zandbodem dansen lichte lijntjes, precies als
+//               in een zwembad (dat noemen ze caustics)
+//  7) SCHUIM  — witte strepen op de golftoppen en schuimranden die naar het
+//               strand rollen, met een wit randje op de waterlijn
 // ══════════════════════════════════════════════════════════════════
-// de verre oceaan: één groot, rustig, diepblauw vlak
-const verreZee = new THREE.Mesh(
-  new THREE.PlaneGeometry(800, 800),
-  new THREE.MeshPhongMaterial({color: 0x0d4a78, shininess: 60, specular: 0x6fb8e0})
-);
-verreZee.rotation.x = -Math.PI/2; verreZee.position.y = -0.06;
-scene.add(verreZee);
 
-// de lagune rond het eiland: golft én kleurt mee met de diepte van de bodem.
-// Vlak bij het strand is het water ondiep turkoois, verderop diepblauw.
-const ZEE_MAAT = 300, ZEE_VAKJES = IS_TOUCH ? 44 : 64;
+// ── de ruis-textuur: drie patronen in één plaatje (rood/groen/blauw) ──
+// rood  = zachte rimpel-hoogte      (voor de kabbel-rimpels)
+// groen = vlekkerige schuim-ruis    (voor de schuimstrepen)
+// blauw = een netwerk van lijntjes  (voor de lichtvlekken op de bodem)
+// Alles herhaalt naadloos: de golven hebben hele periodes, en de lijntjes
+// rekenen "om de rand heen".
+function zeeRuisTextuur(){
+  const N = 256;
+  const c = document.createElement('canvas'); c.width = c.height = N;
+  const g = c.getContext('2d');
+  const beeld = g.createImageData(N, N), d = beeld.data;
+  // periodieke golven: sinussen met hele frequenties zijn vanzelf naadloos
+  function maakGolven(aantal, fMin, fMax){
+    const lijst = [];
+    for(let i = 0; i < aantal; i++){
+      const f = fMin + Math.floor(vast() * (fMax - fMin + 1));
+      const hoek = vast() * Math.PI * 2;
+      lijst.push({fx: Math.round(Math.cos(hoek) * f), fy: Math.round(Math.sin(hoek) * f), fase: vast() * 6.283, amp: 1 / (1 + f * 0.25)});
+    }
+    return lijst;
+  }
+  const rimpel = maakGolven(10, 2, 9), schuim = maakGolven(12, 1, 7);
+  function som(lijst, x, y){
+    let v = 0, tot = 0;
+    for(const w of lijst){ v += Math.sin((w.fx * x + w.fy * y) / N * 6.283 + w.fase) * w.amp; tot += w.amp; }
+    return v / tot;   // -1 .. 1
+  }
+  // punten voor het lijntjes-netwerk (blauw)
+  const punten = [];
+  for(let i = 0; i < 34; i++) punten.push({x: vast() * N, y: vast() * N});
+  for(let y = 0; y < N; y++){
+    for(let x = 0; x < N; x++){
+      const i = (y * N + x) * 4;
+      d[i]   = 128 + som(rimpel, x, y) * 110;
+      // schuim: contrastrijk, met een tweede fijnere laag
+      const sc = som(schuim, x, y) * 0.7 + som(rimpel, x * 2.3, y * 1.7) * 0.3;
+      d[i+1] = Math.max(0, Math.min(255, 128 + sc * 150));
+      // lijntjes: afstand tot dichtstbijzijnde twee punten (om de rand heen)
+      let d1 = 1e9, d2 = 1e9;
+      for(const p of punten){
+        let dx = Math.abs(x - p.x), dy = Math.abs(y - p.y);
+        dx = Math.min(dx, N - dx); dy = Math.min(dy, N - dy);
+        const dd = dx * dx + dy * dy;
+        if(dd < d1){ d2 = d1; d1 = dd; } else if(dd < d2) d2 = dd;
+      }
+      const rand = Math.sqrt(d2) - Math.sqrt(d1);      // 0 = precies op een celrand
+      d[i+2] = Math.max(0, Math.min(255, 255 * Math.exp(-rand * rand / 22)));
+      d[i+3] = 255;
+    }
+  }
+  g.putImageData(beeld, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+// ── de dieptekaart: hoe diep is de zee op elke plek? ──
+// De shader wil per pixel weten hoe diep het water is (voor kleur, schuim en
+// doorzichtigheid). Dat bakken we één keer in een plaatje van 256×256 over
+// de hele zee (300×300 m), dus ruim een meter per pixel — zacht genoeg voor
+// een mooie, vloeiende waterlijn.
+const ZEE_MAAT = 300, ZEE_MAX_DIEP = 20;
+function dieptekaart(){
+  const N = 256;
+  const c = document.createElement('canvas'); c.width = c.height = N;
+  const g = c.getContext('2d');
+  const beeld = g.createImageData(N, N), d = beeld.data;
+  for(let j = 0; j < N; j++){
+    for(let i = 0; i < N; i++){
+      const x = (i / (N - 1) - 0.5) * ZEE_MAAT, z = (j / (N - 1) - 0.5) * ZEE_MAAT;
+      const diep = Math.max(0, Math.min(ZEE_MAX_DIEP, -hoogteOp(x, z)));
+      const k = (j * N + i) * 4;
+      // wortel: ondiep water krijgt de meeste stapjes (anders zie je terrasjes in het schuim)
+      d[k] = d[k+1] = d[k+2] = Math.round(Math.sqrt(diep / ZEE_MAX_DIEP) * 255); d[k+3] = 255;
+    }
+  }
+  g.putImageData(beeld, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  t.flipY = false;
+  return t;
+}
+
+// de lagune: een fijn raster, want de golven worden nu op de grafische
+// kaart uitgerekend — dat kost de processor niks meer
+const ZEE_VAKJES = IS_TOUCH ? 96 : 160;
 const zeeGeo = new THREE.PlaneGeometry(ZEE_MAAT, ZEE_MAAT, ZEE_VAKJES, ZEE_VAKJES);
 zeeGeo.rotateX(-Math.PI/2);
 {
+  // per hoekpunt: hoe diep is het hier? (voor het dempen van de golven)
   const pos = zeeGeo.attributes.position;
-  const kleuren = new Float32Array(pos.count * 3);
-  const ondiep = new THREE.Color(0x86e6dd), diep = new THREE.Color(0x0d4a78), c = new THREE.Color();
-  for(let i = 0; i < pos.count; i++){
-    const bodem = hoogteOp(pos.getX(i), pos.getZ(i));
-    const hoeDiep = Math.min(1, Math.max(0, -bodem) / 8);
-    c.copy(ondiep).lerp(diep, Math.pow(hoeDiep, 0.75));
-    kleuren[i*3] = c.r; kleuren[i*3+1] = c.g; kleuren[i*3+2] = c.b;
-  }
-  zeeGeo.setAttribute('color', new THREE.BufferAttribute(kleuren, 3));
+  const diepte = new Float32Array(pos.count);
+  for(let i = 0; i < pos.count; i++) diepte[i] = Math.max(0, -hoogteOp(pos.getX(i), pos.getZ(i)));
+  zeeGeo.setAttribute('diepte', new THREE.BufferAttribute(diepte, 1));
 }
-const zee = new THREE.Mesh(zeeGeo, new THREE.MeshPhongMaterial({
-  vertexColors: true, shininess: 95, specular: 0xbfe9ff, transparent: true, opacity: 0.82
-}));
-scene.add(zee);
-const zeeBasis = zeeGeo.attributes.position.array.slice();  // de rustige beginvorm
 
-// de golven lopen elke tel een stukje verder
-let normaalTeller = 0;
-function golfZee(t){
-  const p = zeeGeo.attributes.position;
-  for(let i = 0; i < p.count; i++){
-    const x = zeeBasis[i*3], z = zeeBasis[i*3+2];
-    p.setY(i, Math.sin(x*0.09 + t*1.1)*0.20 + Math.sin(z*0.13 + t*1.5)*0.15 + Math.sin((x+z)*0.31 + t*2.2)*0.05);
-  }
-  p.needsUpdate = true;
-  // de schittering van de zon: normalen bijwerken (op de telefoon iets zuiniger)
-  if(++normaalTeller % (IS_TOUCH ? 4 : 2) === 0) zeeGeo.computeVertexNormals();
+const zeeMateriaal = new THREE.ShaderMaterial({
+  transparent: true,
+  side: THREE.DoubleSide,
+  fog: true,
+  defines: IS_TOUCH ? {MOBIEL: 1} : {},
+  uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+    tijd:        {value: 0},
+    ruis:        {value: null},
+    dieptemap:   {value: null},
+    zeeMaat:     {value: ZEE_MAAT},
+    maxDiep:     {value: ZEE_MAX_DIEP},
+    zonRichting: {value: new THREE.Vector3(70, 95, 45).normalize()},
+    kleurOndiep: {value: new THREE.Color(0x3fcfc6)},
+    kleurDiep:   {value: new THREE.Color(0x0c4470)},
+    kleurLucht:  {value: new THREE.Color(0x3f93cf)},
+    kleurHorizon:{value: new THREE.Color(0x9cd3ea)},
+    kleurZon:    {value: new THREE.Color(0xfff3d0)}
+  }]),
+  vertexShader: `
+    uniform float tijd;
+    attribute float diepte;
+    varying vec3 vWereld;
+    varying vec3 vNormaal;
+    varying float vHoog;
+    #include <fog_pars_vertex>
+
+    // één golf: hoogte erbij, én de helling erbij (voor de normaal)
+    void golf(vec2 p, vec2 richting, float freq, float amp, float snel, inout float h, inout vec2 dh){
+      float f = dot(p, richting) * freq + tijd * snel;
+      h  += sin(f) * amp;
+      dh += richting * (freq * cos(f) * amp);
+    }
+    void main(){
+      vec3 p = position;
+      float h = 0.0; vec2 dh = vec2(0.0);
+      golf(p.xz, normalize(vec2( 1.0, 0.30)), 0.090, 0.22, 1.10, h, dh);   // lange deining
+      golf(p.xz, normalize(vec2(-0.2, 1.00)), 0.130, 0.16, 1.50, h, dh);
+      golf(p.xz, normalize(vec2( 0.7, 0.70)), 0.310, 0.06, 2.20, h, dh);   // kortere golfjes
+      golf(p.xz, normalize(vec2(-0.6, 0.40)), 0.550, 0.035, 3.10, h, dh);
+      // op het strand worden de golven lager: ze lopen dood in het zand
+      float demp = clamp(diepte / 2.5, 0.12, 1.0);
+      h *= demp; dh *= demp;
+      p.y += h;
+      vHoog = h;
+      vNormaal = normalize(vec3(-dh.x, 1.0, -dh.y));
+      vWereld = (modelMatrix * vec4(p, 1.0)).xyz;
+      vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+      gl_Position = projectionMatrix * mvPosition;
+      #include <fog_vertex>
+    }`,
+  fragmentShader: `
+    precision highp float;
+    uniform float tijd;
+    uniform sampler2D ruis;
+    uniform sampler2D dieptemap;
+    uniform float zeeMaat, maxDiep;
+    uniform vec3 zonRichting, kleurOndiep, kleurDiep, kleurLucht, kleurHorizon, kleurZon;
+    varying vec3 vWereld;
+    varying vec3 vNormaal;
+    varying float vHoog;
+    #include <fog_pars_fragment>
+
+    void main(){
+      vec2 uv = vWereld.xz;
+      float dv = texture2D(dieptemap, uv / zeeMaat + 0.5).r;
+      float diepte = dv * dv * maxDiep;
+
+      // ── 2) rimpels: twee lagen ruis glijden langs elkaar → kabbelende normaal ──
+      const float e = 1.0 / 256.0;
+      vec2 u1 = uv * 0.11 + tijd * vec2(0.020, 0.013);
+      float h1 = texture2D(ruis, u1).r;
+      vec2 grad = vec2(texture2D(ruis, u1 + vec2(e, 0.0)).r - h1, texture2D(ruis, u1 + vec2(0.0, e)).r - h1);
+      #ifndef MOBIEL
+        vec2 u2 = uv * 0.23 - tijd * vec2(0.015, 0.024);
+        float h2 = texture2D(ruis, u2).r;
+        grad += 0.6 * vec2(texture2D(ruis, u2 + vec2(e, 0.0)).r - h2, texture2D(ruis, u2 + vec2(0.0, e)).r - h2);
+      #endif
+      // vlak bij het strand worden de rimpels kleiner (het water is er rustig en dun)
+      grad *= 256.0 * 0.028 * (0.35 + 0.65 * clamp(diepte / 2.0, 0.0, 1.0));
+      vec3 n = normalize(vNormaal + vec3(-grad.x, 0.0, -grad.y));
+      vec3 kijk = normalize(cameraPosition - vWereld);
+      if(dot(n, kijk) < 0.0) n = -n;      // ook van onder water goed
+
+      // ── 5) waterkleur op diepte ──
+      float d01 = clamp(diepte / 6.0, 0.0, 1.0);
+      vec3 water = mix(kleurOndiep, kleurDiep, pow(d01, 0.8));
+
+      // ── 6) lichtvlekken op de bodem: twee schuivende lijntjes-netwerken, het
+      //       kleinste van de twee geeft scherpe, dansende lijntjes (zwembad!) ──
+      float c1 = texture2D(ruis, uv * 0.14 + tijd * vec2(0.030, 0.010)).b;
+      #ifdef MOBIEL
+        float caust = c1 * c1 * 1.4;
+      #else
+        float c2 = texture2D(ruis, uv * 0.17 - tijd * vec2(0.020, 0.030)).b;
+        float caust = pow(min(c1, c2), 1.5) * 2.2;
+      #endif
+      float ondiepF = (1.0 - d01) * (1.0 - d01);
+      water += vec3(0.42, 0.60, 0.62) * caust * ondiepF;
+
+      // ── 3) spiegeling van de lucht (fresnel: schuin kijken = meer spiegel) ──
+      float fres = pow(1.0 - max(dot(n, kijk), 0.0), 3.0);
+      fres = 0.03 + 0.72 * fres;
+      vec3 refl = reflect(-kijk, n);
+      vec3 lucht = mix(kleurHorizon, kleurLucht, pow(clamp(refl.y, 0.0, 1.0), 0.6));
+      vec3 kleur = mix(water, lucht, fres);
+
+      // ── 4) de zon: scherpe glinstering + brede zachte glans ──
+      vec3 halfv = normalize(kijk + zonRichting);
+      float nh = max(dot(n, halfv), 0.0);
+      kleur += kleurZon * (pow(nh, 380.0) * 1.6 + pow(nh, 40.0) * 0.16);
+
+      // ── 7) schuim ──
+      float ruisA = texture2D(ruis, uv * 0.060 + tijd * vec2( 0.010, -0.007)).g;
+      float ruisB = texture2D(ruis, uv * 0.190 - tijd * vec2( 0.012,  0.010)).g;
+      // a) schuimranden die naar het strand rollen: banden op de diepte-lijnen
+      float afst = length(uv);
+      float band = 0.5 + 0.5 * sin(afst * 0.55 - tijd * 1.7 + ruisA * 2.5);
+      float kust = smoothstep(2.2, 0.15, diepte);
+      float schuimKust = kust * smoothstep(0.62, 0.96, band + ruisB * 0.30 - 0.12);
+      // een wit randje precies op de waterlijn
+      schuimKust = max(schuimKust, smoothstep(0.42, 0.0, diepte) * (0.55 + 0.45 * ruisB));
+      // b) op de hoge golftoppen: witte schuimstrepen
+      float top = smoothstep(0.12, 0.30, vHoog) * smoothstep(0.40, 0.80, ruisB * 0.6 + ruisA * 0.6);
+      float schuim = clamp(schuimKust + top * 0.85, 0.0, 1.0);
+      kleur = mix(kleur, vec3(0.93, 0.97, 0.98), schuim);
+
+      // ── doorzichtig waar het ondiep is (je ziet het zand), dicht waar het diep is ──
+      float alpha = mix(0.55, 0.95, clamp(diepte / 3.0, 0.0, 1.0));
+      alpha = mix(alpha, 1.0, fres * 0.6);
+      alpha = max(alpha, schuim);
+
+      gl_FragColor = vec4(kleur, alpha);
+      #include <fog_fragment>
+    }`
+});
+zeeMateriaal.uniforms.ruis.value = zeeRuisTextuur();
+zeeMateriaal.uniforms.dieptemap.value = dieptekaart();
+const zee = new THREE.Mesh(zeeGeo, zeeMateriaal);
+zee.frustumCulled = false;
+scene.add(zee);
+
+// de verre oceaan: een RING buiten de lagune, met precies dezelfde water-
+// shader (dus geen kleurband op de horizon). Geen vol vlak meer: dat lag
+// boven de zandbodem en scheen door het heldere water heen als donkere vlek.
+{
+  const ringGeo = new THREE.RingGeometry(ZEE_MAAT / 2, 800, 96, 6);
+  ringGeo.rotateX(-Math.PI/2);
+  const n = ringGeo.attributes.position.count;
+  ringGeo.setAttribute('diepte', new THREE.BufferAttribute(new Float32Array(n).fill(ZEE_MAX_DIEP), 1));
+  const verreZee = new THREE.Mesh(ringGeo, zeeMateriaal);
+  verreZee.frustumCulled = false;
+  scene.add(verreZee);
 }
+
+// de golven lopen: alleen de tijd doorgeven, de grafische kaart doet de rest
+function golfZee(t){ zeeMateriaal.uniforms.tijd.value = t; }
 
 // ══════════════════════════════════════════════════════════════════
 // 5. PALMBOMEN, ROTSEN EN STRUIKEN
