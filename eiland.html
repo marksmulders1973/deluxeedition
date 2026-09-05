@@ -1189,6 +1189,17 @@ function maakStamGeometrie(){
       idx.push(a, b, a+KOL, b, b+KOL, a+KOL);
     }
   }
+  // ── de onderkant dichtmaken: een licht houten ZAAGVLAK (Brian 5 sep: "de helft
+  //    van de boom is weg, net papier") — anders kijk je na het omhakken in een
+  //    lege koker. Eigen hoekpunten, zodat de rand van de stam scherp blijft.
+  const centrum = pos.length / 3;
+  pos.push(0, 0, 0); kleur.push(1.45, 1.30, 1.02); uv.push(0.5, 0.5);
+  for(let j = 0; j <= ZIJDEN; j++){
+    pos.push(pos[j*3], pos[j*3+1], pos[j*3+2]);
+    kleur.push(1.45, 1.30, 1.02);
+    uv.push(0.5 + 0.25 * Math.cos(j / ZIJDEN * 6.283), 0.5 + 0.25 * Math.sin(j / ZIJDEN * 6.283));
+  }
+  for(let j = 0; j < ZIJDEN; j++) idx.push(centrum, centrum + 1 + j, centrum + 2 + j);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(kleur, 3));
@@ -1953,11 +1964,15 @@ let verreStammen = null, verreKronen = null;
   const AANTAL_VER = IS_TOUCH ? 1000 : 2200;
 
   // ── de stam: een simpele, licht taps toelopende buis ──
-  const stamGeo = new THREE.CylinderGeometry(0.19, 0.30, 7.6, 6, 1, true);
+  const stamGeo = new THREE.CylinderGeometry(0.19, 0.30, 7.6, 6, 1, false);   // dicht: mét zaagvlakken
   stamGeo.translate(0, 3.8, 0);                       // voet op de grond
   { const uv = stamGeo.attributes.uv; for(let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * 3.2); }   // ringen herhalen
+  // de deksels (alle hoekpunten ná de 14 van de buis) licht hout: het zaagvlak
+  { const n = stamGeo.attributes.position.count, kl = new Float32Array(n * 3);
+    for(let i = 0; i < n; i++){ const dek = i >= 14; kl[i*3] = dek ? 1.45 : 1; kl[i*3+1] = dek ? 1.30 : 1; kl[i*3+2] = dek ? 1.02 : 1; }
+    stamGeo.setAttribute('color', new THREE.Float32BufferAttribute(kl, 3)); }
   verreStammen = new THREE.InstancedMesh(stamGeo,
-    new THREE.MeshLambertMaterial({map: maakBastTextuur()}), AANTAL_VER);
+    new THREE.MeshLambertMaterial({map: maakBastTextuur(), vertexColors: true}), AANTAL_VER);
 
   // ── de kroon: 9 bladeren van 3 stukjes, in één geometrie gesmolten ──
   function lichtBlad(){
@@ -2045,6 +2060,29 @@ let verreStammen = null, verreKronen = null;
   window.__verBladTijd = () => verBladTijd;
 }
 tik('verre palmen');
+
+// ── BOOMSTRONKEN: waar je een boom omhakt blijft een stronk staan ──
+// Een kort stuk stam met bast aan de zijkant en een licht zaagvlak bovenop.
+const STRONK_MAX = 300;
+const stronkGeo = new THREE.CylinderGeometry(0.21, 0.30, 0.42, 9, 1, false);
+stronkGeo.translate(0, 0.21, 0);
+{ const uv = stronkGeo.attributes.uv; for(let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * 0.3);
+  const n = stronkGeo.attributes.position.count, kl = new Float32Array(n * 3);
+  for(let i = 0; i < n; i++){ const dek = i >= 20; kl[i*3] = dek ? 1.45 : 1; kl[i*3+1] = dek ? 1.30 : 1; kl[i*3+2] = dek ? 1.02 : 1; }   // buis = 2 ringen × 10 punten
+  stronkGeo.setAttribute('color', new THREE.Float32BufferAttribute(kl, 3)); }
+const stronken = new THREE.InstancedMesh(stronkGeo, new THREE.MeshLambertMaterial({map: maakBastTextuur(), vertexColors: true}), STRONK_MAX);
+stronken.count = 0; stronken.castShadow = true; stronken.receiveShadow = true;
+scene.add(stronken);
+let stronkTeller = 0;
+function zetStronk(x, y, z, s){
+  if(stronkTeller >= STRONK_MAX) return;
+  const d = new THREE.Object3D();
+  d.position.set(x, y, z); d.rotation.y = Math.random() * 6.28; d.scale.set(s, s, s);
+  d.updateMatrix();
+  stronken.setMatrixAt(stronkTeller++, d.matrix);
+  stronken.count = stronkTeller;
+  stronken.instanceMatrix.needsUpdate = true;
+}
 tik('stenen+struiken');
 // ── GRAS: pollen met echte sprietjes ──
 // Eén pol = 6 sprietjes die naar buiten waaieren. Onderaan donker,
@@ -2594,11 +2632,29 @@ function slaMetVuist(){
   actieveBomen.add(boom);
   geluidKlop();
   if(boom.slagen >= SLAGEN_NODIG){
-    const dx = boom.voetX - camera.position.x, dz = boom.voetZ - camera.position.z;
-    const d = Math.hypot(dx, dz) || 1;
+    // Waar staat de kruin ten opzichte van de voet? Een palm hangt altijd een
+    // beetje over, en een boom valt naar de kant waar hij overhangt. Staat hij
+    // recht, dan valt hij van je af.
+    let ox, oz, h;
+    if(boom.licht){
+      const tp = new THREE.Vector3(0, 7.6, 0).applyMatrix4(boom.matrix);
+      ox = tp.x - boom.voetX; oz = tp.z - boom.voetZ; h = tp.y - boom.voetY;
+    } else {
+      ox = boom.x - boom.voetX; oz = boom.z - boom.voetZ; h = boom.hoogte;
+    }
+    const over = Math.hypot(ox, oz);
+    let rx, rz;
+    if(over > 0.25){ rx = ox / over; rz = oz / over; }
+    else { const dx = boom.voetX - camera.position.x, dz = boom.voetZ - camera.position.z, d = Math.hypot(dx, dz) || 1; rx = dx / d; rz = dz / d; }
+    // Hoe ver kantelt hij? Precies tot de kruin de grond raakt: een kromme stam
+    // hoeft geen 90° — dan ligt hij als een boog op de grond in plaats van dat
+    // de top in de grond of in de lucht steekt.
+    const od = ox * rx + oz * rz;
+    boom.hoekEind = Math.max(1.22, Math.min(1.75, Math.atan2(h, Math.max(od, 0.01))));
     boom.valt = true; boom.valT = 0; boom.geland = false;
-    boom.richting = {x: dx / d, z: dz / d};             // hij valt van je af
+    boom.richting = {x: rx, z: rz};
     boom.pivot = {x: boom.voetX, y: boom.voetY, z: boom.voetZ};
+    zetStronk(boom.voetX, boom.voetY, boom.voetZ, boom.licht ? boom.hoogte / 7.6 : boom.hoogte / 5);
     boom.voetX = 1e9; boom.voetZ = 1e9;                 // je kunt er niet meer tegenaan botsen
     geluidKraak();
     zeg('🌴 TIMBER!');
@@ -2659,7 +2715,7 @@ function updateBomen(dt){
       let hoek, zak = 0;
       if(boom.valT < VAL_DUUR){
         const u = boom.valT / VAL_DUUR;
-        hoek = (Math.PI / 2) * u * u;                   // steeds sneller: zwaartekracht
+        hoek = boom.hoekEind * u * u;                   // steeds sneller: zwaartekracht
       } else {
         const na = boom.valT - VAL_DUUR;
         if(!boom.geland){                               // de DREUN
@@ -2670,7 +2726,7 @@ function updateBomen(dt){
           if(d < 25) schok = Math.max(schok, 1 - d / 25);
         }
         // een klein stuitertje na de klap, dan stil
-        hoek = Math.PI / 2 - Math.max(0, Math.sin(na * 12) * 0.05 * Math.exp(-na * 3));
+        hoek = boom.hoekEind - Math.max(0, Math.sin(na * 12) * 0.05 * Math.exp(-na * 3));
         if(na > LIG_DUUR) zak = (na - LIG_DUUR) * 0.9;  // en langzaam wegzakken in de grond
         if(zak > 3.5){ boom.weg = true; boom.valM = null; pasBoomToe(boom); actieveBomen.delete(boom); continue; }
       }
