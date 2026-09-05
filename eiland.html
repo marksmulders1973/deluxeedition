@@ -115,6 +115,39 @@ const KOKOS_TOTAAL = 12;
 // voeten gebruiken exact dezelfde functie — dan zak je nooit door de
 // grond en zweef je nooit.
 // ══════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+// 1b. DE VULKAAN (Brian, 5 sep: "een hele grote vulkaan, zoals de Mayon")
+//
+// De Mayon op de Filipijnen is de perfecte kegel: steil bij de top, steeds
+// flauwer naar de voet. Dat is precies wat  H · (1 - r/R)^1,55  doet.
+// Verder: erosiegeulen die van de top naar beneden lopen (het diepst
+// halverwege), een kegel die niet perfect rond is, en bovenop een krater.
+// Hoogte 280 m op een eiland van 1,3 km — vanaf het strand kijk je 24°
+// omhoog naar de top.
+// ══════════════════════════════════════════════════════════════════
+const VULKAAN = {x: 0, z: -150, R: 540, H: 450, kraterR: 48, kraterDiep: 36};
+function vulkaanInfo(x, z){
+  const dx = x - VULKAAN.x, dz = z - VULKAAN.z;
+  const r = Math.hypot(dx, dz);
+  if(r > VULKAAN.R * 1.12) return null;
+  const hoek = Math.atan2(dz, dx);
+  // de voet is niet perfect rond: een paar zachte uitstulpingen
+  const rond = 1 + 0.06 * Math.sin(hoek * 3 + 0.7) + 0.04 * Math.sin(hoek * 7 + 2.1);
+  const u = Math.max(0, 1 - r / (VULKAAN.R * rond));        // 0 = voet, 1 = top
+  let h = VULKAAN.H * Math.pow(u, 1.5);
+  // erosiegeulen: smalle, diepe ravijnen van de top naar de voet, onregelmatig
+  // verdeeld (de fase wordt verbogen door een tweede golf), het diepst halverwege
+  const midden = Math.sin(Math.PI * Math.min(1, u * 1.12));
+  const g1 = Math.pow(0.5 + 0.5 * Math.sin(hoek * 14 + 1.8 * Math.sin(hoek * 3 + r * 0.012)), 5);
+  const g2 = Math.pow(0.5 + 0.5 * Math.sin(hoek * 37 + 2.5 * Math.sin(hoek * 5 + 1.3)), 4);
+  const geul = g1 * 0.8 + g2 * 0.2;
+  h -= geul * 22 * midden;
+  // de krater: een kom bovenop
+  const k = Math.max(0, 1 - r / VULKAAN.kraterR);
+  h -= k * k * (3 - 2 * k) * VULKAAN.kraterDiep;
+  return {h, u, geul, r};
+}
+
 function hoogteOp(x, z){
   // de vorm zelf staat in hoogteBasis, op de oude maat (kust rond 66)
   const hb = hoogteBasis(x / SCHAAL, z / SCHAAL);
@@ -124,7 +157,9 @@ function hoogteOp(x, z){
   const glooi = (Math.sin(x * 0.012 + 0.4) * Math.cos(z * 0.009 + 1.1) * 2.4
                + Math.sin(x * 0.031 + 2.0) * Math.cos(z * 0.026 + 0.3) * 1.0
                + Math.sin(x * 0.070 + 1.0) * Math.cos(z * 0.061 + 2.6) * 0.35) * land * land * (3 - 2 * land);
-  return hb + glooi;
+  // en de vulkaan komt er bovenop
+  const vi = vulkaanInfo(x, z);
+  return hb + glooi + (vi ? vi.h : 0);
 }
 function hoogteBasis(x, z){
   const d = Math.hypot(x, z);
@@ -594,6 +629,12 @@ grondGeo.rotateX(-Math.PI/2);
   const AARDE     = new THREE.Color(0x8a6b45);
   const ROTS      = new THREE.Color(0x8e887c);
   const DIEP_ZAND = new THREE.Color(0xd8c98f);
+  // de vulkaan: struikgewas → kale grijsbruine rots → lichte as bij de top
+  const V_STRUIK  = new THREE.Color(0x6f7042);
+  const V_ROTS    = new THREE.Color(0x5b544c);
+  const V_AS      = new THREE.Color(0x8f8a83);
+  const V_GEUL    = new THREE.Color(0x3d3833);
+  const V_KRATER  = new THREE.Color(0x4a3b34);
 
   for(let i = 0; i < pos.count; i++){
     const x = pos.getX(i), z = pos.getZ(i);
@@ -625,11 +666,23 @@ grondGeo.rotateX(-Math.PI/2);
     c.lerp(NAT_ZAND, zacht(0.35 + n * 0.10, -0.15, h));
     // onder water wordt het zand weer lichter (helder tropisch water)
     c.lerp(DIEP_ZAND, zacht(-0.3, -1.6, h));
-    // steile wanden en de kale bergtop worden rots
-    const rotsF = Math.min(1, zacht(1.5, 2.6, steil) * 0.85 + zacht(8.5, 11, h) * 0.9);
+    // steile wanden en de kale bergtop worden rots (hoog = de vulkaan, vanaf ~90 m)
+    const rotsF = Math.min(1, zacht(1.5, 2.6, steil) * 0.85 + zacht(90, 170, h) * 0.9);
     c.lerp(ROTS, rotsF);
+    // de vulkaan zelf: van onder naar boven struikgewas, rots, as; de geulen donker
+    const vi = vulkaanInfo(x, z);
+    let vulkaanF = 0;
+    if(vi && vi.u > 0.02){
+      const t = vi.u;
+      c.lerp(V_STRUIK, zacht(0.08, 0.30, t) * 0.8);
+      c.lerp(V_ROTS,   zacht(0.24, 0.50, t));
+      c.lerp(V_AS,     zacht(0.70, 0.93, t) * 0.75);
+      c.lerp(V_GEUL,   vi.geul * 0.7 * zacht(0.10, 0.40, t));   // oude lavastromen in de geulen
+      if(vi.r < VULKAAN.kraterR) c.lerp(V_KRATER, zacht(VULKAAN.kraterR, VULKAAN.kraterR * 0.3, vi.r));
+      vulkaanF = zacht(0.22, 0.48, t);
+    }
     // waar het zand, rots of kale aarde is, tekenen we korrels in plaats van sprietjes
-    grasMix[i] = (1 - zandF) * (1 - rotsF) * (1 - aardeF * 0.7);
+    grasMix[i] = (1 - zandF) * (1 - rotsF) * (1 - aardeF * 0.7) * (1 - vulkaanF);
 
     // ── diepte: ligt dit punt lager dan zijn omgeving? Dan iets donkerder.
     // Dat is hetzelfde trucje als schaduw in een holletje — het geeft het
@@ -1925,7 +1978,7 @@ const GRAS_CEL      = IS_TOUCH ? 0.66 : 0.47;  // afstand tussen twee plukjes
 const GRAS_RASTER   = IS_TOUCH ? 42 : 62;      // aantal vakjes in de breedte
 const GRAS_DICHTBIJ = IS_TOUCH ? 14 : 22;      // binnen deze ring staat élk vakje vol
 const GRAS_MIN_H    = 1.15;                    // hieronder is het strand → zand
-const GRAS_MAX_H    = 9.2;                     // hierboven is het kale rots
+const GRAS_MAX_H    = 110;                     // hierboven is het kale rots (de vulkaan)
 const GRAS_STEIL    = 1.7;                     // steiler dan dit = rotswand
 
 // een vast "toevalsgetal" per vakje: zelfde vakje = altijd hetzelfde getal
@@ -2213,6 +2266,78 @@ scene.add(kistLicht);
 
 // ══════════════════════════════════════════════════════════════════
 tik('kokos+kist');
+// ══════════════════════════════════════════════════════════════════
+// 7b. DE KRATER: gloeiende lava en een rookpluim
+// De pluim bestaat uit zachte rookwolkjes (sprites) die uit de krater
+// opstijgen, groter en doorzichtiger worden en met de wind meedrijven.
+// ══════════════════════════════════════════════════════════════════
+const kraterTop = hoogteOp(VULKAAN.x, VULKAAN.z);
+{
+  // de lava onderin de krater: een gloeiende schijf
+  const lava = new THREE.Mesh(
+    new THREE.CircleGeometry(VULKAAN.kraterR * 0.45, 32),
+    new THREE.MeshBasicMaterial({color: 0xff4a12})
+  );
+  lava.rotation.x = -Math.PI / 2;
+  lava.position.set(VULKAAN.x, kraterTop + 0.6, VULKAAN.z);
+  scene.add(lava);
+  // een oranje gloed erboven
+  const gloedTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'), v = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    v.addColorStop(0, 'rgba(255,140,60,0.9)'); v.addColorStop(0.5, 'rgba(255,90,30,0.35)'); v.addColorStop(1, 'rgba(255,60,20,0)');
+    g.fillStyle = v; g.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  })();
+  const gloed = new THREE.Sprite(new THREE.SpriteMaterial({map: gloedTex, transparent: true, depthWrite: false, opacity: 0.8}));
+  gloed.scale.set(VULKAAN.kraterR * 1.6, VULKAAN.kraterR * 1.6, 1);
+  gloed.position.set(VULKAAN.x, kraterTop + 6, VULKAAN.z);
+  scene.add(gloed);
+}
+function rookTextuur(){
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  // een zachte bol met wat bobbels: geen strak rondje
+  for(let i = 0; i < 9; i++){
+    const a = i / 9 * Math.PI * 2, r = i === 0 ? 0 : 22;
+    const x = 64 + Math.cos(a) * r, y = 64 + Math.sin(a) * r, R = i === 0 ? 46 : 30;
+    const v = g.createRadialGradient(x, y, 0, x, y, R);
+    v.addColorStop(0, 'rgba(255,255,255,0.55)'); v.addColorStop(0.6, 'rgba(255,255,255,0.18)'); v.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = v; g.fillRect(0, 0, 128, 128);
+  }
+  return new THREE.CanvasTexture(c);
+}
+const rookTex = rookTextuur();
+const rook = [];
+const ROOK_AANTAL = IS_TOUCH ? 36 : 64, ROOK_LEVEN = 55;   // seconden dat een wolkje bestaat
+for(let i = 0; i < ROOK_AANTAL; i++){
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0, color: 0xdedbd6}));
+  sp.userData = {leeftijd: (i / ROOK_AANTAL) * ROOK_LEVEN, zij: (Math.random() - 0.5) * 12, zij2: (Math.random() - 0.5) * 12, draai: Math.random() * 6.28};
+  scene.add(sp); rook.push(sp);
+}
+function updateRook(dt, t){
+  const vlaag = 1 + 0.25 * Math.sin(t * 0.17);           // de wind wordt sterker en zwakker
+  for(const sp of rook){
+    const u = sp.userData;
+    u.leeftijd += dt;
+    if(u.leeftijd > ROOK_LEVEN){ u.leeftijd -= ROOK_LEVEN; u.zij = (Math.random() - 0.5) * 12; u.zij2 = (Math.random() - 0.5) * 12; }
+    const a = u.leeftijd, f = a / ROOK_LEVEN;              // 0 = net geboren, 1 = weg
+    // omhoog: eerst snel, dan steeds trager (de pluim buigt om in de wind)
+    const hoog = 160 * (1 - Math.exp(-a / 22));
+    // met de wind mee, en een beetje kronkelen
+    const wx = (7.5 * a + 18 * Math.sin(a * 0.35 + u.draai)) * vlaag + u.zij * f;
+    const wz = (2.0 * a + 14 * Math.cos(a * 0.29 + u.draai)) * vlaag + u.zij2 * f;
+    sp.position.set(VULKAAN.x + wx, kraterTop + 8 + hoog, VULKAAN.z + wz);
+    const maat = 34 + 190 * f;                             // uitzetten
+    sp.scale.set(maat, maat, 1);
+    sp.material.opacity = 0.75 * Math.min(1, a / 3) * (1 - f) * (1 - f);   // opkomen, dan vervagen
+    sp.material.rotation = u.draai + a * 0.05;
+    // onderin de pluim iets grijzer/warmer, bovenin licht
+    const g = 0.72 + 0.22 * f;
+    sp.material.color.setRGB(g + 0.04, g + 0.02, g);
+  }
+}
+
 // 8. MEEUWEN EN KRABBEN — zodat het eiland leeft
 // ══════════════════════════════════════════════════════════════════
 const meeuwen = [];
@@ -2609,6 +2734,7 @@ function loop(nu){
   if(gestart){
     updateSpeler(dt);   _m.speler  += performance.now() - _t; _t = performance.now();
     updateSpullen(dt, t); _m.spullen += performance.now() - _t; _t = performance.now();
+    updateRook(dt, t);
   }
   golfZee(t);
   updateWind(t);      _m.wind     += performance.now() - _t; _t = performance.now();
