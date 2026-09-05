@@ -152,21 +152,115 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;
 document.body.appendChild(renderer.domElement);
 
-// ── lucht: een verloop van diepblauw naar lichte horizon ──
+// ══════════════════════════════════════════════════════════════════
+// 2b. DE LUCHT (Brian, 5 sep: "maak de lucht 10× realistischer en laat
+//     het water spiegelen")
+//
+// De lucht is één groot rondom-panorama dat we zelf schilderen: een
+// verloop van diepblauw boven naar een lichte, wazige horizon, met
+// stapelwolken (wit bovenop, grijsblauw van onderen), een paar dunne
+// sluierwolken hoog in de lucht en een warme gloed rond de zon. Vlak bij de
+// horizon staan de wolken kleiner en dichter op elkaar — dat is perspectief,
+// en dat is wat een lucht écht diep maakt.
+//
+// Datzelfde panorama gebruikt de zee-shader om te spiegelen: hij kijkt
+// welke kant een lichtstraal van het water af stuitert en pakt dáár de
+// kleur van de lucht. Zo zie je de wolken in het water, kabbelend mee met
+// de rimpels.
+// ══════════════════════════════════════════════════════════════════
+const ZON_PLEK = new THREE.Vector3(150, 190, 95);   // waar de zon aan de hemel staat
 function luchtTextuur(){
-  const c = document.createElement('canvas'); c.width = 2; c.height = 256;
-  const g = c.getContext('2d'), v = g.createLinearGradient(0, 0, 0, 256);
-  v.addColorStop(0.00, '#2a7fc4');
-  v.addColorStop(0.55, '#7cc4e8');
-  v.addColorStop(1.00, '#d8f0f8');
-  g.fillStyle = v; g.fillRect(0, 0, 2, 256);
+  const W = IS_TOUCH ? 1024 : 2048, H = W / 2;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  let zaadL = 424242;
+  const rnd = () => { zaadL = (zaadL * 16807) % 2147483647; return zaadL / 2147483647; };
+
+  // ── het verloop: boven diepblauw, bij de horizon licht en wazig ──
+  const v = g.createLinearGradient(0, 0, 0, H);
+  v.addColorStop(0.00, '#1c5fa8');
+  v.addColorStop(0.22, '#3585c9');
+  v.addColorStop(0.40, '#7fbde4');
+  v.addColorStop(0.48, '#b9dff2');
+  v.addColorStop(0.50, '#d6ecf6');     // de horizon zelf: bijna wit van de nevel
+  v.addColorStop(0.56, '#a9cfe0');
+  v.addColorStop(1.00, '#6f97ad');
+  g.fillStyle = v; g.fillRect(0, 0, W, H);
+
+  // ── de zon: een felle kern met een warme gloed eromheen ──
+  const zd = ZON_PLEK.clone().normalize();
+  let phi = Math.atan2(zd.z, -zd.x); if(phi < 0) phi += Math.PI * 2;
+  const zx = phi / (Math.PI * 2) * W, zy = (Math.acos(zd.y) / Math.PI) * H;
+  for(const [r, a0, a1] of [[H * 0.55, 'rgba(255,236,190,0.40)', 'rgba(255,236,190,0)'], [H * 0.16, 'rgba(255,248,225,0.85)', 'rgba(255,248,225,0)']]){
+    for(const ox of [0, W, -W]){
+      const gl = g.createRadialGradient(zx + ox, zy, 0, zx + ox, zy, r);
+      gl.addColorStop(0, a0); gl.addColorStop(1, a1);
+      g.fillStyle = gl; g.fillRect(zx + ox - r, zy - r, r * 2, r * 2);
+    }
+  }
+
+  // ── één wolkenpluk tekenen (met wrap over de zijkant) ──
+  function pluk(x, y, r, kleur, alpha){
+    for(const ox of (x < r ? [0, W] : x > W - r ? [0, -W] : [0])){
+      const gl = g.createRadialGradient(x + ox, y, r * 0.15, x + ox, y, r);
+      gl.addColorStop(0, kleur.replace('A', alpha));
+      gl.addColorStop(0.55, kleur.replace('A', alpha * 0.75));
+      gl.addColorStop(1, kleur.replace('A', 0));
+      g.fillStyle = gl; g.fillRect(x + ox - r, y - r, r * 2, r * 2);
+    }
+  }
+
+  // ── sluierwolken: dunne lange vegen hoog in de lucht ──
+  for(let i = 0; i < 14; i++){
+    const x = rnd() * W, y = H * (0.10 + rnd() * 0.18), l = W * (0.05 + rnd() * 0.10);
+    for(let k = 0; k < 18; k++){
+      pluk(x + (k / 18 - 0.5) * l, y + Math.sin(k * 0.7 + i) * H * 0.006, H * (0.012 + rnd() * 0.02), 'rgba(255,255,255,A)', 0.10);
+    }
+  }
+
+  // ── stapelwolken: veel wolken, klein bij de horizon, groot hoog aan de lucht ──
+  // Elke wolk = een rij plukjes op een platte onderkant. Eerst de schaduwkant
+  // (grijsblauw, iets lager), daarna de zonkant (wit, iets hoger).
+  const wolken = [];
+  const AANTAL = IS_TOUCH ? 34 : 52;
+  for(let i = 0; i < AANTAL; i++){
+    const hoogte = Math.pow(rnd(), 0.55);                  // 0 = bij de horizon, 1 = hoog
+    const y = H * (0.47 - hoogte * 0.34);
+    const maat = H * (0.010 + hoogte * 0.075) * (0.7 + rnd() * 0.6);
+    wolken.push({x: rnd() * W, y, maat, breedte: 2.2 + rnd() * 3.5, n: 7 + Math.floor(rnd() * 9), z: rnd()});
+  }
+  wolken.sort((a, b) => a.y - b.y);   // verre (hoge) wolken eerst, dichte er overheen
+  for(const w of wolken){
+    const plukjes = [];
+    for(let k = 0; k < w.n; k++){
+      const t = k / (w.n - 1);
+      const bult = Math.sin(t * Math.PI) * (0.6 + w.z * 0.6) + rnd() * 0.5;   // in het midden het hoogst
+      plukjes.push({x: w.x + (t - 0.5) * w.maat * w.breedte, y: w.y - bult * w.maat * 0.9, r: w.maat * (0.55 + rnd() * 0.6)});
+    }
+    // schaduwkant onderaan
+    for(const p of plukjes) pluk(p.x, p.y + p.r * 0.35, p.r * 1.05, 'rgba(126,146,178,A)', 0.55);
+    // de platte basis: een donkere band
+    for(const p of plukjes) pluk(p.x, w.y + p.r * 0.1, p.r * 0.9, 'rgba(110,130,165,A)', 0.35);
+    // zonkant bovenop
+    for(const p of plukjes) pluk(p.x, p.y - p.r * 0.15, p.r * 0.85, 'rgba(255,255,255,A)', 0.88);
+    for(const p of plukjes) pluk(p.x - p.r * 0.2, p.y - p.r * 0.35, p.r * 0.45, 'rgba(255,253,245,A)', 0.55);
+  }
+
+  // ── nevel op de horizon: een zachte lichte band die alles ver weg verzacht ──
+  const nevel = g.createLinearGradient(0, H * 0.40, 0, H * 0.52);
+  nevel.addColorStop(0, 'rgba(214,236,246,0)'); nevel.addColorStop(0.8, 'rgba(214,236,246,0.75)'); nevel.addColorStop(1, 'rgba(214,236,246,0.85)');
+  g.fillStyle = nevel; g.fillRect(0, H * 0.40, W, H * 0.12);
+
   const t = new THREE.CanvasTexture(c);
-  t.magFilter = THREE.LinearFilter;
+  t.wrapS = THREE.RepeatWrapping;
+  t.magFilter = t.minFilter = THREE.LinearFilter;
+  t.generateMipmaps = false;
   return t;
 }
+const luchtTex = luchtTextuur();
 const lucht = new THREE.Mesh(
-  new THREE.SphereGeometry(320, 24, 16),
-  new THREE.MeshBasicMaterial({map: luchtTextuur(), side: THREE.BackSide, fog: false})
+  new THREE.SphereGeometry(320, 64, 40),
+  new THREE.MeshBasicMaterial({map: luchtTex, side: THREE.BackSide, fog: false})
 );
 scene.add(lucht);
 scene.fog = new THREE.Fog(0xa9dcef, 90, 300);
@@ -188,7 +282,7 @@ const zonBol = new THREE.Mesh(
   new THREE.SphereGeometry(9, 16, 12),
   new THREE.MeshBasicMaterial({color: 0xfff6c8, fog: false})
 );
-zonBol.position.set(150, 190, 95);
+zonBol.position.copy(ZON_PLEK);
 scene.add(zonBol);
 
 // ══════════════════════════════════════════════════════════════════
@@ -661,7 +755,8 @@ const zeeMateriaal = new THREE.ShaderMaterial({
     kleurAder:   {value: new THREE.Color(0x2ad2e4)},   // de lichtende aders in het diepe water
     kleurLucht:  {value: new THREE.Color(0x3f93cf)},
     kleurHorizon:{value: new THREE.Color(0x9cd3ea)},
-    kleurZon:    {value: new THREE.Color(0xfff3d0)}
+    kleurZon:    {value: new THREE.Color(0xfff3d0)},
+    luchtMap:    {value: luchtTex}
   }]),
   vertexShader: `
     uniform float tijd;
@@ -700,6 +795,7 @@ const zeeMateriaal = new THREE.ShaderMaterial({
     uniform float tijd;
     uniform sampler2D ruis;
     uniform sampler2D dieptemap;
+    uniform sampler2D luchtMap;
     uniform float zeeMaat, maxDiep;
     uniform vec3 zonRichting, kleurOndiep, kleurDiep, kleurLucht, kleurHorizon, kleurZon, kleurAder;
     varying vec3 vWereld;
@@ -759,9 +855,15 @@ const zeeMateriaal = new THREE.ShaderMaterial({
 
       // ── 3) spiegeling van de lucht (fresnel: schuin kijken = meer spiegel) ──
       float fres = pow(1.0 - max(dot(n, kijk), 0.0), 3.0);
-      fres = 0.03 + 0.62 * fres;
+      fres = 0.06 + 0.70 * fres;
+      // welke kant stuitert het licht van het water af? Dáár pakken we de kleur
+      // van het lucht-panorama (zelfde omrekening als de bol om de wereld):
+      // zo zie je de wolken in het water, meekabbelend met de rimpels.
       vec3 refl = reflect(-kijk, n);
-      vec3 lucht = mix(kleurHorizon, kleurLucht, pow(clamp(refl.y, 0.0, 1.0), 0.6));
+      refl.y = max(refl.y, 0.02);
+      float phi = atan(refl.z, -refl.x); if(phi < 0.0) phi += 6.2831853;
+      vec2 uvL = vec2(phi / 6.2831853, 1.0 - acos(clamp(refl.y, -1.0, 1.0)) / 3.14159265);
+      vec3 lucht = texture2D(luchtMap, uvL).rgb;
       vec3 kleur = mix(water, lucht, fres);
 
       // ── 4) de zon: scherpe glinstering + brede zachte glans ──
