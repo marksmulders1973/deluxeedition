@@ -22,6 +22,10 @@
   /* ── hud ── */
   #thuis{position:fixed;top:12px;left:12px;z-index:12;color:#cfe6f5;text-decoration:none;font-weight:700;font-size:13px;
          background:rgba(0,0,0,0.4);padding:8px 13px;border-radius:10px;display:none}
+  #houtTeller{position:fixed;top:56px;left:12px;z-index:12;color:#fff;font-size:17px;font-weight:900;background:rgba(0,0,0,0.4);
+              padding:7px 13px;border-radius:10px;display:none}
+  #houtTeller.plus{animation:houtPlus 0.35s ease-out}
+  @keyframes houtPlus{0%{transform:scale(1.35);background:rgba(200,140,60,0.7)}100%{transform:scale(1)}}
   #teller{position:fixed;top:12px;right:12px;z-index:12;color:#fff;font-size:19px;font-weight:900;background:rgba(0,0,0,0.4);
           padding:8px 14px;border-radius:10px;display:none;text-align:right;line-height:1.5}
   #teller .klein{font-size:12px;color:#a9c3d4;font-weight:700}
@@ -71,6 +75,7 @@
 <a id="thuis" href="index.html">← deluxeedition.nl</a>
 <div id="teller"></div>
 <div id="melding"></div>
+<div id="houtTeller" title="houtscraps — hak bomen om en loop over de stukken hout"></div>
 <div id="zwemBalk">🏊 je zwemt!</div>
 <div id="geluidKnop">🔊</div>
 
@@ -2631,6 +2636,10 @@ function slaMetVuist(){
   boom.schudRichting = {x: boom.voetX - camera.position.x, z: boom.voetZ - camera.position.z};
   actieveBomen.add(boom);
   geluidKlop();
+  { // een splinter springt van de stam, aan jouw kant
+    const dx = camera.position.x - boom.voetX, dz = camera.position.z - boom.voetZ, d = Math.hypot(dx, dz) || 1;
+    strooiScraps(boom.voetX + dx / d * 0.35, boom.voetY + 1.15, boom.voetZ + dz / d * 0.35, 1, 1.6);
+  }
   if(boom.slagen >= SLAGEN_NODIG){
     laatBoomVallen(boom, null, null, 0);
     zeg('🌴 TIMBER!');
@@ -2773,6 +2782,11 @@ function updateBomen(dt){
           boom.geland = true;
           geluidBoem();
           stofWolk(boom);
+          // stukken hout langs de neergekomen stam
+          for(let k = 0; k < 4; k++){
+            const t = 0.25 + k * 0.2, L = boom.hoogte;
+            strooiScraps(boom.pivot.x + boom.richting.x * L * t, boom.pivot.y + 0.6, boom.pivot.z + boom.richting.z * L * t, 1, 1.2);
+          }
           const d = Math.hypot(boom.pivot.x - camera.position.x, boom.pivot.z - camera.position.z);
           if(d < 25) schok = Math.max(schok, 1 - d / 25);
         }
@@ -2810,6 +2824,101 @@ function updateBomen(dt){
   }
   schok *= Math.pow(0.02, dt);
 }
+
+// ══════════════════════════════════════════════════════════════════
+// 9c. HOUTSCRAPS (Brian, 5 sep: "als je een boom hakt liggen er houtscraps
+//     op de grond die je kunt oppakken, en links boven zie je hoeveel je hebt")
+//
+// Bij elke klap springt er een splinter van de stam, en als de boom neerkomt
+// liggen er stukken hout langs de stam. Ze stuiteren echt (zwaartekracht,
+// een klein stuitertje, dan stil). Loop erover en je pakt ze op: de teller
+// links boven springt op. Je voorraad wordt bewaard (localStorage).
+// ══════════════════════════════════════════════════════════════════
+const SCRAP_MAX = 400;
+const scrapGeo = new THREE.BoxGeometry(0.34, 0.12, 0.10);
+{ // de kopse kanten (de eerste 8 hoekpunten = +x en -x vlakken) zijn licht hout: het breukvlak
+  const n = scrapGeo.attributes.position.count, kl = new Float32Array(n * 3);
+  for(let i = 0; i < n; i++){ const kop = i < 8; kl[i*3] = kop ? 1.45 : 1; kl[i*3+1] = kop ? 1.30 : 1; kl[i*3+2] = kop ? 1.02 : 1; }
+  scrapGeo.setAttribute('color', new THREE.Float32BufferAttribute(kl, 3));
+}
+const scraps = new THREE.InstancedMesh(scrapGeo, new THREE.MeshLambertMaterial({map: maakBastTextuur(), vertexColors: true}), SCRAP_MAX);
+scraps.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SCRAP_MAX * 3), 3);
+scraps.count = 0; scraps.castShadow = true; scraps.frustumCulled = false;
+scene.add(scraps);
+const scrapLijst = [];        // per plekje in de InstancedMesh één scrap (of null)
+let scrapVolgende = 0;        // ringbuffer: is alles vol, dan vervangen we de oudste
+const scrapDummy = new THREE.Object3D(), scrapKleur = new THREE.Color();
+let houtScraps = 0;
+try { houtScraps = parseInt(localStorage.getItem('deluxe-eiland-hout') || '0', 10) || 0; } catch(e) {}
+function toonHout(plus){
+  const el = document.getElementById('houtTeller');
+  el.textContent = '🪵 ' + houtScraps + (houtScraps === 1 ? ' scrap' : ' scraps');
+  if(plus){ el.classList.remove('plus'); void el.offsetWidth; el.classList.add('plus'); }
+}
+function zetScrapMatrix(i, sc){
+  if(sc.weg){ scrapDummy.position.set(0, -999, 0); scrapDummy.scale.setScalar(0.001); }
+  else { scrapDummy.position.set(sc.x, sc.y, sc.z); scrapDummy.scale.setScalar(sc.maat); }
+  scrapDummy.rotation.set(sc.rx, sc.ry, sc.rz);
+  scrapDummy.updateMatrix();
+  scraps.setMatrixAt(i, scrapDummy.matrix);
+}
+// strooi een aantal stukken hout vanaf (x,y,z) met een beetje vaart
+function strooiScraps(x, y, z, aantal, vaart){
+  for(let k = 0; k < aantal; k++){
+    const i = scrapVolgende; scrapVolgende = (scrapVolgende + 1) % SCRAP_MAX;
+    const hoek = Math.random() * Math.PI * 2, v = vaart * (0.5 + Math.random() * 0.8);
+    const sc = {
+      x: x + (Math.random() - 0.5) * 0.3, y, z: z + (Math.random() - 0.5) * 0.3,
+      vx: Math.cos(hoek) * v, vy: 2.2 + Math.random() * 2.6, vz: Math.sin(hoek) * v,
+      rx: Math.random() * 6.28, ry: Math.random() * 6.28, rz: Math.random() * 6.28,
+      wx: (Math.random() - 0.5) * 14, wy: (Math.random() - 0.5) * 14, wz: (Math.random() - 0.5) * 14,
+      maat: 1.15 + Math.random() * 0.6, rust: false, weg: false
+    };
+    scrapLijst[i] = sc;
+    scrapKleur.setHSL(0.08 + Math.random() * 0.03, 0.45, 0.28 + Math.random() * 0.12);
+    scraps.setColorAt(i, scrapKleur);
+    zetScrapMatrix(i, sc);
+  }
+  scraps.count = Math.max(scraps.count, Math.min(SCRAP_MAX, scrapLijst.length));
+  scraps.instanceMatrix.needsUpdate = true;
+  scraps.instanceColor.needsUpdate = true;
+}
+function updateScraps(dt){
+  let veranderd = false;
+  const px = camera.position.x, pz = camera.position.z, py = camera.position.y - OOG;
+  for(let i = 0; i < scrapLijst.length; i++){
+    const sc = scrapLijst[i];
+    if(!sc || sc.weg) continue;
+    if(!sc.rust){
+      sc.vy -= 14 * dt;
+      sc.x += sc.vx * dt; sc.y += sc.vy * dt; sc.z += sc.vz * dt;
+      sc.rx += sc.wx * dt; sc.ry += sc.wy * dt; sc.rz += sc.wz * dt;
+      const grond = hoogteOp(sc.x, sc.z) + 0.06;
+      if(sc.y <= grond){
+        sc.y = grond;
+        if(sc.vy < -1.6){ sc.vy = -sc.vy * 0.3; sc.vx *= 0.5; sc.vz *= 0.5; sc.wx *= 0.5; sc.wz *= 0.5; }   // stuitertje
+        else { sc.rust = true; sc.rx = Math.round(sc.rx / Math.PI) * Math.PI; sc.rz = Math.round(sc.rz / Math.PI) * Math.PI; }  // plat neerleggen
+      }
+      zetScrapMatrix(i, sc); veranderd = true;
+    }
+    // oppakken: loop eroverheen
+    if(Math.abs(sc.x - px) < 1.4 && Math.abs(sc.z - pz) < 1.4 && Math.hypot(sc.x - px, sc.z - pz) < 1.4 && Math.abs(sc.y - py) < 2.5){
+      sc.weg = true; zetScrapMatrix(i, sc); veranderd = true;
+      houtScraps++;
+      try { localStorage.setItem('deluxe-eiland-hout', String(houtScraps)); } catch(e) {}
+      toonHout(true);
+      geluidPlop();
+    }
+  }
+  if(veranderd) scraps.instanceMatrix.needsUpdate = true;
+}
+function geluidPlop(){ metAudio(ac => {          // vrolijk tikje bij oppakken
+  const t0 = ac.currentTime;
+  const o = ac.createOscillator(); o.type = 'triangle';
+  o.frequency.setValueAtTime(520, t0); o.frequency.exponentialRampToValueAtTime(980, t0 + 0.07);
+  const g = ac.createGain(); g.gain.setValueAtTime(0.25, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.12);
+  o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0 + 0.13);
+}); }
 
 // ── geluiden (WebAudio, zelfde audioCtx als het zeegeruis) ──
 function metAudio(fn){ if(!audioCtx || !geluidAan) return; try { fn(audioCtx); } catch(e) {} }
@@ -3175,7 +3284,8 @@ let gestart = false, vorigeTijd = 0, schaduwTeller = 0;
 document.querySelector('#start .knop').addEventListener('click', () => {
   gestart = true;
   document.getElementById('start').style.display = 'none';
-  for(const id of ['thuis','teller','geluidKnop']) document.getElementById(id).style.display = 'block';
+  for(const id of ['thuis','teller','geluidKnop','houtTeller']) document.getElementById(id).style.display = 'block';
+  toonHout();
   updateTeller();
   startGeluid();
   if(!IS_TOUCH) renderer.domElement.requestPointerLock();
@@ -3201,6 +3311,7 @@ function loop(nu){
     updateSpullen(dt, t); _m.spullen += performance.now() - _t; _t = performance.now();
     updateRook(dt, t);
     updateBomen(dt);
+    updateScraps(dt);
   }
   golfZee(t);
   updateWind(t);      _m.wind     += performance.now() - _t; _t = performance.now();
