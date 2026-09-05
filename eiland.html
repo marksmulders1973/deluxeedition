@@ -1276,7 +1276,7 @@ const palmen = [];        // om tegenaan te botsen + om kokosnoten onder te legg
 const bladData = [];      // alles wat een blad nodig heeft om in de wind te wiegen
 let bladMesh = null;
 {
-  const AANTAL = IS_TOUCH ? 200 : 420;    // groot eiland: veel meer palmen, in groepjes (700 gaf 9 fps)
+  const AANTAL = IS_TOUCH ? 220 : 520;    // groot eiland: veel meer palmen, in groepjes (700 gaf 9 fps)
   const BLAD_JONG = IS_TOUCH ? 13 : 17;  // groene bladeren in de kruin
   const BLAD_DOOD = 3;                   // bruine, afhangende oude bladeren
   const PER_PALM = BLAD_JONG + BLAD_DOOD;
@@ -1922,6 +1922,114 @@ function maakStruikGeometrie(zaadje){
   }
 }
 
+// ══════════════════════════════════════════════════════════════════
+// 5b². DUIZENDEN LICHTE PALMEN (Brian, 5 sep: "meer bomen op het hele
+// eiland — niet een kilometer lopen voor 5, gewoon elke paar meter één")
+//
+// De gedetailleerde palmen hierboven hebben 20 wiegende bladeren met
+// honderden vlakjes per boom — 3000 daarvan zou je telefoon niet trekken.
+// Daarom staan er daarnaast een paar duizend LICHTE palmen: een simpele
+// stam en 9 bladeren van elk 3 stukjes, met precies dezelfde bast- en
+// bladtextuur. Van een afstandje zie je het verschil niet, en ze wiegen
+// mee in de wind via de shader (kost de processor niets).
+// ══════════════════════════════════════════════════════════════════
+const verrePalmen = [];    // om tegenaan te botsen
+{
+  const AANTAL_VER = IS_TOUCH ? 1000 : 2200;
+
+  // ── de stam: een simpele, licht taps toelopende buis ──
+  const stamGeo = new THREE.CylinderGeometry(0.19, 0.30, 7.6, 6, 1, true);
+  stamGeo.translate(0, 3.8, 0);                       // voet op de grond
+  { const uv = stamGeo.attributes.uv; for(let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * 3.2); }   // ringen herhalen
+  const verreStammen = new THREE.InstancedMesh(stamGeo,
+    new THREE.MeshLambertMaterial({map: maakBastTextuur()}), AANTAL_VER);
+
+  // ── de kroon: 9 bladeren van 3 stukjes, in één geometrie gesmolten ──
+  function lichtBlad(){
+    const N = 3, L = 3.6, pos = [], uv = [], idx = [];
+    let vv = 0;
+    const steel = t => ({x: L * t, y: -(2.0 * t * t * t + 0.18 * t)});
+    const breed = t => Math.sin(Math.PI * Math.pow(t, 0.55)) * 0.92 + 0.10;
+    for(let i = 0; i < N; i++){
+      const t0 = i / N, t1 = (i + 1) / N, p0 = steel(t0), p1 = steel(t1), b0 = breed(t0), b1 = breed(t1);
+      pos.push(p0.x, p0.y, -b0,  p1.x, p1.y, -b1,  p1.x, p1.y, b1,  p0.x, p0.y, b0);
+      uv.push(t0, 0,  t1, 0,  t1, 1,  t0, 1);
+      idx.push(vv, vv+1, vv+2, vv, vv+2, vv+3); vv += 4;
+    }
+    return {pos, uv, idx};
+  }
+  const kroonPos = [], kroonUv = [], kroonIdx = [];
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p3 = new THREE.Vector3();
+  const BLADEN = 9;
+  for(let j = 0; j < BLADEN; j++){
+    const b = lichtBlad();
+    const hoek = (j / BLADEN) * Math.PI * 2 + (j % 2) * 0.25;
+    const droop = -0.15 + (j % 3) * 0.42;             // jong omhoog, oud omlaag
+    e.set(0, hoek, -droop); q.setFromEuler(e);
+    m4.compose(new THREE.Vector3(0, 7.55, 0), q, new THREE.Vector3(1, 1, 1));
+    const basis = kroonPos.length / 3;
+    for(let i = 0; i < b.pos.length; i += 3){
+      p3.set(b.pos[i], b.pos[i+1], b.pos[i+2]).applyMatrix4(m4);
+      kroonPos.push(p3.x, p3.y, p3.z);
+    }
+    kroonUv.push(...b.uv);
+    for(const k of b.idx) kroonIdx.push(k + basis);
+  }
+  const kroonGeo = new THREE.BufferGeometry();
+  kroonGeo.setAttribute('position', new THREE.Float32BufferAttribute(kroonPos, 3));
+  kroonGeo.setAttribute('uv', new THREE.Float32BufferAttribute(kroonUv, 2));
+  kroonGeo.setIndex(kroonIdx);
+  kroonGeo.computeVertexNormals();
+  const kroonMat = new THREE.MeshLambertMaterial({map: maakBladTextuur(), alphaTest: 0.28, side: THREE.DoubleSide});
+  // wiegen in de wind: de shader buigt alles boven de stam een beetje mee
+  let verBladTijd = null;
+  kroonMat.onBeforeCompile = (shader) => {
+    shader.uniforms.tijd = {value: 0};
+    verBladTijd = shader.uniforms.tijd;
+    shader.vertexShader = 'uniform float tijd;\n' + shader.vertexShader.replace(
+      '#include <project_vertex>',
+      `vec4 mvPosition = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          mvPosition = instanceMatrix * mvPosition;
+        #endif
+        float hoog = max(transformed.y - 6.5, 0.0);
+        float golf = sin(tijd * 1.3 + mvPosition.x * 0.05 + mvPosition.z * 0.04);
+        mvPosition.x += golf * hoog * 0.10;
+        mvPosition.z += golf * hoog * 0.06;
+        mvPosition = modelViewMatrix * mvPosition;
+        gl_Position = projectionMatrix * mvPosition;`
+    );
+  };
+  const verreKronen = new THREE.InstancedMesh(kroonGeo, kroonMat, AANTAL_VER);
+  // kleur-buffers vooraf aanmaken (les van vandaag: anders kan hij leeg blijven)
+  verreKronen.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(AANTAL_VER * 3), 3);
+  verreStammen.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(AANTAL_VER * 3), 3);
+  verreStammen.castShadow = true;
+
+  // ── neerzetten: 60% in groepjes van vier, de rest los verspreid ──
+  const d = new THREE.Object3D(), c = new THREE.Color();
+  let groep = null;
+  for(let i = 0; i < AANTAL_VER; i++){
+    let p;
+    if(i % 4 === 0 || !groep){ groep = zoekPlek(0.5, 7.5, 64) || {x: 30, z: 30, h: 1}; p = groep; }
+    else p = (rnd() < 0.6 ? zoekPlek(0.5, 7.5, 12, groep) : zoekPlek(0.5, 7.5, 64)) || groep;
+    const hoogte = 5.5 + rnd() * 4.5, sc = hoogte / 7.6;
+    d.position.set(p.x, p.h - 0.15, p.z);
+    d.rotation.set((rnd() - 0.5) * 0.16, rnd() * Math.PI * 2, (rnd() - 0.5) * 0.16);   // een klein beetje scheef
+    d.scale.set(sc * (0.9 + rnd() * 0.3), sc, sc * (0.9 + rnd() * 0.3));
+    d.updateMatrix();
+    verreStammen.setMatrixAt(i, d.matrix);
+    verreKronen.setMatrixAt(i, d.matrix);
+    c.setHSL(0.09 + rnd() * 0.03, 0.35, 0.30 + rnd() * 0.12); verreStammen.setColorAt(i, c);
+    c.setHSL(0.27 + rnd() * 0.06, 0.55, 0.30 + rnd() * 0.16); verreKronen.setColorAt(i, c);
+    verrePalmen.push({voetX: p.x, voetZ: p.z});
+  }
+  verreStammen.instanceColor.needsUpdate = true;
+  verreKronen.instanceColor.needsUpdate = true;
+  scene.add(verreStammen); scene.add(verreKronen);
+  window.__verBladTijd = () => verBladTijd;
+}
+tik('verre palmen');
 tik('stenen+struiken');
 // ── GRAS: pollen met echte sprietjes ──
 // Eén pol = 6 sprietjes die naar buiten waaieren. Onderaan donker,
@@ -2535,6 +2643,9 @@ function updateSpeler(dt){
   for(const p of palmen){
     if(Math.hypot(nx - p.voetX, nz - p.voetZ) < 0.55){ nx = oudX; nz = oudZ; break; }
   }
+  for(const p of verrePalmen){
+    if(Math.abs(nx - p.voetX) < 0.6 && Math.abs(nz - p.voetZ) < 0.6 && Math.hypot(nx - p.voetX, nz - p.voetZ) < 0.5){ nx = oudX; nz = oudZ; break; }
+  }
   // niet te ver de zee in — haaien! 🦈
   const d = Math.hypot(nx, nz);
   if(d > ZEE_GRENS){
@@ -2738,6 +2849,7 @@ function loop(nu){
   }
   golfZee(t);
   updateWind(t);      _m.wind     += performance.now() - _t; _t = performance.now();
+  { const u = window.__verBladTijd && window.__verBladTijd(); if(u) u.value = t; }
   updateGrasVeld();   _m.grasveld += performance.now() - _t; _t = performance.now();
   updateGrasWind(t);  _m.graswind += performance.now() - _t; _t = performance.now();
   lucht.position.copy(camera.position);   // de hemel reist met je mee
