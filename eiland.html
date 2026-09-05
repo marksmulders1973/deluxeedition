@@ -91,12 +91,21 @@
 // ══════════════════════════════════════════════════════════════════
 
 const IS_TOUCH = matchMedia('(pointer:coarse)').matches;
+// ⏱ laadtijd-meting (blijft staan: handig als het spel traag laadt — kijk in de console)
+const _tik0 = performance.now(); let _tikVorig = _tik0;
+function tik(naam){ const nu = performance.now(); console.log('⏱ ' + naam + ': ' + Math.round(nu - _tikVorig) + ' ms (totaal ' + Math.round(nu - _tik0) + ')'); _tikVorig = nu; }
 
 // ── de wereld-instellingen ──
-const EILAND_R   = 88;    // hoe ver het eiland "reikt" (de kust ligt rond 66 m)
-const ZEE_GRENS  = 128;   // verder de zee in mag je niet (haaien! 🦈)
+// 🏝️ GROOT EILAND (Brian, 5 sep: "maak het eiland 100× groter")
+// 100× zoveel oppervlak = alles 10× zo breed. De vorm van het eiland rekenen
+// we nog steeds uit op de oude, kleine maat en blazen hem dan op met SCHAAL.
+// Zo bleef alles wat al goed was (strand, lagune, diep water) precies kloppen.
+const SCHAAL     = 10;
+const EILAND_R   = 88 * SCHAAL;    // hoe ver het eiland "reikt" (de kust ligt rond 660 m)
+const ZEE_GRENS  = 90 * SCHAAL;    // verder de zee in mag je niet (haaien! 🦈)
 const OOG        = 1.65;  // hoe hoog je ogen zitten
-const LOOP       = 4.2, REN = 7.4, ZWEM = 2.6;
+// een groot eiland vraagt om flinke passen: lopen, rennen en zwemmen gaan wat sneller
+const LOOP       = 5.0, REN = 11.0, ZWEM = 3.2;
 const ZWAARTE    = 16;
 const KOKOS_TOTAAL = 12;
 
@@ -107,8 +116,20 @@ const KOKOS_TOTAAL = 12;
 // grond en zweef je nooit.
 // ══════════════════════════════════════════════════════════════════
 function hoogteOp(x, z){
+  // de vorm zelf staat in hoogteBasis, op de oude maat (kust rond 66)
+  const hb = hoogteBasis(x / SCHAAL, z / SCHAAL);
+  // op het grote eiland komen daar zachte, glooiende heuvels bij (80-250 m breed),
+  // alleen op het land — het strand en de zeebodem blijven zoals ze waren
+  const land = Math.max(0, Math.min(1, (hb - 2.5) / 3));
+  const glooi = (Math.sin(x * 0.012 + 0.4) * Math.cos(z * 0.009 + 1.1) * 2.4
+               + Math.sin(x * 0.031 + 2.0) * Math.cos(z * 0.026 + 0.3) * 1.0
+               + Math.sin(x * 0.070 + 1.0) * Math.cos(z * 0.061 + 2.6) * 0.35) * land * land * (3 - 2 * land);
+  return hb + glooi;
+}
+function hoogteBasis(x, z){
   const d = Math.hypot(x, z);
-  const val = Math.max(0, 1 - d / EILAND_R);          // 1 in het midden → 0 aan de rand
+  const R = EILAND_R / SCHAAL;                         // de oude straal (88)
+  const val = Math.max(0, 1 - d / R);                 // 1 in het midden → 0 aan de rand
   let h = Math.pow(val, 1.25) * 13;                    // de bolle heuvel
   h += Math.sin(x * 0.085) * Math.cos(z * 0.075) * 2.4 * val;   // grote heuvels
   h += Math.sin(x * 0.26 + 1.7) * Math.cos(z * 0.23) * 0.8 * val; // kleine bobbels
@@ -119,7 +140,9 @@ function hoogteOp(x, z){
   // samen, zodat de kust héél flauw afloopt. Daardoor wordt de zandvlakte
   // ruim 2x zo breed - en de lagune ernaast net zo ondiep en turkoois.
   // Bij h = 4 is de factor precies 1, dus de overgang is naadloos.
-  if(h > 0 && h < 4) h = h * (0.42 + 0.145 * h);
+  // (op het GROTE eiland is het strand al 10× zo breed door SCHAAL — de extra
+  //  verbreding van 3 sep zou een woestijn geven, dus die staat nu heel mild)
+  if(h > 0 && h < 4) h = h * (0.80 + 0.05 * h);
   // ⚠️ ONDER water maar een klein beetje afvlakken: de lagune blijft mooi
   // ondiep en turkoois, maar een paar meter verderop kun je écht zwemmen.
   // (Eerst drukten we ook de zeebodem plat — toen liep je dwars door de zee.)
@@ -128,7 +151,7 @@ function hoogteOp(x, z){
   // ~10 m diep. Daar wordt het water donker, met lichtende aders. De lagune
   // zelf (tot ~90 m van het midden) blijft ondiep en turkoois.
   if(h < 0){
-    const t = Math.max(0, Math.min(1, (d - EILAND_R) / 60));
+    const t = Math.max(0, Math.min(1, (d - R) / 60));
     h -= t * t * (3 - 2 * t) * 9;
   }
   return h;
@@ -138,7 +161,7 @@ function hoogteOp(x, z){
 // 2. DE 3D-WERELD OPBOUWEN
 // ══════════════════════════════════════════════════════════════════
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 500);
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 6000);
 scene.add(camera);                                      // nodig: je handen hangen aan de camera
 
 const renderer = new THREE.WebGLRenderer({antialias:!IS_TOUCH});
@@ -313,11 +336,12 @@ function luchtTextuur(){
 }
 const luchtTex = luchtTextuur();
 const lucht = new THREE.Mesh(
-  new THREE.SphereGeometry(320, 64, 40),
+  new THREE.SphereGeometry(4000, 64, 40),
   new THREE.MeshBasicMaterial({map: luchtTex, side: THREE.BackSide, fog: false})
 );
 scene.add(lucht);
-scene.fog = new THREE.Fog(0xa9dcef, 90, 300);
+// de mist begint pas ver weg: de overkant van het eiland (1,3 km) verdwijnt er zacht in
+scene.fog = new THREE.Fog(0xa9dcef, 250, 2800);
 
 // ── licht: zon + zacht hemellicht ──
 const zon = new THREE.DirectionalLight(0xfff3d0, 0.95);
@@ -328,6 +352,7 @@ zon.shadow.camera.left = -70; zon.shadow.camera.right = 70;
 zon.shadow.camera.top  =  70; zon.shadow.camera.bottom = -70;
 zon.shadow.camera.far = 250;
 scene.add(zon);
+scene.add(zon.target);   // de schaduw-zon reist mee met de speler (zie de spel-lus)
 scene.add(new THREE.HemisphereLight(0xbfe9ff, 0x5a7a3a, 0.45));
 scene.add(new THREE.AmbientLight(0xffffff, 0.16));
 
@@ -351,10 +376,14 @@ scene.add(zonBol);
 
 // Drie lagen ruis over elkaar: grote vlekken, middelgrote en kleine.
 // Zo krijg je een patroon dat nergens herhaalt maar wel rustig oogt.
+// ⚠️ Geen sin(x)·cos(z)-producten meer: die geven een schaakbord-patroon, en
+// op het grote, vlakke eiland zag je dat als een dambord tot aan de horizon.
+// Elke laag is nu één golvende sinus waarvan de fase door een andere golf
+// wordt verbogen — dat geeft grillige vlekken zonder raster.
 function vlekRuis(x, z){
-  return 0.52 * Math.sin(x * 0.083 + Math.cos(z * 0.071) * 2.1)
-       + 0.30 * Math.sin(x * 0.29 + 2.1) * Math.cos(z * 0.24 + 0.9)
-       + 0.18 * Math.sin(x * 0.77 + 4.3) * Math.cos(z * 0.81 + 2.2);
+  return 0.52 * Math.sin(x * 0.083 + z * 0.031 + Math.cos(z * 0.071 - x * 0.023) * 2.1)
+       + 0.30 * Math.sin(x * 0.29 + z * 0.11 + Math.sin(z * 0.24 + x * 0.07 + 0.9) * 1.7 + 2.1)
+       + 0.18 * Math.sin(x * 0.77 - z * 0.35 + Math.cos(z * 0.81 + x * 0.2 + 2.2) * 1.3 + 4.3);
 }
 // zachte overgang van 0 naar 1 tussen a en b (geen harde randen meer)
 function zacht(a, b, x){
@@ -548,8 +577,8 @@ function vlekTextuur(){
   return t;
 }
 
-const GROND_VAKJES = IS_TOUCH ? 96 : 128;
-const grondGeo = new THREE.PlaneGeometry(290, 290, GROND_VAKJES, GROND_VAKJES);
+const GROND_VAKJES = IS_TOUCH ? 160 : 320;           // 2900 m / 320 = 9 m per vakje
+const grondGeo = new THREE.PlaneGeometry(290 * SCHAAL, 290 * SCHAAL, GROND_VAKJES, GROND_VAKJES);
 grondGeo.rotateX(-Math.PI/2);
 {
   const pos = grondGeo.attributes.position;
@@ -622,7 +651,7 @@ grondGeo.rotateX(-Math.PI/2);
 // gras en zand (grasMix), legt de grote vlekken eroverheen en rekent uit
 // hoe het licht op de sprietjes valt (bump-mapping).
 const grasTex = grasTextuur();
-const GROND_HERHAAL = 112;
+const GROND_HERHAAL = 112 * SCHAAL;                    // tegel blijft 2,6 m
 grasTex.repeat.set(GROND_HERHAAL, GROND_HERHAAL);
 const zandTex = zandTextuur();
 const vlekTex = vlekTextuur();
@@ -650,7 +679,8 @@ grondMateriaal.onBeforeCompile = (sh) => {
       // het reliëf komt uit de gras-textuur (de sprietjes); op zand zwakt het af
       vec2 dHdxy_fwd(){
         vec2 dSTdx = dFdx(vUv); vec2 dSTdy = dFdy(vUv);
-        float k = bumpScale * (0.35 + 0.65 * vGrasMix);
+        // reliëf alleen dichtbij (ver weg is het ruis en kost het alleen maar)
+        float k = bumpScale * (0.35 + 0.65 * vGrasMix) * (1.0 - smoothstep(25.0, 90.0, length(vViewPosition)));
         float Hll = k * texture2D(map, vUv).g;
         float dBx = k * texture2D(map, vUv + dSTdx).g - Hll;
         float dBy = k * texture2D(map, vUv + dSTdy).g - Hll;
@@ -667,17 +697,28 @@ grondMateriaal.onBeforeCompile = (sh) => {
         return normalize(abs(fDet) * surf_norm - vGrad);
       }`)
     .replace('#include <map_fragment>', `
+      // twee keer dezelfde gras-tegel, de tweede gedraaid en ~1,9× groter, door
+      // elkaar gemengd: dan herhaalt niets meer in een net raster (dat raster
+      // zag je op het grote vlakke eiland als een dambord in de verte)
       vec3 gras = texture2D(map, vUv).rgb;
+      vec2 uvB = vec2(vUv.x * 0.43 - vUv.y * 0.31, vUv.x * 0.31 + vUv.y * 0.43);
+      gras = (mix(gras, texture2D(map, uvB).rgb, 0.5) - 0.5) * 1.35 + 0.5;
       vec3 zand = texture2D(zandMap, vUv * 0.9).rgb;
-      vec3 vlek = texture2D(vlekMap, vUv / 13.0).rgb;
+      vec3 vlek = texture2D(vlekMap, vUv / 41.0).rgb;   // tegel van ~107 m
       // de texturen staan "rond 128 = neutraal" opgeslagen → ×2
-      diffuseColor.rgb *= mix(zand, gras, vGrasMix) * 2.0 * vlek * 2.0;`);
+      vec3 detail = mix(zand, gras, vGrasMix) * 2.0;
+      // ver weg vervaagt de fijne textuur naar neutraal: anders gaat het
+      // herhaalpatroon "moireren" en zie je een dambord tot aan de horizon
+      float ver = smoothstep(20.0, 90.0, length(vViewPosition));
+      detail = mix(detail, vec3(1.0), ver);
+      diffuseColor.rgb *= detail * vlek * 2.0;`);
 };
 const grond = new THREE.Mesh(grondGeo, grondMateriaal);
 grond.receiveShadow = true;
 scene.add(grond);
 
 // ══════════════════════════════════════════════════════════════════
+tik('grond');
 // 4. DE ZEE (Brian, 5 sep: "maak de zee 10× realistischer")
 //
 // Eerst was de zee een blauw vlak dat op en neer deinde. Echt water doet
@@ -757,9 +798,9 @@ function zeeRuisTextuur(){
 // doorzichtigheid). Dat bakken we één keer in een plaatje van 256×256 over
 // de hele zee (300×300 m), dus ruim een meter per pixel — zacht genoeg voor
 // een mooie, vloeiende waterlijn.
-const ZEE_MAAT = 300, ZEE_MAX_DIEP = 20;
+const ZEE_MAAT = 300 * SCHAAL, ZEE_MAX_DIEP = 20;
 function dieptekaart(){
-  const N = 256;
+  const N = IS_TOUCH ? 512 : 1024;                    // ~3 m per pixel
   const c = document.createElement('canvas'); c.width = c.height = N;
   const g = c.getContext('2d');
   const beeld = g.createImageData(N, N), d = beeld.data;
@@ -781,7 +822,7 @@ function dieptekaart(){
 
 // de lagune: een fijn raster, want de golven worden nu op de grafische
 // kaart uitgerekend — dat kost de processor niks meer
-const ZEE_VAKJES = IS_TOUCH ? 96 : 160;
+const ZEE_VAKJES = IS_TOUCH ? 128 : 256;            // 3000 m / 256 = 11,7 m per vakje
 const zeeGeo = new THREE.PlaneGeometry(ZEE_MAAT, ZEE_MAAT, ZEE_VAKJES, ZEE_VAKJES);
 zeeGeo.rotateX(-Math.PI/2);
 {
@@ -831,8 +872,8 @@ const zeeMateriaal = new THREE.ShaderMaterial({
       float h = 0.0; vec2 dh = vec2(0.0);
       golf(p.xz, normalize(vec2( 1.0, 0.30)), 0.090, 0.22, 1.10, h, dh);   // lange deining
       golf(p.xz, normalize(vec2(-0.2, 1.00)), 0.130, 0.16, 1.50, h, dh);
-      golf(p.xz, normalize(vec2( 0.7, 0.70)), 0.310, 0.06, 2.20, h, dh);   // kortere golfjes
-      golf(p.xz, normalize(vec2(-0.6, 0.40)), 0.550, 0.035, 3.10, h, dh);
+      golf(p.xz, normalize(vec2( 0.7, 0.70)), 0.160, 0.08, 1.90, h, dh);   // kortere golfjes
+      golf(p.xz, normalize(vec2(-0.6, 0.40)), 0.230, 0.045, 2.40, h, dh);
       // op het strand worden de golven lager: ze lopen dood in het zand
       float demp = clamp(diepte / 2.5, 0.12, 1.0);
       h *= demp; dh *= demp;
@@ -959,7 +1000,7 @@ scene.add(zee);
 // shader (dus geen kleurband op de horizon). Geen vol vlak meer: dat lag
 // boven de zandbodem en scheen door het heldere water heen als donkere vlek.
 {
-  const ringGeo = new THREE.RingGeometry(ZEE_MAAT / 2, 800, 96, 6);
+  const ringGeo = new THREE.RingGeometry(ZEE_MAAT / 2, 3900, 96, 6);
   ringGeo.rotateX(-Math.PI/2);
   const n = ringGeo.attributes.position.count;
   ringGeo.setAttribute('diepte', new THREE.BufferAttribute(new Float32Array(n).fill(ZEE_MAX_DIEP), 1));
@@ -972,6 +1013,7 @@ scene.add(zee);
 function golfZee(t){ zeeMateriaal.uniforms.tijd.value = t; }
 
 // ══════════════════════════════════════════════════════════════════
+tik('zee');
 // 5. PALMBOMEN, ROTSEN EN STRUIKEN
 // Alles in "InstancedMesh": 300 bladeren in één tekenbeurt, zodat het
 // ook op je telefoon snel blijft.
@@ -980,10 +1022,11 @@ let zaad = 20260903;
 function rnd(){ zaad = (zaad * 1664525 + 1013904223) % 4294967296; return zaad / 4294967296; }
 
 // waar mag iets staan? (op het land, niet te steil, niet te hoog)
-function zoekPlek(minH, maxH, maxD){
+function zoekPlek(minH, maxH, maxD, rond){
+  // maxD is op de oude maat; rond = {x,z} zoekt rondom die plek in plaats van het midden
   for(let poging = 0; poging < 60; poging++){
-    const hoek = rnd() * Math.PI * 2, afst = Math.sqrt(rnd()) * maxD;
-    const x = Math.cos(hoek) * afst, z = Math.sin(hoek) * afst;
+    const hoek = rnd() * Math.PI * 2, afst = Math.sqrt(rnd()) * maxD * (rond ? 1 : SCHAAL);
+    const x = (rond ? rond.x : 0) + Math.cos(hoek) * afst, z = (rond ? rond.z : 0) + Math.sin(hoek) * afst;
     const h = hoogteOp(x, z);
     if(h >= minH && h <= maxH) return {x, z, h};
   }
@@ -1180,7 +1223,7 @@ const palmen = [];        // om tegenaan te botsen + om kokosnoten onder te legg
 const bladData = [];      // alles wat een blad nodig heeft om in de wind te wiegen
 let bladMesh = null;
 {
-  const AANTAL = IS_TOUCH ? 36 : 52;
+  const AANTAL = IS_TOUCH ? 200 : 420;    // groot eiland: veel meer palmen, in groepjes (700 gaf 9 fps)
   const BLAD_JONG = IS_TOUCH ? 13 : 17;  // groene bladeren in de kruin
   const BLAD_DOOD = 3;                   // bruine, afhangende oude bladeren
   const PER_PALM = BLAD_JONG + BLAD_DOOD;
@@ -1217,8 +1260,11 @@ let bladMesh = null;
 
   const d = new THREE.Object3D(), kleur = new THREE.Color();
   let b = 0, n = 0;
+  // palmen groeien in groepjes: om de 5 palmen een nieuwe plek, de rest eromheen
+  let groep = null;
   for(let i = 0; i < AANTAL; i++){
-    const p = zoekPlek(0.4, 7.5, 64) || {x: 0, z: 0, h: hoogteOp(0, 0)};
+    if(i % 5 === 0 || !groep) groep = zoekPlek(0.4, 7.5, 64) || {x: 0, z: 0, h: hoogteOp(0, 0)};
+    const p = (i % 5 === 0) ? groep : (zoekPlek(0.4, 7.5, 14, groep) || groep);
     const hoogte = 7.0 + rnd() * 4.5;             // van jonge palmpjes tot hoge reuzen
     const s = hoogte / 5;                          // de stam is getekend voor 5 m
     const draai = rnd() * Math.PI * 2;             // naar welke kant hij overhelt
@@ -1300,6 +1346,7 @@ let bladMesh = null;
     if(pos.getY(i) < 0.4) continue;                 // op het natte strand niet
     let dichtst = 999;
     for(const pa of palmen){
+      if(Math.abs(x - pa.voetX) > 3.2 || Math.abs(z - pa.voetZ) > 3.2) continue;   // snelle voor-check
       const d = Math.hypot(x - pa.voetX, z - pa.voetZ);
       if(d < dichtst) dichtst = d;
       if(dichtst < 0.6) break;
@@ -1338,6 +1385,7 @@ function updateWind(t){
 }
 
 // ══════════════════════════════════════════════════════════════════
+tik('palmen');
 // 5c. STENEN, STRUIKEN, GRAS EN BLOEMEN (Brian: "10× realistischer")
 //
 // De oude stenen waren gewoon diamantjes met 20 vlakken. Een echte
@@ -1603,14 +1651,14 @@ function maakSteenGeometrie(zaadje, mos, detail, uvSchaal){
 {
   const SOORTEN = [
     // grote liggende rotsblokken
-    {zaadje: 0.9,  mos: 0.80, detail: 1, aantal: IS_TOUCH ? 3 : 4, maat: [1.7, 2.7], vorm: [1.15, 0.62, 1.35], uv: 3.4},
+    {zaadje: 0.9,  mos: 0.80, detail: 1, aantal: IS_TOUCH ? 16 : 26, maat: [1.7, 2.7], vorm: [1.15, 0.62, 1.35], uv: 3.4},
     // rechtopstaande rotspunten
-    {zaadje: 2.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 2 : 3, maat: [1.2, 2.0], vorm: [0.72, 1.55, 0.80], uv: 2.8},
+    {zaadje: 2.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 12 : 20, maat: [1.2, 2.0], vorm: [0.72, 1.55, 0.80], uv: 2.8},
     // gedrongen keien
-    {zaadje: 3.6,  mos: 1.15, detail: 1, aantal: IS_TOUCH ? 5 : 8, maat: [0.8, 1.6], vorm: [1.10, 0.78, 1.00], uv: 2.2},
+    {zaadje: 3.6,  mos: 1.15, detail: 1, aantal: IS_TOUCH ? 28 : 50, maat: [0.8, 1.6], vorm: [1.10, 0.78, 1.00], uv: 2.2},
     // kleine brokken
-    {zaadje: 6.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 5 : 8, maat: [0.5, 1.2], vorm: [1.00, 0.85, 1.20], uv: 1.8},
-    {zaadje: 11.7, mos: 0.65, detail: 1, aantal: IS_TOUCH ? 4 : 6, maat: [0.6, 1.4], vorm: [1.30, 0.70, 0.90], uv: 2.0},
+    {zaadje: 6.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 28 : 50, maat: [0.5, 1.2], vorm: [1.00, 0.85, 1.20], uv: 1.8},
+    {zaadje: 11.7, mos: 0.65, detail: 1, aantal: IS_TOUCH ? 22 : 40, maat: [0.6, 1.4], vorm: [1.30, 0.70, 0.90], uv: 2.0},
   ];
   const gruisPlek = [];
   for(const soort of SOORTEN){
@@ -1799,7 +1847,7 @@ function maakStruikGeometrie(zaadje){
     );
   };
   for(let vorm = 0; vorm < 2; vorm++){
-    const AANTAL = IS_TOUCH ? 18 : 26;
+    const AANTAL = IS_TOUCH ? 100 : 150;
     const mesh = new THREE.InstancedMesh(maakStruikGeometrie(vorm * 3.3 + 1.4), struikMat, AANTAL);
     mesh.castShadow = true;
     const d = new THREE.Object3D(), c = new THREE.Color();
@@ -1821,6 +1869,7 @@ function maakStruikGeometrie(zaadje){
   }
 }
 
+tik('stenen+struiken');
 // ── GRAS: pollen met echte sprietjes ──
 // Eén pol = 6 sprietjes die naar buiten waaieren. Onderaan donker,
 // bovenaan lichtgroen — daardoor lijkt het gras diep in plaats van plat.
@@ -1918,6 +1967,11 @@ const grasVeld = new THREE.InstancedMesh(
   GRAS_RASTER * GRAS_RASTER
 );
 grasVeld.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+// ⚠️ De kleur-buffer meteen zelf aanmaken. three.js maakt hem anders pas bij de
+// eerste setColorAt, op maat van 'count' — en op het grote eiland sta je aan
+// het begin op een breed strand zónder gras (count = 0). Dan werd de buffer
+// leeg en bleven alle pollen wit. (Brian's grote eiland, 5 sep)
+grasVeld.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(GRAS_RASTER * GRAS_RASTER * 3), 3);
 grasVeld.frustumCulled = false;
 scene.add(grasVeld);
 
@@ -2042,7 +2096,7 @@ function maakBloemGeometrie(){
   return g;
 }
 {
-  const PLEKKEN = IS_TOUCH ? 26 : 40, PER_PLEK = 8;
+  const PLEKKEN = IS_TOUCH ? 110 : 170, PER_PLEK = 8;
   const AANTAL = PLEKKEN * PER_PLEK;
   const hoofdjes = new THREE.InstancedMesh(
     maakBloemGeometrie(),
@@ -2085,21 +2139,35 @@ function maakBloemGeometrie(){
 // ══════════════════════════════════════════════════════════════════
 // 6. DE KOKOSNOTEN — dit is wat je zoekt 🥥
 // ══════════════════════════════════════════════════════════════════
+// je startstrand: recht "onder" het midden, op de kust. Kokosnoten, kist,
+// meeuwen en krabben blijven daar in de buurt — een eiland van bijna 2 km
+// afstruinen voor 12 noten zou geen spel meer zijn.
+const THUIS = {x: 0, z: 0};
+{
+  let z = 105 * SCHAAL;
+  while(z > 20 * SCHAAL && hoogteOp(0, z) < 0.35) z -= 0.5;
+  THUIS.z = z;
+}
+const ZOEK_R = 22;   // (× oude maat = 220 m) zoekgebied rond het startstrand
+
+tik('gras+bloemen');
 const kokosGroep = new THREE.Group(); scene.add(kokosGroep);
 const kokossen = [];
 {
+  // alleen palmen dicht bij het startstrand komen in aanmerking
+  const palmenThuis = palmen.filter(p => Math.hypot(p.voetX - THUIS.x, p.voetZ - THUIS.z) < ZOEK_R * SCHAAL);
   const geo = new THREE.SphereGeometry(0.32, 10, 8);
   const mat = new THREE.MeshLambertMaterial({color: 0x6b4423});
   for(let i = 0; i < KOKOS_TOTAAL; i++){
     // de meeste liggen onder een palmboom — daar vallen ze immers uit
     let x, z, h;
-    if(i < palmen.length){
-      const p = palmen[Math.floor(rnd() * palmen.length)];
+    if(i < palmenThuis.length){
+      const p = palmenThuis[Math.floor(rnd() * palmenThuis.length)];
       x = p.voetX + (rnd()-0.5) * 5; z = p.voetZ + (rnd()-0.5) * 5;
       h = hoogteOp(x, z);
-      if(h < 0.2){ const q = zoekPlek(0.5, 8, 62); if(q){ x = q.x; z = q.z; h = q.h; } }
+      if(h < 0.2){ const q = zoekPlek(0.5, 8, ZOEK_R * SCHAAL, THUIS); if(q){ x = q.x; z = q.z; h = q.h; } }
     } else {
-      const q = zoekPlek(0.5, 8, 62) || {x: 0, z: 0, h: 0}; x = q.x; z = q.z; h = q.h;
+      const q = zoekPlek(0.5, 8, ZOEK_R * SCHAAL, THUIS) || {x: THUIS.x, z: THUIS.z - 30, h: 1}; x = q.x; z = q.z; h = q.h;
     }
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, h + 0.34, z);
@@ -2116,7 +2184,7 @@ const kokossen = [];
 const kist = new THREE.Group();
 let kistDeksel, kistPlek = {x: 0, z: 0};
 {
-  const p = zoekPlek(0.8, 5, 56) || {x: 20, z: -20, h: 1};
+  const p = zoekPlek(0.8, 5, 12 * SCHAAL, THUIS) || {x: THUIS.x + 20, z: THUIS.z - 40, h: 1};
   kistPlek = {x: p.x, z: p.z};
   const hout = new THREE.MeshLambertMaterial({color: 0x7a4a22});
   const goud = new THREE.MeshLambertMaterial({color: 0xd4af37});
@@ -2144,6 +2212,7 @@ kistLicht.position.set(kistPlek.x, hoogteOp(kistPlek.x, kistPlek.z) + 1.4, kistP
 scene.add(kistLicht);
 
 // ══════════════════════════════════════════════════════════════════
+tik('kokos+kist');
 // 8. MEEUWEN EN KRABBEN — zodat het eiland leeft
 // ══════════════════════════════════════════════════════════════════
 const meeuwen = [];
@@ -2188,12 +2257,12 @@ for(let i = 0; i < 4; i++){
     }
   }
   // zoek van buiten naar binnen waar het zand boven water komt = de kustlijn
-  const hoekStart = rnd() * 6.28;
-  let straal = 118;
+  const hoekStart = Math.PI / 2 + (rnd() - 0.5) * 0.10;   // vlak bij je startstrand (dat ligt op +z)
+  let straal = 118 * SCHAAL;
   while(straal > 10 && hoogteOp(Math.cos(hoekStart)*straal, Math.sin(hoekStart)*straal) < 0.15) straal -= 0.5;
   g.userData = {
     hoek: hoekStart, r: straal, pootjes,
-    snel: (rnd() > 0.5 ? 1 : -1) * (0.013 + rnd() * 0.010),
+    snel: (rnd() > 0.5 ? 1 : -1) * (0.013 + rnd() * 0.010) / SCHAAL,   // hoek per seconde; de kust is 10× langer
     draaiOver: 3 + rnd() * 5      // na zoveel seconden schuifelt hij de andere kant op
   };
   scene.add(g); krabben.push(g);
@@ -2304,11 +2373,11 @@ springKnop.addEventListener('touchend',   e => { touchSpring = false; });
 // ══════════════════════════════════════════════════════════════════
 // 11. LOPEN, SPRINGEN EN ZWEMMEN
 // ══════════════════════════════════════════════════════════════════
+tik('meeuwen+krabben');
 // je start op het strand, met de zee in je rug en het eiland vóór je
 let spelerY = 0, velY = 0, opGrond = true, zwemt = false, loopBob = 0;
 {
-  let z = 105;
-  while(z > 20 && hoogteOp(0, z) < 0.35) z -= 0.5;  // zoek de kustlijn
+  const z = THUIS.z;                                   // de kustlijn (zie THUIS hierboven)
   camera.position.set(0, hoogteOp(0, z) + OOG, z);
   spelerY = hoogteOp(0, z);
 }
@@ -2432,7 +2501,7 @@ function updateSpullen(dt, t){
   for(const m of meeuwen){
     const u = m.userData;
     u.fase += dt * u.snel;
-    m.position.set(Math.cos(u.fase) * u.r, u.y + Math.sin(u.fase * 2) * 1.6, Math.sin(u.fase) * u.r);
+    m.position.set(THUIS.x + Math.cos(u.fase) * u.r, u.y + Math.sin(u.fase * 2) * 1.6, THUIS.z + Math.sin(u.fase) * u.r);
     m.rotation.y = -u.fase + Math.PI/2;
     const klap = Math.sin(t * 7 + u.fase * 3) * 0.5;
     u.vleugels[0].rotation.z =  klap;
@@ -2535,23 +2604,36 @@ function loop(nu){
   const dt = Math.min(0.05, t - vorigeTijd || 0.016);
   vorigeTijd = t;
 
+  const _m = window.__tijden || (window.__tijden = {speler:0, spullen:0, wind:0, grasveld:0, graswind:0, render:0, frames:0});
+  let _t = performance.now();
   if(gestart){
-    updateSpeler(dt);
-    updateSpullen(dt, t);
+    updateSpeler(dt);   _m.speler  += performance.now() - _t; _t = performance.now();
+    updateSpullen(dt, t); _m.spullen += performance.now() - _t; _t = performance.now();
   }
   golfZee(t);
-  updateWind(t);
-  updateGrasVeld();
-  updateGrasWind(t);
+  updateWind(t);      _m.wind     += performance.now() - _t; _t = performance.now();
+  updateGrasVeld();   _m.grasveld += performance.now() - _t; _t = performance.now();
+  updateGrasWind(t);  _m.graswind += performance.now() - _t; _t = performance.now();
   lucht.position.copy(camera.position);   // de hemel reist met je mee
-  // schaduwen ~4× per seconde bijwerken (voor de krabben en het kistdeksel)
-  if((schaduwTeller++ % 20) === 0) renderer.shadowMap.needsUpdate = true;
+  // schaduwen ~4× per seconde bijwerken (voor de krabben en het kistdeksel).
+  // Op het grote eiland past het schaduw-vak (140×140 m) niet meer over alles:
+  // daarom schuift de zon mee, zodat er altijd schaduw is waar jij staat.
+  if((schaduwTeller++ % 20) === 0){
+    zon.position.set(camera.position.x + 70, 95, camera.position.z + 45);
+    zon.target.position.set(camera.position.x, 0, camera.position.z);
+    zon.target.updateMatrixWorld();
+    renderer.shadowMap.needsUpdate = true;
+  }
 
   camera.rotation.set(0, 0, 0);
   camera.rotateY(yaw);
   camera.rotateX(pitch);
+  _t = performance.now();
   renderer.render(scene, camera);
+  _m.render += performance.now() - _t; _m.frames++;
+  if(_m.frames === 1) tik('eerste beeldje getekend');
 }
+tik('rest (klaar)');
 requestAnimationFrame(loop);
 </script>
 <script src="smiles-widget.js"></script>
