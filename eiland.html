@@ -40,6 +40,8 @@
   #joy{position:fixed;left:18px;bottom:22px;width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,0.10);
        border:2px solid rgba(255,255,255,0.25);z-index:15}
   #joyStick{position:absolute;left:35px;top:35px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.45)}
+  #slaKnop{position:fixed;right:22px;bottom:200px;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,255,255,0.4);
+              background:rgba(255,160,60,0.35);font-size:32px;z-index:15;color:#fff}
   #springKnop{position:fixed;right:22px;bottom:110px;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,255,255,0.4);
               background:rgba(46,204,113,0.35);font-size:32px;z-index:15;color:#fff}
 
@@ -74,6 +76,7 @@
 
 <div id="joy" class="touch-ui"><div id="joyStick"></div></div>
 <button id="springKnop" class="touch-ui">⤴️</button>
+<button id="slaKnop" class="touch-ui">👊</button>
 
 <div id="winscherm">
   <h2>🏆 DE SCHAT IS VAN JOU!</h2>
@@ -1274,14 +1277,14 @@ function maakBladGeometrie(){
 
 const palmen = [];        // om tegenaan te botsen + om kokosnoten onder te leggen
 const bladData = [];      // alles wat een blad nodig heeft om in de wind te wiegen
-let bladMesh = null;
+let bladMesh = null, stammen = null, hangNoten = null;   // (globaal: het hak-systeem moet erbij kunnen)
 {
   const AANTAL = IS_TOUCH ? 220 : 520;    // groot eiland: veel meer palmen, in groepjes (700 gaf 9 fps)
   const BLAD_JONG = IS_TOUCH ? 13 : 17;  // groene bladeren in de kruin
   const BLAD_DOOD = 3;                   // bruine, afhangende oude bladeren
   const PER_PALM = BLAD_JONG + BLAD_DOOD;
 
-  const stammen = new THREE.InstancedMesh(
+  stammen = new THREE.InstancedMesh(
     maakStamGeometrie(),
     new THREE.MeshPhongMaterial({
       vertexColors: true,
@@ -1302,7 +1305,7 @@ let bladMesh = null;
   );
   // kokosnoten die nog aan de boom hangen
   const NOTEN_PER = 4;
-  const hangNoten = new THREE.InstancedMesh(
+  hangNoten = new THREE.InstancedMesh(
     new THREE.SphereGeometry(0.15, 8, 6),
     new THREE.MeshLambertMaterial({color: 0x6b4a26}),
     AANTAL * NOTEN_PER
@@ -1334,7 +1337,12 @@ let bladMesh = null;
       p.h + 5 * s,
       p.z - Math.sin(draai) * 1.05 * s
     );
-    palmen.push({x: top.x, z: top.z, voetX: p.x, voetZ: p.z});
+    palmen.push({
+      x: top.x, z: top.z, voetX: p.x, voetZ: p.z, voetY: p.h,
+      // voor het hakken: welke stam/bladeren/noten horen bij deze boom
+      stamIdx: i, stamMatrix: d.matrix.clone(), bladStart: b, bladEind: b + PER_PALM,
+      nootStart: n, nootMatrices: [], hoogte: 5 * s, licht: false
+    });
 
     // ── de bladeren van de kruin ──
     const start = rnd() * Math.PI * 2;
@@ -1344,6 +1352,7 @@ let bladMesh = null;
       const leeftijd = dood ? 1 : j / BLAD_JONG;
       const droop = dood ? (1.50 + rnd() * 0.35) : (-0.95 + rnd() * 2.10);
       const info = {
+        palm: palmen.length - 1,          // bij welke boom hoort dit blad
         top: top.clone(),
         hoek: start + (j / PER_PALM) * Math.PI * 2 + (rnd() - 0.5) * 0.4,
         droop,
@@ -1379,6 +1388,7 @@ let bladMesh = null;
       }
       d.updateMatrix();
       hangNoten.setMatrixAt(n++, d.matrix);
+      palmen[palmen.length - 1].nootMatrices.push(d.matrix.clone());
     }
   }
   scene.add(stammen); scene.add(bladMesh); scene.add(hangNoten);
@@ -1432,6 +1442,10 @@ function updateWind(t){
     );
     bladDummy.scale.set(bd.sx, bd.sy, bd.sx);
     bladDummy.updateMatrix();
+    // hoort dit blad bij een boom die schudt, omvalt of al weg is? dan mee-draaien
+    const pv = palmen[bd.palm];
+    if(pv && pv.weg) bladDummy.matrix.makeScale(0, 0, 0);
+    else if(pv && pv.valM) bladDummy.matrix.premultiply(pv.valM);
     bladMesh.setMatrixAt(i, bladDummy.matrix);
   }
   bladMesh.instanceMatrix.needsUpdate = true;
@@ -1933,7 +1947,8 @@ function maakStruikGeometrie(zaadje){
 // bladtextuur. Van een afstandje zie je het verschil niet, en ze wiegen
 // mee in de wind via de shader (kost de processor niets).
 // ══════════════════════════════════════════════════════════════════
-const verrePalmen = [];    // om tegenaan te botsen
+const verrePalmen = [];    // om tegenaan te botsen (en om te hakken)
+let verreStammen = null, verreKronen = null;
 {
   const AANTAL_VER = IS_TOUCH ? 1000 : 2200;
 
@@ -1941,7 +1956,7 @@ const verrePalmen = [];    // om tegenaan te botsen
   const stamGeo = new THREE.CylinderGeometry(0.19, 0.30, 7.6, 6, 1, true);
   stamGeo.translate(0, 3.8, 0);                       // voet op de grond
   { const uv = stamGeo.attributes.uv; for(let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * 3.2); }   // ringen herhalen
-  const verreStammen = new THREE.InstancedMesh(stamGeo,
+  verreStammen = new THREE.InstancedMesh(stamGeo,
     new THREE.MeshLambertMaterial({map: maakBastTextuur()}), AANTAL_VER);
 
   // ── de kroon: 9 bladeren van 3 stukjes, in één geometrie gesmolten ──
@@ -2000,7 +2015,7 @@ const verrePalmen = [];    // om tegenaan te botsen
         gl_Position = projectionMatrix * mvPosition;`
     );
   };
-  const verreKronen = new THREE.InstancedMesh(kroonGeo, kroonMat, AANTAL_VER);
+  verreKronen = new THREE.InstancedMesh(kroonGeo, kroonMat, AANTAL_VER);
   // kleur-buffers vooraf aanmaken (les van vandaag: anders kan hij leeg blijven)
   verreKronen.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(AANTAL_VER * 3), 3);
   verreStammen.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(AANTAL_VER * 3), 3);
@@ -2022,7 +2037,7 @@ const verrePalmen = [];    // om tegenaan te botsen
     verreKronen.setMatrixAt(i, d.matrix);
     c.setHSL(0.09 + rnd() * 0.03, 0.35, 0.30 + rnd() * 0.12); verreStammen.setColorAt(i, c);
     c.setHSL(0.27 + rnd() * 0.06, 0.55, 0.30 + rnd() * 0.16); verreKronen.setColorAt(i, c);
-    verrePalmen.push({voetX: p.x, voetZ: p.z});
+    verrePalmen.push({voetX: p.x, voetZ: p.z, voetY: p.h - 0.15, idx: i, matrix: d.matrix.clone(), hoogte: 7.6 * sc, licht: true});
   }
   verreStammen.instanceColor.needsUpdate = true;
   verreKronen.instanceColor.needsUpdate = true;
@@ -2527,6 +2542,223 @@ for(const kant of [-1, 1]){
 // (geen extra handlicht: dat maakte de handen spierwit)
 
 // ══════════════════════════════════════════════════════════════════
+// 9b. HAKKEN MET JE VUIST (Brian, 5 sep: "een boom omhakken met je vuist,
+//     en dan valt hij om met een realistische animatie")
+//
+// Klik (of toets F, of de 👊-knop op de telefoon) = een vuistslag. Staat er
+// een palm binnen 2,7 m vóór je, dan krijgt die een klap: hij trilt even
+// en je hoort een doffe klop. Na 5 slagen kraakt hij en valt hij om, van je
+// af, zoals een echte boom: eerst tergend langzaam, dan steeds sneller
+// (zwaartekracht), met een dreun, stofwolk en een schuddende camera als hij
+// neerkomt. Hij blijft een paar tellen liggen en zakt dan weg in de grond.
+// De stam, de bladeren en de kokosnoten draaien allemaal om hetzelfde
+// draaipunt (de voet), dus de boom blijft één geheel.
+// ══════════════════════════════════════════════════════════════════
+const SLAG_BEREIK = 2.7, SLAGEN_NODIG = 5, VAL_DUUR = 1.7, LIG_DUUR = 7;
+let slagTijd = -9;                 // wanneer de laatste slag begon (seconden)
+let schok = 0;                     // camera-schok bij een dreun
+const actieveBomen = new Set();    // bomen die trillen, vallen of liggen
+const stofWolken = [];
+const _valAs = new THREE.Vector3(), _tmpM = new THREE.Matrix4(), _tmpM2 = new THREE.Matrix4();
+
+// welke boom staat vlak vóór je?
+function boomVoorJe(){
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);       // kijkrichting, plat op de grond
+  const px = camera.position.x, pz = camera.position.z;
+  let best = null, bestD = SLAG_BEREIK;
+  const kijk = (lijst) => {
+    for(const p of lijst){
+      if(p.weg || p.valt) continue;
+      const dx = p.voetX - px, dz = p.voetZ - pz;
+      if(Math.abs(dx) > SLAG_BEREIK || Math.abs(dz) > SLAG_BEREIK) continue;
+      const d = Math.hypot(dx, dz);
+      if(d > bestD) continue;
+      if((dx * fx + dz * fz) / (d || 1) < 0.35) continue;   // hij moet vóór je staan
+      best = p; bestD = d;
+    }
+  };
+  kijk(palmen); kijk(verrePalmen);
+  return best;
+}
+
+function slaMetVuist(){
+  if(!gestart) return;
+  const nu = performance.now() / 1000;
+  if(nu - slagTijd < 0.32) return;                        // niet sneller dan je arm kan
+  slagTijd = nu;
+  const boom = boomVoorJe();
+  if(!boom){ geluidZwaai(); return; }
+  boom.slagen = (boom.slagen || 0) + 1;
+  boom.schud = 1;                                         // even natrillen
+  boom.schudRichting = {x: boom.voetX - camera.position.x, z: boom.voetZ - camera.position.z};
+  actieveBomen.add(boom);
+  geluidKlop();
+  if(boom.slagen >= SLAGEN_NODIG){
+    const dx = boom.voetX - camera.position.x, dz = boom.voetZ - camera.position.z;
+    const d = Math.hypot(dx, dz) || 1;
+    boom.valt = true; boom.valT = 0; boom.geland = false;
+    boom.richting = {x: dx / d, z: dz / d};             // hij valt van je af
+    boom.pivot = {x: boom.voetX, y: boom.voetY, z: boom.voetZ};
+    boom.voetX = 1e9; boom.voetZ = 1e9;                 // je kunt er niet meer tegenaan botsen
+    geluidKraak();
+    zeg('🌴 TIMBER!');
+  } else {
+    zeg('👊 ' + boom.slagen + ' / ' + SLAGEN_NODIG);
+  }
+}
+
+// de draai-matrix van een boom: kantelen om zijn voet, plus eventueel wegzakken
+function zetBoomMatrix(boom, hoek, asX, asZ, zak){
+  if(!boom.valM) boom.valM = new THREE.Matrix4();
+  _valAs.set(asZ, 0, -asX).normalize();                 // as = omhoog × valrichting
+  boom.valM.makeRotationAxis(_valAs, hoek);
+  const p = boom.pivot || {x: boom.voetX, y: boom.voetY, z: boom.voetZ};
+  _tmpM.makeTranslation(-p.x, -p.y, -p.z);
+  boom.valM.multiply(_tmpM);
+  _tmpM.makeTranslation(p.x, p.y - zak, p.z);
+  boom.valM.premultiply(_tmpM);
+}
+
+function pasBoomToe(boom){
+  const weg = boom.weg;
+  if(boom.licht){
+    if(weg) _tmpM2.makeScale(0, 0, 0); else _tmpM2.multiplyMatrices(boom.valM, boom.matrix);
+    verreStammen.setMatrixAt(boom.idx, _tmpM2);
+    verreKronen.setMatrixAt(boom.idx, _tmpM2);
+    verreStammen.instanceMatrix.needsUpdate = true;
+    verreKronen.instanceMatrix.needsUpdate = true;
+  } else {
+    if(weg) _tmpM2.makeScale(0, 0, 0); else _tmpM2.multiplyMatrices(boom.valM, boom.stamMatrix);
+    stammen.setMatrixAt(boom.stamIdx, _tmpM2);
+    for(let k = 0; k < boom.nootMatrices.length; k++){
+      if(weg) _tmpM2.makeScale(0, 0, 0); else _tmpM2.multiplyMatrices(boom.valM, boom.nootMatrices[k]);
+      hangNoten.setMatrixAt(boom.nootStart + k, _tmpM2);
+    }
+    stammen.instanceMatrix.needsUpdate = true;
+    hangNoten.instanceMatrix.needsUpdate = true;
+    // de bladeren pakt updateWind op (die leest boom.valM / boom.weg)
+  }
+}
+
+function stofWolk(boom){
+  const p = boom.pivot, r = boom.richting, L = boom.hoogte;
+  for(let i = 0; i < 12; i++){
+    const t = 0.15 + (i / 12) * 0.85;                   // langs de liggende stam
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.55, color: 0xa08a66}));
+    sp.position.set(p.x + r.x * L * t + (Math.random() - 0.5) * 1.2, p.y + 0.4, p.z + r.z * L * t + (Math.random() - 0.5) * 1.2);
+    sp.userData = {leeftijd: 0, vx: (Math.random() - 0.5) * 1.5, vz: (Math.random() - 0.5) * 1.5};
+    sp.scale.set(1.2, 1.2, 1);
+    scene.add(sp); stofWolken.push(sp);
+  }
+}
+
+function updateBomen(dt){
+  for(const boom of actieveBomen){
+    if(boom.valt){
+      boom.valT += dt;
+      let hoek, zak = 0;
+      if(boom.valT < VAL_DUUR){
+        const u = boom.valT / VAL_DUUR;
+        hoek = (Math.PI / 2) * u * u;                   // steeds sneller: zwaartekracht
+      } else {
+        const na = boom.valT - VAL_DUUR;
+        if(!boom.geland){                               // de DREUN
+          boom.geland = true;
+          geluidBoem();
+          stofWolk(boom);
+          const d = Math.hypot(boom.pivot.x - camera.position.x, boom.pivot.z - camera.position.z);
+          if(d < 25) schok = Math.max(schok, 1 - d / 25);
+        }
+        // een klein stuitertje na de klap, dan stil
+        hoek = Math.PI / 2 - Math.max(0, Math.sin(na * 12) * 0.05 * Math.exp(-na * 3));
+        if(na > LIG_DUUR) zak = (na - LIG_DUUR) * 0.9;  // en langzaam wegzakken in de grond
+        if(zak > 3.5){ boom.weg = true; boom.valM = null; pasBoomToe(boom); actieveBomen.delete(boom); continue; }
+      }
+      zetBoomMatrix(boom, hoek, boom.richting.x, boom.richting.z, zak);
+      pasBoomToe(boom);
+    } else if(boom.schud > 0.01){
+      // trillen na een klap: een snel wiegend hoekje dat uitdooft
+      boom.schud *= Math.pow(0.02, dt);                 // in ~1 s uitgedoofd
+      const hoek = Math.sin(performance.now() * 0.04) * 0.035 * boom.schud;
+      zetBoomMatrix(boom, hoek, boom.schudRichting.x, boom.schudRichting.z, 0);
+      pasBoomToe(boom);
+    } else {
+      // uitgetrild: netjes terug in de beginstand
+      boom.schud = 0;
+      zetBoomMatrix(boom, 0, 1, 0, 0);
+      pasBoomToe(boom);
+      boom.valM = null;
+      actieveBomen.delete(boom);
+    }
+  }
+  // stofwolken: uitzetten, omhoog drijven, vervagen
+  for(let i = stofWolken.length - 1; i >= 0; i--){
+    const sp = stofWolken[i], u = sp.userData;
+    u.leeftijd += dt;
+    const f = u.leeftijd / 1.4;
+    if(f >= 1){ scene.remove(sp); sp.material.dispose(); stofWolken.splice(i, 1); continue; }
+    sp.position.x += u.vx * dt; sp.position.z += u.vz * dt; sp.position.y += 0.6 * dt;
+    const m = 1.2 + f * 4.5; sp.scale.set(m, m, 1);
+    sp.material.opacity = 0.55 * (1 - f) * (1 - f);
+  }
+  schok *= Math.pow(0.02, dt);
+}
+
+// ── geluiden (WebAudio, zelfde audioCtx als het zeegeruis) ──
+function metAudio(fn){ if(!audioCtx || !geluidAan) return; try { fn(audioCtx); } catch(e) {} }
+function ruisBuffer(ac, duur, macht){
+  const buf = ac.createBuffer(1, Math.floor(ac.sampleRate * duur), ac.sampleRate), d = buf.getChannelData(0);
+  for(let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, macht);
+  return buf;
+}
+function geluidKlop(){ metAudio(ac => {          // doffe klap op hout
+  const t0 = ac.currentTime;
+  const src = ac.createBufferSource(); src.buffer = ruisBuffer(ac, 0.12, 3);
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
+  const g = ac.createGain(); g.gain.value = 0.7;
+  src.connect(f); f.connect(g); g.connect(ac.destination); src.start(t0);
+  const o = ac.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(150, t0); o.frequency.exponentialRampToValueAtTime(60, t0 + 0.12);
+  const og = ac.createGain(); og.gain.setValueAtTime(0.5, t0); og.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+  o.connect(og); og.connect(ac.destination); o.start(t0); o.stop(t0 + 0.17);
+}); }
+function geluidZwaai(){ metAudio(ac => {         // je slaat in de lucht: woesj
+  const t0 = ac.currentTime;
+  const src = ac.createBufferSource(); src.buffer = ruisBuffer(ac, 0.22, 1.5);
+  const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
+  f.frequency.setValueAtTime(400, t0); f.frequency.exponentialRampToValueAtTime(1400, t0 + 0.2);
+  const g = ac.createGain(); g.gain.value = 0.18;
+  src.connect(f); f.connect(g); g.connect(ac.destination); src.start(t0);
+}); }
+function geluidKraak(){ metAudio(ac => {         // hout dat kraakt en scheurt
+  const t0 = ac.currentTime;
+  const o = ac.createOscillator(); o.type = 'sawtooth';
+  o.frequency.setValueAtTime(190, t0); o.frequency.exponentialRampToValueAtTime(70, t0 + 1.4);
+  const trem = ac.createOscillator(); trem.frequency.value = 28;   // het rrrrt-gevoel
+  const tg = ac.createGain(); tg.gain.value = 0.12;
+  const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.22, t0 + 0.15); g.gain.exponentialRampToValueAtTime(0.001, t0 + 1.5);
+  trem.connect(tg); tg.connect(g.gain);
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1200;
+  o.connect(f); f.connect(g); g.connect(ac.destination); o.start(t0); trem.start(t0); o.stop(t0 + 1.6); trem.stop(t0 + 1.6);
+  for(let i = 0; i < 6; i++){                    // knappende vezels
+    const src = ac.createBufferSource(); src.buffer = ruisBuffer(ac, 0.05, 2);
+    const kg = ac.createGain(); kg.gain.value = 0.25;
+    src.connect(kg); kg.connect(ac.destination); src.start(t0 + 0.1 + i * 0.22 + Math.random() * 0.1);
+  }
+}); }
+function geluidBoem(){ metAudio(ac => {          // de dreun als hij neerkomt
+  const t0 = ac.currentTime;
+  const o = ac.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(95, t0); o.frequency.exponentialRampToValueAtTime(30, t0 + 0.5);
+  const og = ac.createGain(); og.gain.setValueAtTime(0.9, t0); og.gain.exponentialRampToValueAtTime(0.001, t0 + 0.6);
+  o.connect(og); og.connect(ac.destination); o.start(t0); o.stop(t0 + 0.65);
+  const src = ac.createBufferSource(); src.buffer = ruisBuffer(ac, 0.4, 2);
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
+  const g = ac.createGain(); g.gain.value = 0.6;
+  src.connect(f); f.connect(g); g.connect(ac.destination); src.start(t0);
+}); }
+
+// ══════════════════════════════════════════════════════════════════
 // 10. BESTURING — muis + toetsen op de pc, joystick + vegen op de telefoon
 // (zelfde systeem als in DUELS, dat werkt fijn op Brian's telefoon)
 // ══════════════════════════════════════════════════════════════════
@@ -2535,6 +2767,9 @@ let yaw = 0, pitch = -0.06, pointerLocked = false;
 renderer.domElement.addEventListener('click', () => {
   if(!IS_TOUCH && !pointerLocked && gestart) renderer.domElement.requestPointerLock();
 });
+// vuistslag: linkermuisknop (als je in het spel zit) of toets F
+renderer.domElement.addEventListener('mousedown', e => { if(pointerLocked && gestart && e.button === 0) slaMetVuist(); });
+addEventListener('keydown', e => { if((e.code === 'KeyF') && gestart) slaMetVuist(); });
 document.addEventListener('pointerlockchange', () => {
   pointerLocked = document.pointerLockElement === renderer.domElement;
 });
@@ -2548,7 +2783,7 @@ document.addEventListener('mousemove', e => {
 // telefoon: vegen op de rechterhelft = kijken
 const kijkVingers = new Map();
 addEventListener('touchstart', e => {
-  if(e.target.closest && e.target.closest('#joy,#springKnop,#geluidKnop,#start,#winscherm,#thuis')) return;
+  if(e.target.closest && e.target.closest('#joy,#springKnop,#slaKnop,#geluidKnop,#start,#winscherm,#thuis')) return;
   for(const t of e.changedTouches){
     if(t.clientX > innerWidth/2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY});
   }
@@ -2602,6 +2837,7 @@ let touchSpring = false;
 const springKnop = document.getElementById('springKnop');
 springKnop.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); touchSpring = true; }, {passive:false});
 springKnop.addEventListener('touchend',   e => { touchSpring = false; });
+document.getElementById('slaKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); slaMetVuist(); }, {passive:false});
 
 // ══════════════════════════════════════════════════════════════════
 // 11. LOPEN, SPRINGEN EN ZWEMMEN
@@ -2682,6 +2918,17 @@ function updateSpeler(dt){
   // je handen wiebelen mee
   handen[0].position.y = -0.44 + Math.sin(loopBob) * 0.03;
   handen[1].position.y = -0.44 + Math.sin(loopBob + Math.PI) * 0.03;
+  // vuistslag: de rechterhand schiet naar voren en komt terug
+  const sl = performance.now() / 1000 - slagTijd;
+  if(sl < 0.32){
+    const k = Math.sin((sl / 0.32) * Math.PI);
+    handen[1].position.z = -0.66 - 0.45 * k;
+    handen[1].position.y += 0.14 * k;
+    handen[1].position.x = 0.34 - 0.12 * k;
+    handen[1].rotation.x = -0.12 - 0.55 * k;
+  } else {
+    handen[1].position.z = -0.66; handen[1].position.x = 0.34; handen[1].rotation.x = -0.12;
+  }
 
   document.getElementById('zwemBalk').style.display = zwemt ? 'block' : 'none';
 }
@@ -2846,6 +3093,7 @@ function loop(nu){
     updateSpeler(dt);   _m.speler  += performance.now() - _t; _t = performance.now();
     updateSpullen(dt, t); _m.spullen += performance.now() - _t; _t = performance.now();
     updateRook(dt, t);
+    updateBomen(dt);
   }
   golfZee(t);
   updateWind(t);      _m.wind     += performance.now() - _t; _t = performance.now();
@@ -2867,6 +3115,7 @@ function loop(nu){
   camera.rotation.set(0, 0, 0);
   camera.rotateY(yaw);
   camera.rotateX(pitch);
+  if(schok > 0.002) camera.rotateZ(Math.sin(performance.now() * 0.045) * 0.035 * schok);   // de dreun van een vallende boom
   _t = performance.now();
   renderer.render(scene, camera);
   _m.render += performance.now() - _t; _m.frames++;
