@@ -170,28 +170,37 @@ document.body.appendChild(renderer.domElement);
 // ══════════════════════════════════════════════════════════════════
 const ZON_PLEK = new THREE.Vector3(150, 190, 95);   // waar de zon aan de hemel staat
 function luchtTextuur(){
+  // Brian, 5 sep: "ik wil normale wolken, geen witte bolletjes — neem je tijd".
+  // Echte wolken hebben geen bol-vorm: het zijn wolken van RUIS. We rekenen
+  // voor elk beeldpunt een ruis-waarde uit (meerdere lagen over elkaar, van
+  // grof naar fijn — dat heet fractale ruis) en waar de ruis boven een grens
+  // komt, zit een wolk. Dat geeft precies die rafelige, natuurlijke vormen
+  // van een wolkenfoto. Daarna kijken we per punt of de wolk daar dikker is
+  // dan er net boven: dan is het een bovenrand die zon vangt (wit), anders
+  // zit het in de schaduw (grijsblauw). Drie lagen: bolle stapelwolken,
+  // platte gelaagde banden vlak boven de horizon, en dunne sluiers hoog.
   const W = IS_TOUCH ? 1024 : 2048, H = W / 2;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d');
   let zaadL = 424242;
   const rnd = () => { zaadL = (zaadL * 16807) % 2147483647; return zaadL / 2147483647; };
 
-  // ── het verloop: boven diepblauw, bij de horizon licht en wazig ──
+  // ── 1) het verloop: boven blauw, bij de horizon licht en wazig ──
   const v = g.createLinearGradient(0, 0, 0, H);
-  v.addColorStop(0.00, '#1c5fa8');
-  v.addColorStop(0.22, '#3585c9');
-  v.addColorStop(0.40, '#7fbde4');
-  v.addColorStop(0.48, '#b9dff2');
-  v.addColorStop(0.50, '#d6ecf6');     // de horizon zelf: bijna wit van de nevel
-  v.addColorStop(0.56, '#a9cfe0');
-  v.addColorStop(1.00, '#6f97ad');
+  v.addColorStop(0.00, '#2b67ad');
+  v.addColorStop(0.20, '#4a8ecb');
+  v.addColorStop(0.38, '#8fc1e4');
+  v.addColorStop(0.47, '#c6e0f0');
+  v.addColorStop(0.50, '#dfeaf2');
+  v.addColorStop(0.56, '#b3d3e3');
+  v.addColorStop(1.00, '#7a9fb5');
   g.fillStyle = v; g.fillRect(0, 0, W, H);
 
-  // ── de zon: een felle kern met een warme gloed eromheen ──
+  // ── 2) de zon: felle kern met warme gloed ──
   const zd = ZON_PLEK.clone().normalize();
   let phi = Math.atan2(zd.z, -zd.x); if(phi < 0) phi += Math.PI * 2;
   const zx = phi / (Math.PI * 2) * W, zy = (Math.acos(zd.y) / Math.PI) * H;
-  for(const [r, a0, a1] of [[H * 0.55, 'rgba(255,236,190,0.40)', 'rgba(255,236,190,0)'], [H * 0.16, 'rgba(255,248,225,0.85)', 'rgba(255,248,225,0)']]){
+  for(const [r, a0, a1] of [[H * 0.60, 'rgba(255,236,190,0.38)', 'rgba(255,236,190,0)'], [H * 0.15, 'rgba(255,248,225,0.85)', 'rgba(255,248,225,0)']]){
     for(const ox of [0, W, -W]){
       const gl = g.createRadialGradient(zx + ox, zy, 0, zx + ox, zy, r);
       gl.addColorStop(0, a0); gl.addColorStop(1, a1);
@@ -199,95 +208,102 @@ function luchtTextuur(){
     }
   }
 
-  // ── één wolkenpluk tekenen (met wrap over de zijkant) ──
-  function pluk(x, y, r, kleur, alpha){
-    for(const ox of (x < r ? [0, W] : x > W - r ? [0, -W] : [0])){
-      const gl = g.createRadialGradient(x + ox, y, r * 0.15, x + ox, y, r);
-      gl.addColorStop(0, kleur.replace('A', alpha));
-      gl.addColorStop(0.55, kleur.replace('A', alpha * 0.75));
-      gl.addColorStop(1, kleur.replace('A', 0));
-      g.fillStyle = gl; g.fillRect(x + ox - r, y - r, r * 2, r * 2);
-    }
+  // ── 3) de ruis ──
+  // Een rooster van toevalsgetallen; tussen de roosterpunten vloeien we
+  // zacht over. In de breedte herhaalt het rooster precies één keer per
+  // rondje, dus het panorama sluit naadloos.
+  const LAT = 64;
+  const rooster = new Float32Array(LAT * LAT);
+  for(let i = 0; i < rooster.length; i++) rooster[i] = rnd();
+  function lat(i, j, P){ return rooster[(((i % P) + P) % P) * LAT + (((j % LAT) + LAT) % LAT)]; }
+  function glad(t){ return t * t * (3 - 2 * t); }
+  function ruis(u, w, P){
+    const i = Math.floor(u), j = Math.floor(w), fu = glad(u - i), fw = glad(w - j);
+    const a = lat(i, j, P), b = lat(i + 1, j, P), c2 = lat(i, j + 1, P), d = lat(i + 1, j + 1, P);
+    return (a * (1 - fu) + b * fu) * (1 - fw) + (c2 * (1 - fu) + d * fu) * fw;
   }
+  // fractale ruis: grof + fijner + nog fijner ... (rekY > 1 = platgedrukte wolken)
+  function fbm(x01, vc, basis, lagen, rekY, schuif){
+    let som = 0, amp = 1, tot = 0, P = basis, f = 1;
+    for(let o = 0; o < lagen; o++){
+      som += ruis(x01 * P + schuif * 3.1, vc * f * basis * rekY + o * 7.3 + schuif, P) * amp;
+      tot += amp; amp *= 0.5; P = Math.min(P * 2, LAT); f *= 2;
+    }
+    return som / tot;
+  }
+  const stap = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-  // ── sluierwolken: dunne lange vegen hoog in de lucht ──
-  for(let i = 0; i < 14; i++){
-    const x = rnd() * W, y = H * (0.10 + rnd() * 0.18), l = W * (0.05 + rnd() * 0.10);
-    for(let k = 0; k < 18; k++){
-      pluk(x + (k / 18 - 0.5) * l, y + Math.sin(k * 0.7 + i) * H * 0.006, H * (0.012 + rnd() * 0.02), 'rgba(255,255,255,A)', 0.10);
-    }
-  }
-
-  // ── stapelwolken (Brian 5 sep: "10× realistischer") ──
-  // Een echte wolk is een bloemkool: grote bollen met daarop steeds kleinere
-  // bolletjes. De zon schijnt van één kant, dus elke bol heeft een lichte
-  // rand aan de zonkant en een grijsblauwe schaduwkant. De onderkant is plat
-  // en donker. Bij de horizon staan de wolken kleiner, platter en dichter op
-  // elkaar (perspectief), hoog in de lucht groot en bol.
-  function plukScherp(x, y, r, kleur, alpha){
-    for(const ox of (x < r ? [0, W] : x > W - r ? [0, -W] : [0])){
-      const gl = g.createRadialGradient(x + ox, y, r * 0.35, x + ox, y, r);
-      gl.addColorStop(0, kleur.replace('A', alpha));
-      gl.addColorStop(0.62, kleur.replace('A', alpha * 0.85));
-      gl.addColorStop(0.86, kleur.replace('A', alpha * 0.30));
-      gl.addColorStop(1, kleur.replace('A', 0));
-      g.fillStyle = gl; g.fillRect(x + ox - r, y - r, r * 2, r * 2);
-    }
-  }
-  const wolken = [];
-  const AANTAL = IS_TOUCH ? 36 : 56;
-  for(let i = 0; i < AANTAL; i++){
-    const hoogte = Math.pow(rnd(), 0.7);                   // 0 = bij de horizon, 1 = hoog
-    // niet tot helemaal boven je hoofd: daar rekt het panorama uit als een punt
-    const y = H * (0.475 - hoogte * 0.29);
-    const maat = H * (0.008 + hoogte * 0.050) * (0.7 + rnd() * 0.6);
-    const plat = hoogte < 0.25 ? 1.8 : 1.0;                // laag = platte, brede wolken
-    // hoog aan de hemel drukt het panorama alles smaller: daar tekenen we breder
-    const rek = 1 / Math.max(0.35, Math.cos((0.5 - y / H) * Math.PI));
-    wolken.push({x: rnd() * W, y, maat, breedte: (2.5 + rnd() * 4.0) * plat * rek, n: 8 + Math.floor(rnd() * 10), bol: 0.55 + rnd() * 0.7, hoogte});
-  }
-  wolken.sort((a, b) => a.y - b.y);
-  for(const w of wolken){
-    // 1) de grote bollen
-    const bollen = [];
-    for(let k = 0; k < w.n; k++){
-      const t = k / (w.n - 1);
-      const bult = Math.sin(t * Math.PI) * w.bol + rnd() * 0.45;
-      bollen.push({x: w.x + (t - 0.5) * w.maat * w.breedte, y: w.y - bult * w.maat * 0.95, r: w.maat * (0.5 + rnd() * 0.6)});
-    }
-    // 2) kleinere bolletjes bovenop de grote: het bloemkool-effect
-    const klein = [];
-    for(const p of bollen){
-      const n = 4 + Math.floor(rnd() * 5);
-      for(let k = 0; k < n; k++){
-        const hoek = -Math.PI * (0.05 + rnd() * 0.9);      // alleen op de bovenste helft
-        const afst = p.r * (0.55 + rnd() * 0.35);
-        klein.push({x: p.x + Math.cos(hoek) * afst, y: p.y + Math.sin(hoek) * afst, r: p.r * (0.28 + rnd() * 0.30)});
+  // ── 4) per beeldpunt: hoe dik is de wolk hier? ──
+  const yTop = Math.floor(H * 0.52);
+  const dikte = new Float32Array(W * yTop);
+  const fijn  = new Float32Array(W * yTop);            // de fijne ruis, voor textuur in de belichting
+  for(let y = 0; y < yTop; y++){
+    const elev = (0.5 - y / H) * Math.PI;                 // hoogte boven de horizon (radialen)
+    // verticale ruis-coördinaat: hoog aan de hemel wordt het panorama smaller,
+    // dus rekken we de ruis daar verticaal mee (anders krijg je lange strepen)
+    const vc = (elev / (Math.PI / 2)) * (1 + 0.6 * elev);
+    // stapelwolken: hoe hoger, hoe minder (boven je hoofd bijna geen)
+    const grensC = 0.53 + 0.16 * stap(0.35, 1.25, elev) + 0.20 * stap(0.10, 0.0, elev);
+    const fadeC  = stap(1.40, 1.05, elev);
+    // platte banden: alleen vlak boven de horizon
+    const band   = stap(0.005, 0.03, elev) * stap(0.20, 0.07, elev);
+    // sluierwolken: alleen hoog
+    const hoog   = stap(0.65, 0.95, elev) * stap(1.45, 1.20, elev);
+    for(let x = 0; x < W; x++){
+      const x01 = x / W;
+      const nC = fbm(x01, vc, 8, 6, 1.15, 0.0);           // bolle stapelwolken, met fijn detail
+      let d = stap(grensC, grensC + 0.11, nC) * fadeC;
+      fijn[y * W + x] = nC;
+      if(band > 0.001){
+        const nS = fbm(x01, vc, 8, 4, 5.0, 11.0);
+        d = Math.max(d, stap(0.52, 0.63, nS) * band * 0.7);
       }
-    }
-    const alles = bollen.concat(klein);
-    // aan welke kant staat de zon? (links of rechts van deze wolk in het panorama)
-    let dz = zx - w.x; if(dz > W / 2) dz -= W; if(dz < -W / 2) dz += W;
-    const zonKant = Math.sign(dz) || 1;
-    // 3) schaduw: de hele wolk in grijsblauw, iets naar beneden en van de zon af
-    for(const p of alles) plukScherp(p.x - zonKant * p.r * 0.18, p.y + p.r * 0.22, p.r * 1.06, 'rgba(118,138,172,A)', 0.72);
-    // 4) donkere platte onderkant
-    for(const p of bollen) plukScherp(p.x, w.y + p.r * 0.15, p.r * 1.0, 'rgba(96,116,152,A)', 0.55);
-    // 5) het zonlicht: de bollen zelf in wit, iets naar de zon toe en omhoog
-    for(const p of alles) plukScherp(p.x + zonKant * p.r * 0.10, p.y - p.r * 0.12, p.r * 0.92, 'rgba(250,251,255,A)', 0.92);
-    // 6) een felle lichte rand precies aan de zonkant van elke bol
-    for(const p of alles) plukScherp(p.x + zonKant * p.r * 0.38, p.y - p.r * 0.30, p.r * 0.42, 'rgba(255,255,255,A)', 0.75);
-    // 7) zachte rafels aan de randen: piepkleine doorzichtige plukjes
-    for(let k = 0; k < alles.length; k++){
-      const p = alles[k]; const hoek = rnd() * Math.PI * 2;
-      plukScherp(p.x + Math.cos(hoek) * p.r * 0.95, p.y + Math.sin(hoek) * p.r * 0.7, p.r * 0.25, 'rgba(240,244,250,A)', 0.35);
+      if(hoog > 0.001){
+        const nK = fbm(x01, vc, 4, 3, 10.0, 23.0);
+        d = Math.max(d, stap(0.56, 0.74, nK) * hoog * 0.35);
+      }
+      dikte[y * W + x] = d;
     }
   }
 
-  // ── nevel op de horizon: een zachte lichte band die alles ver weg verzacht ──
-  const nevel = g.createLinearGradient(0, H * 0.40, 0, H * 0.52);
-  nevel.addColorStop(0, 'rgba(214,236,246,0)'); nevel.addColorStop(0.8, 'rgba(214,236,246,0.75)'); nevel.addColorStop(1, 'rgba(214,236,246,0.85)');
-  g.fillStyle = nevel; g.fillRect(0, H * 0.40, W, H * 0.12);
+  // ── 5) de wolken inkleuren: bovenrand wit, schaduw grijsblauw, wazig bij de horizon ──
+  const beeld = g.getImageData(0, 0, W, yTop), px = beeld.data;
+  const k = Math.max(2, Math.round(H / 100));             // hoe ver we "omhoog kijken" voor de belichting
+  const zonKant = 1;
+  for(let y = 0; y < yTop; y++){
+    const elev = (0.5 - y / H) * Math.PI;
+    const nevel = stap(0.30, 0.0, elev);                   // dicht bij de horizon: vervaagd
+    for(let x = 0; x < W; x++){
+      const D = dikte[y * W + x];
+      if(D < 0.004) continue;
+      const boven = y >= k ? dikte[(y - k) * W + x] : 0;
+      const zij   = dikte[y * W + (((x - zonKant * k) % W) + W) % W];
+      // bovenrand (dikker dan erboven) = zon; fijne ruis geeft de bobbelige textuur
+      let lit = 0.62 + (D - boven) * 4.0 + (D - zij) * 1.5 + (fijn[y * W + x] - 0.56) * 1.2;
+      lit = Math.max(0, Math.min(1, lit));
+      const donker = stap(0.6, 1.0, D) * 0.30 * (1 - lit * 0.5);
+      const b = Math.max(0, Math.min(1, lit - donker));
+      // roze/warm licht vlak bij de zon
+      let dx = Math.abs(x - zx); dx = Math.min(dx, W - dx);
+      const naarZon = Math.exp(-((dx * dx + (y - zy) * (y - zy)) / (H * H * 0.18)));
+      const litR = 252 + (255 - 252) * naarZon * 0.7, litG = 252 + (230 - 252) * naarZon * 0.7, litB = 255 + (216 - 255) * naarZon * 0.7;
+      const schR = 118 + (188 - 118) * naarZon * 0.4, schG = 132 + (168 - 132) * naarZon * 0.4, schB = 168 + (180 - 168) * naarZon * 0.4;
+      let r = schR + (litR - schR) * b, gr = schG + (litG - schG) * b, bl = schB + (litB - schB) * b;
+      // bij de horizon vervaagt de wolk naar de nevel-kleur (atmosferisch perspectief)
+      r = r + (214 - r) * nevel * 0.6; gr = gr + (232 - gr) * nevel * 0.6; bl = bl + (242 - bl) * nevel * 0.6;
+      const a = Math.min(1, D * 1.25) * (1 - 0.45 * nevel);
+      const i = (y * W + x) * 4;
+      px[i]   = px[i]   + (r  - px[i])   * a;
+      px[i+1] = px[i+1] + (gr - px[i+1]) * a;
+      px[i+2] = px[i+2] + (bl - px[i+2]) * a;
+    }
+  }
+  g.putImageData(beeld, 0, 0);
+
+  // ── 6) nevel op de horizon ──
+  const nevelG = g.createLinearGradient(0, H * 0.42, 0, H * 0.52);
+  nevelG.addColorStop(0, 'rgba(216,234,244,0)'); nevelG.addColorStop(0.8, 'rgba(216,234,244,0.65)'); nevelG.addColorStop(1, 'rgba(216,234,244,0.8)');
+  g.fillStyle = nevelG; g.fillRect(0, H * 0.42, W, H * 0.10);
 
   const t = new THREE.CanvasTexture(c);
   t.wrapS = THREE.RepeatWrapping;
