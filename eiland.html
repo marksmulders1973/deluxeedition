@@ -96,6 +96,10 @@
     <div><div class="naam">🧱 Houten muur</div><div class="kost">kost 30 🪵 · 3 m breed</div></div>
     <button id="maakMuur">Maak</button>
   </div>
+  <div class="recept" style="margin-top:8px">
+    <div><div class="naam">🪨 Stenen muur</div><div class="kost">kost 25 🪨 · 3 m breed</div></div>
+    <button id="maakSteenMuur">Maak</button>
+  </div>
   <div class="klein tip">Na "Maak": loop naar een plek, richt, en klik (of F) om de muur neer te zetten. Esc = toch niet.</div>
 </div>
 <button id="craftKnop" class="touch-ui">🛠️</button>
@@ -3090,6 +3094,36 @@ function plankTextuur(){
 }
 const muurGeo = new THREE.BoxGeometry(MUUR_B, MUUR_H, MUUR_D); muurGeo.translate(0, MUUR_H / 2, 0);
 const muurMat = new THREE.MeshLambertMaterial({map: plankTextuur()});
+// stenen muur: grijze blokken met voegen (Brian 5 sep: "ook met 25 steen een stenen muur")
+function steenMuurTextuur(){
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#5a5651'; g.fillRect(0, 0, 256, 128);                 // voegen (donker)
+  const rijH = 32, blokB = 64;
+  for(let r = 0; r < 4; r++){
+    const off = (r % 2) * blokB / 2;
+    for(let bx = -blokB; bx < 256 + blokB; bx += blokB){
+      const x = bx + off, y = r * rijH;
+      const t = 0.85 + Math.random() * 0.3;
+      g.fillStyle = 'rgb(' + Math.round(140 * t) + ',' + Math.round(136 * t) + ',' + Math.round(128 * t) + ')';
+      g.fillRect(x + 3, y + 3, blokB - 6, rijH - 6);
+      for(let i = 0; i < 60; i++){                                     // korrel per blok
+        g.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.12)';
+        g.fillRect(x + 3 + Math.random() * (blokB - 6), y + 3 + Math.random() * (rijH - 6), 2, 2);
+      }
+      g.fillStyle = 'rgba(255,255,255,0.10)'; g.fillRect(x + 3, y + 3, blokB - 6, 2);   // lichtrandje boven
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+const steenMuurMat = new THREE.MeshLambertMaterial({map: steenMuurTextuur()});
+const MUUR_SOORTEN = {
+  hout:  {naam: 'Houten muur', kost: 30, mat: muurMat,      bak: () => houtBak,  knop: 'maakMuur',      icoon: '🪵'},
+  steen: {naam: 'Stenen muur', kost: 25, mat: steenMuurMat, bak: () => steenBak, knop: 'maakSteenMuur', icoon: '🪨'},
+};
+let plaatsSoort = 'hout';
 const spookMat = new THREE.MeshLambertMaterial({color: 0x7dff9a, transparent: true, opacity: 0.45, depthWrite: false});
 const muren = [];                                        // {x, y, z, hoek, mesh}
 let plaatsMuur = false;
@@ -3097,10 +3131,12 @@ const spookMuur = new THREE.Mesh(muurGeo, spookMat); spookMuur.visible = false; 
 const crafterEl = document.getElementById('crafter');
 let crafterOpen = false;
 function updateCrafter(){
-  const knop = document.getElementById('maakMuur');
-  const tekort = MUUR_KOST - houtBak.aantal;
-  knop.disabled = tekort > 0;
-  knop.textContent = tekort > 0 ? 'nog ' + tekort + ' 🪵' : 'Maak';
+  for(const soort in MUUR_SOORTEN){
+    const ms = MUUR_SOORTEN[soort], knop = document.getElementById(ms.knop);
+    const tekort = ms.kost - ms.bak().aantal;
+    knop.disabled = tekort > 0;
+    knop.textContent = tekort > 0 ? 'nog ' + tekort + ' ' + ms.icoon : 'Maak';
+  }
 }
 function toggleCrafter(aan){
   if(!gestart) return;
@@ -3109,17 +3145,18 @@ function toggleCrafter(aan){
   updateCrafter();
   if(crafterOpen && pointerLocked) document.exitPointerLock();   // muis vrij om te klikken
 }
-function zetMuurNeer(x, y, z, hoek, opslaan){
-  const m = new THREE.Mesh(muurGeo, muurMat);
+function zetMuurNeer(x, y, z, hoek, opslaan, soort){
+  soort = MUUR_SOORTEN[soort] ? soort : 'hout';
+  const m = new THREE.Mesh(muurGeo, MUUR_SOORTEN[soort].mat);
   m.position.set(x, y, z); m.rotation.y = hoek;
   m.castShadow = m.receiveShadow = true;
   scene.add(m);
   m.updateMatrixWorld(true);                          // meteen klaar voor de kijk-straal (stapelen)
-  muren.push({x, y, z, hoek, mesh: m});
-  if(opslaan){ try { localStorage.setItem('deluxe-eiland-muren', JSON.stringify(muren.map(w => [+w.x.toFixed(2), +w.y.toFixed(2), +w.z.toFixed(2), +w.hoek.toFixed(3)]))); } catch(e) {} }
+  muren.push({x, y, z, hoek, mesh: m, soort});
+  if(opslaan){ try { localStorage.setItem('deluxe-eiland-muren', JSON.stringify(muren.map(w => [+w.x.toFixed(2), +w.y.toFixed(2), +w.z.toFixed(2), +w.hoek.toFixed(3), w.soort]))); } catch(e) {} }
 }
-try {   // muren van de vorige keer terugzetten
-  for(const w of JSON.parse(localStorage.getItem('deluxe-eiland-muren') || '[]')) zetMuurNeer(w[0], w[1], w[2], w[3], false);
+try {   // muren van de vorige keer terugzetten (oude opslag zonder soort = hout)
+  for(const w of JSON.parse(localStorage.getItem('deluxe-eiland-muren') || '[]')) zetMuurNeer(w[0], w[1], w[2], w[3], false, w[4] || 'hout');
 } catch(e) {}
 // Stapelen (Brian 5 sep: "klik op een andere houten muur en dan wordt er eentje
 // erop gezet"): kijk je met een muur in je hand naar een bestaande muur, dan
@@ -3140,18 +3177,19 @@ function spookPlek(){
   const x = camera.position.x + fx * 3.0, z = camera.position.z + fz * 3.0;
   return {x, z, y: hoogteOp(x, z), hoek: yaw};           // muur staat dwars op je kijkrichting
 }
-function startPlaatsen(){ plaatsMuur = true; spookMuur.visible = true; zeg('🧱 richt en klik om de muur neer te zetten (Esc = toch niet)'); }
+function startPlaatsen(soort){ plaatsSoort = soort || 'hout'; plaatsMuur = true; spookMuur.visible = true; zeg('🧱 richt en klik om de ' + MUUR_SOORTEN[plaatsSoort].naam.toLowerCase() + ' neer te zetten (Esc = toch niet)'); }
 function annuleerPlaatsen(){
   if(!plaatsMuur) return;
   plaatsMuur = false; spookMuur.visible = false;
-  houtBak.aantal += MUUR_KOST;                          // hout terug
-  try { localStorage.setItem(houtBak.sleutel, String(houtBak.aantal)); } catch(e) {}
-  toonHout(); zeg('🪵 hout terug in je zak');
+  const ms = MUUR_SOORTEN[plaatsSoort], bak = ms.bak();
+  bak.aantal += ms.kost;                                // grondstof terug
+  try { localStorage.setItem(bak.sleutel, String(bak.aantal)); } catch(e) {}
+  toonHout(); zeg(ms.icoon + ' terug in je zak');
 }
 function plaatsMuurNu(){
   const p = spookPlek();
   plaatsMuur = false; spookMuur.visible = false;
-  zetMuurNeer(p.x, p.y, p.z, p.hoek, true);
+  zetMuurNeer(p.x, p.y, p.z, p.hoek, true, plaatsSoort);
   geluidHamer();
   zeg(p.opMuur ? '🧱 Muur er bovenop gezet!' : '🧱 Muur geplaatst!');
 }
@@ -3172,14 +3210,17 @@ function botstMuur(nx, nz){
   }
   return false;
 }
-document.getElementById('maakMuur').addEventListener('click', () => {
-  if(houtBak.aantal < MUUR_KOST) return;
-  houtBak.aantal -= MUUR_KOST;
-  try { localStorage.setItem(houtBak.sleutel, String(houtBak.aantal)); } catch(e) {}
+function maakMuurVan(soort){
+  const ms = MUUR_SOORTEN[soort], bak = ms.bak();
+  if(bak.aantal < ms.kost) return;
+  bak.aantal -= ms.kost;
+  try { localStorage.setItem(bak.sleutel, String(bak.aantal)); } catch(e) {}
   toonHout(true);
   toggleCrafter(false);
-  startPlaatsen();
-});
+  startPlaatsen(soort);
+}
+document.getElementById('maakMuur').addEventListener('click', () => maakMuurVan('hout'));
+document.getElementById('maakSteenMuur').addEventListener('click', () => maakMuurVan('steen'));
 addEventListener('keydown', e => {
   if(e.code === 'KeyQ' && gestart) toggleCrafter();
   if(e.code === 'Escape'){ if(plaatsMuur) annuleerPlaatsen(); if(crafterOpen) toggleCrafter(false); }
