@@ -3114,13 +3114,28 @@ function zetMuurNeer(x, y, z, hoek, opslaan){
   m.position.set(x, y, z); m.rotation.y = hoek;
   m.castShadow = m.receiveShadow = true;
   scene.add(m);
+  m.updateMatrixWorld(true);                          // meteen klaar voor de kijk-straal (stapelen)
   muren.push({x, y, z, hoek, mesh: m});
   if(opslaan){ try { localStorage.setItem('deluxe-eiland-muren', JSON.stringify(muren.map(w => [+w.x.toFixed(2), +w.y.toFixed(2), +w.z.toFixed(2), +w.hoek.toFixed(3)]))); } catch(e) {} }
 }
 try {   // muren van de vorige keer terugzetten
   for(const w of JSON.parse(localStorage.getItem('deluxe-eiland-muren') || '[]')) zetMuurNeer(w[0], w[1], w[2], w[3], false);
 } catch(e) {}
+// Stapelen (Brian 5 sep: "klik op een andere houten muur en dan wordt er eentje
+// erop gezet"): kijk je met een muur in je hand naar een bestaande muur, dan
+// springt de voorbeeldmuur er precies bovenop (zelfde plek en draai). Zo bouw
+// je omhoog. Kijk je naar de grond, dan komt hij gewoon 3 m vóór je.
+const _straal = new THREE.Raycaster(), _kijkRichting = new THREE.Vector3();
 function spookPlek(){
+  if(muren.length){
+    camera.getWorldDirection(_kijkRichting);
+    _straal.set(camera.position, _kijkRichting); _straal.far = 8;
+    const raak = _straal.intersectObjects(muren.map(w => w.mesh), false);
+    if(raak.length){
+      const w = muren.find(m => m.mesh === raak[0].object);
+      if(w) return {x: w.x, z: w.z, y: w.y + MUUR_H, hoek: w.hoek, opMuur: true};
+    }
+  }
   const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
   const x = camera.position.x + fx * 3.0, z = camera.position.z + fz * 3.0;
   return {x, z, y: hoogteOp(x, z), hoek: yaw};           // muur staat dwars op je kijkrichting
@@ -3138,12 +3153,13 @@ function plaatsMuurNu(){
   plaatsMuur = false; spookMuur.visible = false;
   zetMuurNeer(p.x, p.y, p.z, p.hoek, true);
   geluidHamer();
-  zeg('🧱 Muur geplaatst!');
+  zeg(p.opMuur ? '🧱 Muur er bovenop gezet!' : '🧱 Muur geplaatst!');
 }
 function updateCrafterSpook(){
   if(!plaatsMuur) return;
   const p = spookPlek();
   spookMuur.position.set(p.x, p.y, p.z); spookMuur.rotation.y = p.hoek;
+  spookMat.color.setHex(p.opMuur ? 0xffd97a : 0x7dff9a);   // geel = stapelen, groen = op de grond
 }
 // botsen tegen muren: in het stelsel van de muur kijken of je erin zou lopen
 function botstMuur(nx, nz){
