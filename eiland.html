@@ -2615,6 +2615,7 @@ function loop(nu){
   updateGrasVeld();   _m.grasveld += performance.now() - _t; _t = performance.now();
   updateGrasWind(t);  _m.graswind += performance.now() - _t; _t = performance.now();
   lucht.position.copy(camera.position);   // de hemel reist met je mee
+  zonBol.position.copy(camera.position).add(ZON_PLEK);   // de zon ook (anders ligt hij 660 m verder op de horizon)
   // schaduwen ~4× per seconde bijwerken (voor de krabben en het kistdeksel).
   // Op het grote eiland past het schaduw-vak (140×140 m) niet meer over alles:
   // daarom schuift de zon mee, zodat er altijd schaduw is waar jij staat.
