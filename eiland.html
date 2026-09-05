@@ -100,6 +100,10 @@
     <div><div class="naam">🪨 Stenen muur</div><div class="kost">kost 25 🪨 · 3 m breed</div></div>
     <button id="maakSteenMuur">Maak</button>
   </div>
+  <div class="recept" style="margin-top:8px">
+    <div><div class="naam">⛏️ Stenen pickaxe</div><div class="kost" id="pickaxeKost">kost 15 🪵 + 30 🪨 · hakt 3× zo hard</div></div>
+    <button id="maakPickaxe">Maak</button>
+  </div>
   <div class="klein tip">Na "Maak": loop naar een plek, richt, en klik (of F) om de muur neer te zetten. Esc = toch niet.</div>
 </div>
 <button id="craftKnop" class="touch-ui">🛠️</button>
@@ -2666,7 +2670,7 @@ function slaMetVuist(){
     if(steen){ slaSteen(steen); return; }
     geluidZwaai(); return;
   }
-  boom.slagen = (boom.slagen || 0) + 1;
+  boom.slagen = (boom.slagen || 0) + slagKracht('boom');   // met pickaxe telt een klap dubbel
   boom.schud = 1;                                         // even natrillen
   boom.schudRichting = {x: boom.voetX - camera.position.x, z: boom.voetZ - camera.position.z};
   actieveBomen.add(boom);
@@ -2679,7 +2683,7 @@ function slaMetVuist(){
     laatBoomVallen(boom, null, null, 0);
     zeg('🌴 TIMBER!');
   } else {
-    zeg('👊 ' + boom.slagen + ' / ' + SLAGEN_NODIG);
+    zeg((pickaxeVast ? '⛏️ ' : '👊 ') + Math.min(boom.slagen, SLAGEN_NODIG) + ' / ' + SLAGEN_NODIG);
   }
 }
 
@@ -2899,7 +2903,7 @@ const steenBak = maakScrapBak(
 const scrapDummy = new THREE.Object3D(), scrapKleur = new THREE.Color();
 function toonHout(plus){
   const el = document.getElementById('houtTeller');
-  el.textContent = '🪵 ' + houtBak.aantal + '   🪨 ' + steenBak.aantal;
+  el.textContent = '🪵 ' + houtBak.aantal + '   🪨 ' + steenBak.aantal + (typeof pickaxeVast !== 'undefined' && pickaxeVast ? '   ⛏️' : '');
   if(typeof crafterOpen !== 'undefined' && crafterOpen) updateCrafter();
   if(plus){ el.classList.remove('plus'); void el.offsetWidth; el.classList.add('plus'); }
 }
@@ -2998,10 +3002,10 @@ function zetSteenMatrix(st, hoek){                  // trillen om zijn eigen mid
   st.mesh.instanceMatrix.needsUpdate = true;
 }
 function slaSteen(st){
-  st.slagen++; st.schud = 1; schuddendeStenen.add(st);
+  st.slagen += slagKracht('steen'); st.schud = 1; schuddendeStenen.add(st);   // met pickaxe: 3 per klap
   geluidSteenTik();
   const dx = camera.position.x - st.x, dz = camera.position.z - st.z, d = Math.hypot(dx, dz) || 1;
-  if(st.slagen % 4 === 0) strooiScraps(steenBak, st.x + dx / d * st.maat * 0.9, st.y + st.maat * 0.3, st.z + dz / d * st.maat * 0.9, 1, 1.4);
+  if(st.slagen % 4 < slagKracht('steen')) strooiScraps(steenBak, st.x + dx / d * st.maat * 0.9, st.y + st.maat * 0.3, st.z + dz / d * st.maat * 0.9, 1, 1.4);
   if(st.slagen >= STEEN_SLAGEN){
     st.weg = true; schuddendeStenen.delete(st);
     _sM.makeScale(0, 0, 0); st.mesh.setMatrixAt(st.idx, _sM); st.mesh.instanceMatrix.needsUpdate = true;
@@ -3016,7 +3020,7 @@ function slaSteen(st){
     geluidSteenBreekt();
     zeg('🪨 KRAK! De rots is kapot');
   } else {
-    zeg('⛏️ ' + st.slagen + ' / ' + STEEN_SLAGEN);
+    zeg((pickaxeVast ? '⛏️ ' : '👊 ') + Math.min(st.slagen, STEEN_SLAGEN) + ' / ' + STEEN_SLAGEN);
   }
 }
 function updateStenen(dt){
@@ -3124,6 +3128,61 @@ const MUUR_SOORTEN = {
   steen: {naam: 'Stenen muur', kost: 25, mat: steenMuurMat, bak: () => steenBak, knop: 'maakSteenMuur', icoon: '🪨'},
 };
 let plaatsSoort = 'hout';
+
+// ══════════════════════════════════════════════════════════════════
+// 9f. DE STENEN PICKAXE (Brian, 5 sep: "met 15 hout en 30 steen een stenen
+//     pickaxe maken die je kan vasthouden")
+// Eén keer maken, daarna houd je hem in je rechterhand (E of de knop in de
+// Crafter = vasthouden/wegleggen). Hij zwaait mee met je slag. Met de pickaxe
+// tel je 3 slagen per klap op steen en 2 op een boom: veel sneller hakken.
+// ══════════════════════════════════════════════════════════════════
+const PICKAXE_KOST = {hout: 15, steen: 30};
+let pickaxeBezit = false, pickaxeVast = false;
+try { pickaxeBezit = localStorage.getItem('deluxe-eiland-pickaxe') === '1'; pickaxeVast = pickaxeBezit && localStorage.getItem('deluxe-eiland-pickaxe-vast') === '1'; } catch(e) {}
+const pickaxe = new THREE.Group();
+{
+  // steel: hout, schuin naar voren-omhoog uit je vuist
+  const steel = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.026, 0.62, 8), new THREE.MeshLambertMaterial({map: maakBastTextuur(), color: 0xc9a06a}));
+  steel.position.set(0, 0.22, -0.02);
+  pickaxe.add(steel);
+  // kop: een brok steen dwars op de steel, met een punt naar voren
+  const kopMat = new THREE.MeshLambertMaterial({map: maakGranietTextuur(), color: 0xbdb8b0});
+  const kop = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.30), kopMat);
+  kop.position.set(0, 0.50, -0.04);
+  pickaxe.add(kop);
+  const punt = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.12, 6), kopMat);
+  punt.rotation.x = -Math.PI / 2; punt.position.set(0, 0.50, -0.25);
+  pickaxe.add(punt);
+  // bindsel om de kop
+  const bind = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 6, 12), new THREE.MeshLambertMaterial({color: 0x6b4a26}));
+  bind.rotation.x = Math.PI / 2; bind.position.set(0, 0.44, -0.02);
+  pickaxe.add(bind);
+  pickaxe.rotation.x = 0.55;                          // een beetje naar voren gekanteld
+  pickaxe.position.set(0.02, 0.0, -0.22);            // vóór in je rechterhand
+  pickaxe.visible = false;
+  handen[1].add(pickaxe);
+}
+function zetPickaxe(vast){
+  pickaxeVast = !!vast && pickaxeBezit;
+  pickaxe.visible = pickaxeVast;
+  try { localStorage.setItem('deluxe-eiland-pickaxe-vast', pickaxeVast ? '1' : '0'); } catch(e) {}
+  toonHout();
+  if(typeof updateCrafter === 'function' && crafterOpen) updateCrafter();
+}
+function slagKracht(wat){ return pickaxeVast ? (wat === 'steen' ? 3 : 2) : 1; }
+function maakPickaxe(){
+  if(pickaxeBezit){ zetPickaxe(!pickaxeVast); zeg(pickaxeVast ? '⛏️ Pickaxe in je hand' : '👊 Pickaxe weggelegd'); return; }
+  if(houtBak.aantal < PICKAXE_KOST.hout || steenBak.aantal < PICKAXE_KOST.steen) return;
+  houtBak.aantal -= PICKAXE_KOST.hout; steenBak.aantal -= PICKAXE_KOST.steen;
+  try { localStorage.setItem(houtBak.sleutel, String(houtBak.aantal)); localStorage.setItem(steenBak.sleutel, String(steenBak.aantal)); localStorage.setItem('deluxe-eiland-pickaxe', '1'); } catch(e) {}
+  pickaxeBezit = true;
+  zetPickaxe(true);
+  toonHout(true);
+  toggleCrafter(false);
+  geluidHamer();
+  zeg('⛏️ Stenen pickaxe gemaakt! E = vasthouden / wegleggen');
+}
+if(pickaxeVast) pickaxe.visible = true;
 const spookMat = new THREE.MeshLambertMaterial({color: 0x7dff9a, transparent: true, opacity: 0.45, depthWrite: false});
 const muren = [];                                        // {x, y, z, hoek, mesh}
 let plaatsMuur = false;
@@ -3131,6 +3190,13 @@ const spookMuur = new THREE.Mesh(muurGeo, spookMat); spookMuur.visible = false; 
 const crafterEl = document.getElementById('crafter');
 let crafterOpen = false;
 function updateCrafter(){
+  { const knop = document.getElementById('maakPickaxe');
+    if(pickaxeBezit){ knop.disabled = false; knop.textContent = pickaxeVast ? 'Wegleggen' : 'Vasthouden'; document.getElementById('pickaxeKost').textContent = 'in bezit · E = vasthouden/wegleggen'; }
+    else {
+      const th = PICKAXE_KOST.hout - houtBak.aantal, ts = PICKAXE_KOST.steen - steenBak.aantal;
+      knop.disabled = th > 0 || ts > 0;
+      knop.textContent = knop.disabled ? 'nog ' + [th > 0 ? th + ' 🪵' : null, ts > 0 ? ts + ' 🪨' : null].filter(Boolean).join(' + ') : 'Maak';
+    } }
   for(const soort in MUUR_SOORTEN){
     const ms = MUUR_SOORTEN[soort], knop = document.getElementById(ms.knop);
     const tekort = ms.kost - ms.bak().aantal;
@@ -3221,8 +3287,10 @@ function maakMuurVan(soort){
 }
 document.getElementById('maakMuur').addEventListener('click', () => maakMuurVan('hout'));
 document.getElementById('maakSteenMuur').addEventListener('click', () => maakMuurVan('steen'));
+document.getElementById('maakPickaxe').addEventListener('click', maakPickaxe);
 addEventListener('keydown', e => {
   if(e.code === 'KeyQ' && gestart) toggleCrafter();
+  if(e.code === 'KeyE' && gestart && pickaxeBezit){ zetPickaxe(!pickaxeVast); zeg(pickaxeVast ? '⛏️ Pickaxe in je hand' : '👊 Pickaxe weggelegd'); }
   if(e.code === 'Escape'){ if(plaatsMuur) annuleerPlaatsen(); if(crafterOpen) toggleCrafter(false); }
 });
 function geluidHamer(){ metAudio(ac => {          // drie hamertikken
