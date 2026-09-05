@@ -2632,6 +2632,17 @@ function slaMetVuist(){
   actieveBomen.add(boom);
   geluidKlop();
   if(boom.slagen >= SLAGEN_NODIG){
+    laatBoomVallen(boom, null, null, 0);
+    zeg('🌴 TIMBER!');
+  } else {
+    zeg('👊 ' + boom.slagen + ' / ' + SLAGEN_NODIG);
+  }
+}
+
+// Een boom gaat om. Zonder richting valt hij naar zijn overhang-kant (of van
+// je af); met richting (duw van een andere boom) valt hij die kant op.
+// startT > 0 = hij begint al met vaart (geduwd i.p.v. langzaam kantelend).
+function laatBoomVallen(boom, rxGegeven, rzGegeven, startT){
     // Waar staat de kruin ten opzichte van de voet? Een palm hangt altijd een
     // beetje over, en een boom valt naar de kant waar hij overhangt. Staat hij
     // recht, dan valt hij van je af.
@@ -2644,23 +2655,45 @@ function slaMetVuist(){
     }
     const over = Math.hypot(ox, oz);
     let rx, rz;
-    if(over > 0.25){ rx = ox / over; rz = oz / over; }
+    if(rxGegeven !== null){ rx = rxGegeven; rz = rzGegeven; }
+    else if(over > 0.25){ rx = ox / over; rz = oz / over; }
     else { const dx = boom.voetX - camera.position.x, dz = boom.voetZ - camera.position.z, d = Math.hypot(dx, dz) || 1; rx = dx / d; rz = dz / d; }
     // Hoe ver kantelt hij? Precies tot de kruin de grond raakt: een kromme stam
     // hoeft geen 90° — dan ligt hij als een boog op de grond in plaats van dat
     // de top in de grond of in de lucht steekt.
     const od = ox * rx + oz * rz;
     boom.hoekEind = Math.max(1.22, Math.min(1.75, Math.atan2(h, Math.max(od, 0.01))));
-    boom.valt = true; boom.valT = 0; boom.geland = false;
+    boom.valt = true; boom.valT = startT || 0; boom.geland = false; boom.leunt = false;
     boom.richting = {x: rx, z: rz};
     boom.pivot = {x: boom.voetX, y: boom.voetY, z: boom.voetZ};
     zetStronk(boom.voetX, boom.voetY, boom.voetZ, boom.licht ? boom.hoogte / 7.6 : boom.hoogte / 5);
     boom.voetX = 1e9; boom.voetZ = 1e9;                 // je kunt er niet meer tegenaan botsen
+    actieveBomen.add(boom);
     geluidKraak();
-    zeg('🌴 TIMBER!');
-  } else {
-    zeg('👊 ' + boom.slagen + ' / ' + SLAGEN_NODIG);
-  }
+}
+
+// ── DOMINO (Brian, 5 sep: "als een vallende boom een andere boom raakt") ──
+// Raakt de vallende stam (of zijn kruin) een andere stam? Is die andere boom
+// groter, dan blijft de vallende boom er schuin tegenaan hangen. Is hij
+// kleiner of even groot, dan breekt hij óók en valt hij mee — en zo kan een
+// hele rij omgaan.
+function botsBoom(boom, hoek){
+  const p = boom.pivot, r = boom.richting, h = boom.hoogte;
+  const ax = r.x * Math.sin(hoek), ay = Math.cos(hoek), az = r.z * Math.sin(hoek);   // richting van de stam nu
+  const zoek = (lijst) => {
+    for(const q of lijst){
+      if(q === boom || q.weg || q.valt) continue;
+      if(Math.abs(q.voetX - p.x) > h + 2 || Math.abs(q.voetZ - p.z) > h + 2) continue;
+      for(let t = 0.2; t <= 1.05; t += 0.085){
+        const L = t * h, px = p.x + ax * L, py = p.y + ay * L, pz = p.z + az * L;
+        if(py < q.voetY - 0.5 || py > q.voetY + q.hoogte + 0.5) continue;
+        const grens = t > 0.85 ? 1.6 : 0.8;              // de kruin is breder dan de stam
+        if(Math.hypot(px - q.voetX, pz - q.voetZ) < grens) return q;
+      }
+    }
+    return null;
+  };
+  return zoek(palmen) || zoek(verrePalmen);
 }
 
 // de draai-matrix van een boom: kantelen om zijn voet, plus eventueel wegzakken
@@ -2716,6 +2749,24 @@ function updateBomen(dt){
       if(boom.valT < VAL_DUUR){
         const u = boom.valT / VAL_DUUR;
         hoek = boom.hoekEind * u * u;                   // steeds sneller: zwaartekracht
+        // raakt hij onderweg een andere boom?
+        if(hoek > 0.12){
+          const q = botsBoom(boom, hoek);
+          if(q){
+            geluidKraak();
+            if(q.hoogte > boom.hoogte * 1.15){
+              // de andere is groter: hij blijft er schuin tegenaan hangen
+              boom.hoekEind = hoek; boom.valT = VAL_DUUR; boom.geland = true; boom.leunt = true;
+              q.schud = 1; q.schudRichting = {x: boom.richting.x, z: boom.richting.z}; actieveBomen.add(q);
+              geluidKlop();
+              zeg('🌴 hij blijft hangen!');
+            } else {
+              // kleiner of even groot: die breekt óók → domino
+              laatBoomVallen(q, boom.richting.x, boom.richting.z, 0.35);
+              zeg('🌴🌴 DOMINO!');
+            }
+          }
+        }
       } else {
         const na = boom.valT - VAL_DUUR;
         if(!boom.geland){                               // de DREUN
