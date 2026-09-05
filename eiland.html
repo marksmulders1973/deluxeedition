@@ -187,6 +187,24 @@ function vulkaanInfo(x, z){
   return {h, u, geul, r};
 }
 
+// ── de mijn (Brian 5 sep): gaten die je met de pickaxe in de vulkaan hakt, en
+//    de vulkaan-factor die na de ontploffing naar beneden gaat (instorten) ──
+const gaten = [];                 // {x, z, r, d}: kom-vormige hap uit de grond
+let vulkaanFactor = 1;            // 1 = hele vulkaan, 0.3 = ingestorte stomp
+try {
+  for(const g of JSON.parse(localStorage.getItem('deluxe-eiland-gaten') || '[]')) gaten.push({x: g[0], z: g[1], r: g[2], d: g[3]});
+  const f = parseFloat(localStorage.getItem('deluxe-eiland-vulkaan') || '1'); if(f > 0 && f <= 1) vulkaanFactor = f;
+} catch(e) {}
+function gatDiepte(x, z){
+  let d = 0;
+  for(const g of gaten){
+    const dx = x - g.x, dz = z - g.z;
+    if(dx > g.r || dx < -g.r || dz > g.r || dz < -g.r) continue;
+    const q = (dx * dx + dz * dz) / (g.r * g.r);
+    if(q < 1){ const t = 1 - q; d += g.d * t * t; }
+  }
+  return d;
+}
 function hoogteOp(x, z){
   // de vorm zelf staat in hoogteBasis, op de oude maat (kust rond 66)
   const hb = hoogteBasis(x / SCHAAL, z / SCHAAL);
@@ -198,7 +216,7 @@ function hoogteOp(x, z){
                + Math.sin(x * 0.070 + 1.0) * Math.cos(z * 0.061 + 2.6) * 0.35) * land * land * (3 - 2 * land);
   // en de vulkaan komt er bovenop
   const vi = vulkaanInfo(x, z);
-  return hb + glooi + (vi ? vi.h : 0);
+  return hb + glooi + (vi ? vi.h * vulkaanFactor : 0) - (gaten.length ? gatDiepte(x, z) : 0);
 }
 function hoogteBasis(x, z){
   const d = Math.hypot(x, z);
@@ -674,6 +692,7 @@ grondGeo.rotateX(-Math.PI/2);
   const V_AS      = new THREE.Color(0x8f8a83);
   const V_GEUL    = new THREE.Color(0x3d3833);
   const V_KRATER  = new THREE.Color(0x4a3b34);
+  const GAT_KLEUR = new THREE.Color(0x3a3430);   // binnenkant van een gehakt gat
 
   for(let i = 0; i < pos.count; i++){
     const x = pos.getX(i), z = pos.getZ(i);
@@ -723,6 +742,8 @@ grondGeo.rotateX(-Math.PI/2);
     // waar het zand, rots of kale aarde is, tekenen we korrels in plaats van sprietjes
     grasMix[i] = (1 - zandF) * (1 - rotsF) * (1 - aardeF * 0.7) * (1 - vulkaanF);
 
+    // gegraven gaten (de mijn): donkere, verse rots
+    if(gaten.length){ const gat = gatDiepte(x, z); if(gat > 0.05) c.lerp(GAT_KLEUR, Math.min(1, gat / 1.5)); }
     // ── diepte: ligt dit punt lager dan zijn omgeving? Dan iets donkerder.
     // Dat is hetzelfde trucje als schaduw in een holletje — het geeft het
     // landschap vorm, ook waar geen boom staat.
@@ -2470,10 +2491,11 @@ tik('kokos+kist');
 // De pluim bestaat uit zachte rookwolkjes (sprites) die uit de krater
 // opstijgen, groter en doorzichtiger worden en met de wind meedrijven.
 // ══════════════════════════════════════════════════════════════════
-const kraterTop = hoogteOp(VULKAAN.x, VULKAAN.z);
+let kraterTop = hoogteOp(VULKAAN.x, VULKAAN.z);
+let lavaMesh = null, gloedSprite = null;
 {
   // de lava onderin de krater: een gloeiende schijf
-  const lava = new THREE.Mesh(
+  const lava = lavaMesh = new THREE.Mesh(
     new THREE.CircleGeometry(VULKAAN.kraterR * 0.45, 32),
     new THREE.MeshBasicMaterial({color: 0xff4a12})
   );
@@ -2488,7 +2510,7 @@ const kraterTop = hoogteOp(VULKAAN.x, VULKAAN.z);
     g.fillStyle = v; g.fillRect(0, 0, 64, 64);
     return new THREE.CanvasTexture(c);
   })();
-  const gloed = new THREE.Sprite(new THREE.SpriteMaterial({map: gloedTex, transparent: true, depthWrite: false, opacity: 0.8}));
+  const gloed = gloedSprite = new THREE.Sprite(new THREE.SpriteMaterial({map: gloedTex, transparent: true, depthWrite: false, opacity: 0.8}));
   gloed.scale.set(VULKAAN.kraterR * 1.6, VULKAAN.kraterR * 1.6, 1);
   gloed.position.set(VULKAAN.x, kraterTop + 6, VULKAAN.z);
   scene.add(gloed);
@@ -2668,6 +2690,11 @@ function slaMetVuist(){
   if(!boom){
     const steen = steenVoorJe();
     if(steen){ slaSteen(steen); return; }
+    const vp = vulkaanVoorJe();
+    if(vp){
+      if(pickaxeVast){ hakVulkaan(vp); return; }
+      zeg('🪨 Te hard voor je vuist — maak eerst een pickaxe (Q)'); geluidZwaai(); return;
+    }
     geluidZwaai(); return;
   }
   boom.slagen = (boom.slagen || 0) + slagKracht('boom');   // met pickaxe telt een klap dubbel
@@ -3307,6 +3334,139 @@ function geluidHamer(){ metAudio(ac => {          // drie hamertikken
   }
 }); }
 
+// ══════════════════════════════════════════════════════════════════
+// 9g. DE VULKAAN-MIJN (Brian, 5 sep: "met de pickaxe de vulkaan hakken, niet
+//     de hele vulkaan, gewoon een kleine mine maken — en ALS je de hele
+//     vulkaan weghakt, dan gaat hij kapot en ontploft hij")
+//
+// Met de pickaxe hak je happen uit de vulkaanhelling: de grond zakt daar echt
+// (het hoogteveld verandert, dus je kunt er ook in lopen) en je krijgt steen.
+// Zonder pickaxe is de rots te hard. Hak je 600 happen, dan barst de vulkaan:
+// lava-regen, aswolk, dreun, en hij stort in tot een stomp. Alles wordt bewaard.
+// ══════════════════════════════════════════════════════════════════
+const GAT_R = 4.5, GAT_HAP = 0.35, GAT_MAX = 6, VULKAAN_MAX = 600;
+let vulkaanSchade = 0, vulkaanKapot = false;
+try { vulkaanSchade = parseInt(localStorage.getItem('deluxe-eiland-vulkaanschade') || '0', 10) || 0; vulkaanKapot = vulkaanFactor < 0.99; } catch(e) {}
+const lavaDeeltjes = [], asWolken = [];
+let instorten = null;    // {t, laatsteBouw}
+function bewaarMijn(){
+  try {
+    localStorage.setItem('deluxe-eiland-gaten', JSON.stringify(gaten.map(g => [+g.x.toFixed(1), +g.z.toFixed(1), g.r, +g.d.toFixed(2)])));
+    localStorage.setItem('deluxe-eiland-vulkaanschade', String(vulkaanSchade));
+    localStorage.setItem('deluxe-eiland-vulkaan', String(vulkaanFactor));
+  } catch(e) {}
+}
+// de grond-mesh opnieuw uitrekenen rond (cx,cz) — of helemaal (straal groot)
+const GAT_KLEUR2 = new THREE.Color(0x3a3430), _gk = new THREE.Color();
+function herbouwGrond(cx, cz, straal){
+  const pos = grondGeo.attributes.position, kl = grondGeo.attributes.color;
+  for(let i = 0; i < pos.count; i++){
+    const x = pos.getX(i), z = pos.getZ(i);
+    if(Math.abs(x - cx) > straal || Math.abs(z - cz) > straal) continue;
+    pos.setY(i, hoogteOp(x, z));
+    const gat = gatDiepte(x, z);
+    if(gat > 0.05){ _gk.setRGB(kl.getX(i), kl.getY(i), kl.getZ(i)).lerp(GAT_KLEUR2, Math.min(0.85, gat / 1.5)); kl.setXYZ(i, _gk.r, _gk.g, _gk.b); }
+  }
+  pos.needsUpdate = true; kl.needsUpdate = true;
+  grondGeo.computeVertexNormals();
+}
+// waar zou je hakken? 2,5 m vóór je, en dat moet op de vulkaan zijn
+function vulkaanVoorJe(){
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+  const x = camera.position.x + fx * 2.5, z = camera.position.z + fz * 2.5;
+  const vi = vulkaanInfo(x, z);
+  if(!vi || vi.u < 0.2 || vulkaanKapot) return null;
+  return {x, z};
+}
+function hakVulkaan(p){
+  let g = null;
+  for(const q of gaten){ if(Math.hypot(q.x - p.x, q.z - p.z) < 2.2){ g = q; break; } }
+  if(g) g.d = Math.min(GAT_MAX, g.d + GAT_HAP);
+  else { g = {x: p.x, z: p.z, r: GAT_R, d: GAT_HAP}; gaten.push(g); }
+  vulkaanSchade++;
+  herbouwGrond(p.x, p.z, GAT_R + 10);
+  geluidSteenTik();
+  const y = hoogteOp(p.x, p.z);
+  strooiScraps(steenBak, p.x, y + 0.6, p.z, 1, 1.6);                 // steen als beloning
+  for(let i = 0; i < 3; i++){                                          // stofje
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.45, color: 0x8f8a84}));
+    sp.position.set(p.x + (Math.random() - 0.5), y + 0.5, p.z + (Math.random() - 0.5));
+    sp.userData = {leeftijd: 0, vx: (Math.random() - 0.5), vz: (Math.random() - 0.5)}; sp.scale.set(0.8, 0.8, 1);
+    scene.add(sp); stofWolken.push(sp);
+  }
+  bewaarMijn();
+  if(vulkaanSchade >= VULKAAN_MAX){ ontplofVulkaan(); return; }
+  if(vulkaanSchade % 10 === 0) zeg('⛏️ mijn: ' + vulkaanSchade + ' happen (bij ' + VULKAAN_MAX + ' gebeurt er iets…)');
+}
+function ontplofVulkaan(){
+  vulkaanKapot = true;
+  zeg('🌋 DE VULKAAN ONTPLOFT!!!');
+  geluidExplosie();
+  schok = Math.max(schok, 3);
+  const top = kraterTop + 2;
+  for(let i = 0; i < 180; i++){                                        // lava-regen
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.95, color: i % 3 ? 0xff6a1e : 0xffd23a}));
+    const hoek = Math.random() * 6.283, vaart = 8 + Math.random() * 26;
+    sp.position.set(VULKAAN.x, top, VULKAAN.z);
+    sp.userData = {vx: Math.cos(hoek) * vaart, vy: 30 + Math.random() * 45, vz: Math.sin(hoek) * vaart, leeftijd: 0, maat: 1.5 + Math.random() * 3};
+    sp.scale.set(sp.userData.maat, sp.userData.maat, 1);
+    scene.add(sp); lavaDeeltjes.push(sp);
+  }
+  for(let i = 0; i < 40; i++){                                         // aswolk
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.85, color: 0x3a3634}));
+    sp.position.set(VULKAAN.x + (Math.random() - 0.5) * 40, top + Math.random() * 20, VULKAAN.z + (Math.random() - 0.5) * 40);
+    sp.userData = {vx: (Math.random() - 0.5) * 10, vy: 12 + Math.random() * 18, vz: (Math.random() - 0.5) * 10, leeftijd: 0, maat: 25 + Math.random() * 30};
+    sp.scale.set(sp.userData.maat, sp.userData.maat, 1);
+    scene.add(sp); asWolken.push(sp);
+  }
+  strooiScraps(steenBak, VULKAAN.x, top, VULKAAN.z, 40, 12);          // stenen vliegen alle kanten op
+  instorten = {t: 0, laatsteBouw: 0};
+}
+function updateVulkaan(dt){
+  if(instorten){
+    instorten.t += dt;
+    const u = Math.min(1, instorten.t / 3);
+    vulkaanFactor = 1 - 0.68 * u * u * (3 - 2 * u);
+    if(instorten.t - instorten.laatsteBouw > 0.6 || u >= 1){
+      instorten.laatsteBouw = instorten.t;
+      herbouwGrond(VULKAAN.x, VULKAAN.z, VULKAAN.R * 1.2);
+      kraterTop = hoogteOp(VULKAAN.x, VULKAAN.z);
+      if(lavaMesh) lavaMesh.position.y = kraterTop + 0.6;
+      if(gloedSprite) gloedSprite.position.y = kraterTop + 6;
+      schok = Math.max(schok, 0.8);
+    }
+    if(u >= 1){ instorten = null; bewaarMijn(); zeg('🌋 De vulkaan is ingestort… wat een knal!'); }
+  }
+  for(let i = lavaDeeltjes.length - 1; i >= 0; i--){
+    const sp = lavaDeeltjes[i], u = sp.userData;
+    u.leeftijd += dt; u.vy -= 22 * dt;
+    sp.position.x += u.vx * dt; sp.position.y += u.vy * dt; sp.position.z += u.vz * dt;
+    const grond = hoogteOp(sp.position.x, sp.position.z);
+    if(sp.position.y < grond || u.leeftijd > 9){ scene.remove(sp); sp.material.dispose(); lavaDeeltjes.splice(i, 1); continue; }
+    sp.material.opacity = Math.max(0, 0.95 - u.leeftijd * 0.09);
+  }
+  for(let i = asWolken.length - 1; i >= 0; i--){
+    const sp = asWolken[i], u = sp.userData;
+    u.leeftijd += dt;
+    sp.position.x += u.vx * dt; sp.position.y += u.vy * dt; sp.position.z += u.vz * dt;
+    u.vy *= Math.pow(0.5, dt);
+    const m = u.maat + u.leeftijd * 9; sp.scale.set(m, m, 1);
+    sp.material.opacity = Math.max(0, 0.85 * (1 - u.leeftijd / 16));
+    if(u.leeftijd > 16){ scene.remove(sp); sp.material.dispose(); asWolken.splice(i, 1); }
+  }
+}
+function geluidExplosie(){ metAudio(ac => {       // de grote knal
+  const t0 = ac.currentTime;
+  const src = ac.createBufferSource(); src.buffer = ruisBuffer(ac, 2.4, 1.6);
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(2200, t0); f.frequency.exponentialRampToValueAtTime(180, t0 + 2.2);
+  const g = ac.createGain(); g.gain.setValueAtTime(1.0, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + 2.4);
+  src.connect(f); f.connect(g); g.connect(ac.destination); src.start(t0);
+  const o = ac.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(60, t0); o.frequency.exponentialRampToValueAtTime(22, t0 + 1.8);
+  const og = ac.createGain(); og.gain.setValueAtTime(1.0, t0); og.gain.exponentialRampToValueAtTime(0.001, t0 + 2.0);
+  o.connect(og); og.connect(ac.destination); o.start(t0); o.stop(t0 + 2.1);
+}); }
+
 // ── geluiden (WebAudio, zelfde audioCtx als het zeegeruis) ──
 function metAudio(fn){ if(!audioCtx || !geluidAan) return; try { fn(audioCtx); } catch(e) {} }
 function ruisBuffer(ac, duur, macht){
@@ -3702,6 +3862,7 @@ function loop(nu){
     updateBomen(dt);
     updateScraps(dt);
     updateStenen(dt);
+    updateVulkaan(dt);
     updateCrafterSpook();
   }
   golfZee(t);
