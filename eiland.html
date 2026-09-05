@@ -4464,7 +4464,7 @@ function updateKraken(dt, t){
 
 // ── de planner: om de zoveel tijd een gok — kraken of vulkaan ──
 function updateRampen(dt){
-  if(uitbarst || kraken) return;                      // er is al iets aan de hand
+  if(uitbarst || (kraken && kraken.fase !== 'borrelt')) return;   // er is al iets aan de hand (borrelen = nog aan het aftellen)
   rampTimer += dt;
   if(RAMP_TEST && !rampTestGedaan && rampTimer > 3){ rampTestGedaan = true; rampTimer = rampVolgende - UITBARST_WAARSCHUW; rampKeuze = null; rommelt = false; rampForce = RAMP_TEST; }
   if(!rampKeuze && rampTimer >= rampVolgende - UITBARST_WAARSCHUW){
