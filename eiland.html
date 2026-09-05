@@ -124,6 +124,13 @@ function hoogteOp(x, z){
   // ondiep en turkoois, maar een paar meter verderop kun je écht zwemmen.
   // (Eerst drukten we ook de zeebodem plat — toen liep je dwars door de zee.)
   else if(h < 0) h = h * 0.72;
+  // 🌊 DIEP WATER (Brian 5 sep): voorbij de lagune zakt de bodem weg naar
+  // ~10 m diep. Daar wordt het water donker, met lichtende aders. De lagune
+  // zelf (tot ~90 m van het midden) blijft ondiep en turkoois.
+  if(h < 0){
+    const t = Math.max(0, Math.min(1, (d - EILAND_R) / 60));
+    h -= t * t * (3 - 2 * t) * 9;
+  }
   return h;
 }
 
@@ -650,7 +657,8 @@ const zeeMateriaal = new THREE.ShaderMaterial({
     maxDiep:     {value: ZEE_MAX_DIEP},
     zonRichting: {value: new THREE.Vector3(70, 95, 45).normalize()},
     kleurOndiep: {value: new THREE.Color(0x3fcfc6)},
-    kleurDiep:   {value: new THREE.Color(0x0c4470)},
+    kleurDiep:   {value: new THREE.Color(0x061a30)},   // bijna zwart-blauw, zoals diep water op de foto
+    kleurAder:   {value: new THREE.Color(0x2ad2e4)},   // de lichtende aders in het diepe water
     kleurLucht:  {value: new THREE.Color(0x3f93cf)},
     kleurHorizon:{value: new THREE.Color(0x9cd3ea)},
     kleurZon:    {value: new THREE.Color(0xfff3d0)}
@@ -693,7 +701,7 @@ const zeeMateriaal = new THREE.ShaderMaterial({
     uniform sampler2D ruis;
     uniform sampler2D dieptemap;
     uniform float zeeMaat, maxDiep;
-    uniform vec3 zonRichting, kleurOndiep, kleurDiep, kleurLucht, kleurHorizon, kleurZon;
+    uniform vec3 zonRichting, kleurOndiep, kleurDiep, kleurLucht, kleurHorizon, kleurZon, kleurAder;
     varying vec3 vWereld;
     varying vec3 vNormaal;
     varying float vHoog;
@@ -736,9 +744,22 @@ const zeeMateriaal = new THREE.ShaderMaterial({
       float ondiepF = (1.0 - d01) * (1.0 - d01);
       water += vec3(0.42, 0.60, 0.62) * caust * ondiepF;
 
+      // ── 8) DIEP WATER (Brian, 5 sep: "maak het donkerblauwe water 10× realistischer") ──
+      // Op de foto is diep water bijna zwart, met lichtende blauwe aders: zonlicht
+      // dat door de golven heen breekt. Dat maken we met twee schuivende lagen van
+      // het lijntjes-netwerk, schuin uitgerekt zodat het strepen worden, en ze
+      // lichten extra op waar de rimpels naar de zon kantelen.
+      float diepF = smoothstep(2.5, 7.0, diepte);
+      vec2 uvS = vec2(uv.x * 0.6 + uv.y * 0.8, uv.y * 0.6 - uv.x * 0.8);
+      float a1 = texture2D(ruis, uvS * vec2(0.045, 0.110) + tijd * vec2(0.012, 0.020)).b;
+      float a2 = texture2D(ruis, uvS * vec2(0.070, 0.160) - tijd * vec2(0.018, 0.011)).b;
+      float ader = pow(min(a1, a2), 1.3) * 3.2 + a1 * a2 * 0.6;
+      ader *= 0.55 + 0.9 * clamp(dot(n, zonRichting), 0.0, 1.0);
+      water += kleurAder * ader * diepF;
+
       // ── 3) spiegeling van de lucht (fresnel: schuin kijken = meer spiegel) ──
       float fres = pow(1.0 - max(dot(n, kijk), 0.0), 3.0);
-      fres = 0.03 + 0.72 * fres;
+      fres = 0.03 + 0.62 * fres;
       vec3 refl = reflect(-kijk, n);
       vec3 lucht = mix(kleurHorizon, kleurLucht, pow(clamp(refl.y, 0.0, 1.0), 0.6));
       vec3 kleur = mix(water, lucht, fres);
@@ -764,7 +785,7 @@ const zeeMateriaal = new THREE.ShaderMaterial({
       kleur = mix(kleur, vec3(0.93, 0.97, 0.98), schuim);
 
       // ── doorzichtig waar het ondiep is (je ziet het zand), dicht waar het diep is ──
-      float alpha = mix(0.55, 0.95, clamp(diepte / 3.0, 0.0, 1.0));
+      float alpha = mix(0.55, 0.97, clamp(diepte / 3.0, 0.0, 1.0));
       alpha = mix(alpha, 1.0, fres * 0.6);
       alpha = max(alpha, schuim);
 
