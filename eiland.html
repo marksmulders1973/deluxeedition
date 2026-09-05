@@ -25,6 +25,20 @@
   #houtTeller{position:fixed;top:56px;left:12px;z-index:12;color:#fff;font-size:17px;font-weight:900;background:rgba(0,0,0,0.4);
               padding:7px 13px;border-radius:10px;display:none}
   #houtTeller.plus{animation:houtPlus 0.35s ease-out}
+  #crafter{position:fixed;top:100px;left:12px;z-index:14;width:250px;display:none;color:#fff;font-size:14px;
+           background:rgba(10,20,30,0.82);border:1px solid rgba(255,255,255,0.25);border-radius:14px;padding:12px 14px}
+  #crafter .kop{font-size:18px;font-weight:900;margin-bottom:10px;display:flex;justify-content:space-between;align-items:baseline}
+  #crafter .klein{font-size:11px;color:#a9c3d4;font-weight:600}
+  #crafter .recept{display:flex;justify-content:space-between;align-items:center;gap:10px;background:rgba(255,255,255,0.08);
+                   border-radius:10px;padding:9px 10px}
+  #crafter .naam{font-weight:900;font-size:15px}
+  #crafter .kost{font-size:12px;color:#ffd97a}
+  #crafter button{border:none;border-radius:9px;padding:8px 12px;font-weight:900;font-size:14px;color:#fff;cursor:pointer;
+                  background:linear-gradient(135deg,#2ecc71,#3b82ff)}
+  #crafter button:disabled{background:#4a5560;color:#aab;cursor:default}
+  #crafter .tip{margin-top:9px;line-height:1.4}
+  #craftKnop{position:fixed;right:22px;bottom:290px;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,255,255,0.4);
+             background:rgba(120,200,255,0.3);font-size:30px;z-index:15;color:#fff}
   @keyframes houtPlus{0%{transform:scale(1.35);background:rgba(200,140,60,0.7)}100%{transform:scale(1)}}
   #teller{position:fixed;top:12px;right:12px;z-index:12;color:#fff;font-size:19px;font-weight:900;background:rgba(0,0,0,0.4);
           padding:8px 14px;border-radius:10px;display:none;text-align:right;line-height:1.5}
@@ -76,6 +90,15 @@
 <div id="teller"></div>
 <div id="melding"></div>
 <div id="houtTeller" title="hout- en steenscraps — hak bomen en rotsen en loop over de stukken"></div>
+<div id="crafter">
+  <div class="kop">🛠️ Crafter <span class="klein">Q = sluiten</span></div>
+  <div class="recept">
+    <div><div class="naam">🧱 Houten muur</div><div class="kost">kost 30 🪵 · 3 m breed</div></div>
+    <button id="maakMuur">Maak</button>
+  </div>
+  <div class="klein tip">Na "Maak": loop naar een plek, richt, en klik (of F) om de muur neer te zetten. Esc = toch niet.</div>
+</div>
+<button id="craftKnop" class="touch-ui">🛠️</button>
 <div id="zwemBalk">🏊 je zwemt!</div>
 <div id="geluidKnop">🔊</div>
 
@@ -2628,6 +2651,8 @@ function boomVoorJe(){
 
 function slaMetVuist(){
   if(!gestart) return;
+  if(plaatsMuur){ plaatsMuurNu(); return; }              // je hebt een muur in je hand: neerzetten
+  if(crafterOpen) return;                                 // menu open: niet slaan
   const nu = performance.now() / 1000;
   if(nu - slagTijd < 0.32) return;                        // niet sneller dan je arm kan
   slagTijd = nu;
@@ -2871,6 +2896,7 @@ const scrapDummy = new THREE.Object3D(), scrapKleur = new THREE.Color();
 function toonHout(plus){
   const el = document.getElementById('houtTeller');
   el.textContent = '🪵 ' + houtBak.aantal + '   🪨 ' + steenBak.aantal;
+  if(typeof crafterOpen !== 'undefined' && crafterOpen) updateCrafter();
   if(plus){ el.classList.remove('plus'); void el.offsetWidth; el.classList.add('plus'); }
 }
 function zetScrapMatrix(bak, i, sc){
@@ -3028,6 +3054,134 @@ function geluidPlop(){ metAudio(ac => {          // vrolijk tikje bij oppakken
   o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0 + 0.13);
 }); }
 
+// ══════════════════════════════════════════════════════════════════
+// 9e. DE CRAFTER (Brian, 5 sep: "op de laptop klik je Q, dan staat er Crafter
+//     links boven en kun je een houten muur maken met 30 hout")
+//
+// Q (of de 🛠️-knop op de telefoon) opent het menu. "Maak" trekt 30 hout af en
+// geeft je een doorzichtige voorbeeldmuur die 3 m vóór je meeloopt en met je
+// meedraait. Klik (of F) = neerzetten, mét hamergeluid. Esc = toch niet (hout
+// terug). Muren blijven staan (localStorage) en je loopt er niet doorheen.
+// ══════════════════════════════════════════════════════════════════
+const MUUR_KOST = 30, MUUR_B = 3.0, MUUR_H = 1.8, MUUR_D = 0.3;
+function plankTextuur(){
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#8a5f34'; g.fillRect(0, 0, 256, 128);
+  for(let p = 0; p < 4; p++){                            // 4 planken boven elkaar
+    const y = p * 32, tint = 0.9 + Math.random() * 0.2;
+    g.fillStyle = 'rgb(' + Math.round(138 * tint) + ',' + Math.round(95 * tint) + ',' + Math.round(52 * tint) + ')';
+    g.fillRect(0, y, 256, 32);
+    for(let i = 0; i < 18; i++){                         // houtnerf
+      g.strokeStyle = Math.random() > 0.5 ? 'rgba(60,38,18,0.35)' : 'rgba(200,160,110,0.25)';
+      g.lineWidth = 0.6 + Math.random() * 1.4;
+      const yy = y + 3 + Math.random() * 26;
+      g.beginPath(); g.moveTo(0, yy);
+      for(let x = 0; x <= 256; x += 32) g.lineTo(x, yy + (Math.random() - 0.5) * 3);
+      g.stroke();
+    }
+    g.fillStyle = 'rgba(40,25,10,0.8)'; g.fillRect(0, y + 30, 256, 2);   // naad
+    g.fillStyle = '#3a3a3a';                              // spijkers
+    for(const x of [14, 128, 242]){ g.beginPath(); g.arc(x, y + 16, 2.2, 0, 6.3); g.fill(); }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+const muurGeo = new THREE.BoxGeometry(MUUR_B, MUUR_H, MUUR_D); muurGeo.translate(0, MUUR_H / 2, 0);
+const muurMat = new THREE.MeshLambertMaterial({map: plankTextuur()});
+const spookMat = new THREE.MeshLambertMaterial({color: 0x7dff9a, transparent: true, opacity: 0.45, depthWrite: false});
+const muren = [];                                        // {x, y, z, hoek, mesh}
+let plaatsMuur = false;
+const spookMuur = new THREE.Mesh(muurGeo, spookMat); spookMuur.visible = false; scene.add(spookMuur);
+const crafterEl = document.getElementById('crafter');
+let crafterOpen = false;
+function updateCrafter(){
+  const knop = document.getElementById('maakMuur');
+  const tekort = MUUR_KOST - houtBak.aantal;
+  knop.disabled = tekort > 0;
+  knop.textContent = tekort > 0 ? 'nog ' + tekort + ' 🪵' : 'Maak';
+}
+function toggleCrafter(aan){
+  if(!gestart) return;
+  crafterOpen = aan === undefined ? !crafterOpen : aan;
+  crafterEl.style.display = crafterOpen ? 'block' : 'none';
+  updateCrafter();
+  if(crafterOpen && pointerLocked) document.exitPointerLock();   // muis vrij om te klikken
+}
+function zetMuurNeer(x, y, z, hoek, opslaan){
+  const m = new THREE.Mesh(muurGeo, muurMat);
+  m.position.set(x, y, z); m.rotation.y = hoek;
+  m.castShadow = m.receiveShadow = true;
+  scene.add(m);
+  muren.push({x, y, z, hoek, mesh: m});
+  if(opslaan){ try { localStorage.setItem('deluxe-eiland-muren', JSON.stringify(muren.map(w => [+w.x.toFixed(2), +w.y.toFixed(2), +w.z.toFixed(2), +w.hoek.toFixed(3)]))); } catch(e) {} }
+}
+try {   // muren van de vorige keer terugzetten
+  for(const w of JSON.parse(localStorage.getItem('deluxe-eiland-muren') || '[]')) zetMuurNeer(w[0], w[1], w[2], w[3], false);
+} catch(e) {}
+function spookPlek(){
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+  const x = camera.position.x + fx * 3.0, z = camera.position.z + fz * 3.0;
+  return {x, z, y: hoogteOp(x, z), hoek: yaw};           // muur staat dwars op je kijkrichting
+}
+function startPlaatsen(){ plaatsMuur = true; spookMuur.visible = true; zeg('🧱 richt en klik om de muur neer te zetten (Esc = toch niet)'); }
+function annuleerPlaatsen(){
+  if(!plaatsMuur) return;
+  plaatsMuur = false; spookMuur.visible = false;
+  houtBak.aantal += MUUR_KOST;                          // hout terug
+  try { localStorage.setItem(houtBak.sleutel, String(houtBak.aantal)); } catch(e) {}
+  toonHout(); zeg('🪵 hout terug in je zak');
+}
+function plaatsMuurNu(){
+  const p = spookPlek();
+  plaatsMuur = false; spookMuur.visible = false;
+  zetMuurNeer(p.x, p.y, p.z, p.hoek, true);
+  geluidHamer();
+  zeg('🧱 Muur geplaatst!');
+}
+function updateCrafterSpook(){
+  if(!plaatsMuur) return;
+  const p = spookPlek();
+  spookMuur.position.set(p.x, p.y, p.z); spookMuur.rotation.y = p.hoek;
+}
+// botsen tegen muren: in het stelsel van de muur kijken of je erin zou lopen
+function botstMuur(nx, nz){
+  for(const w of muren){
+    const dx = nx - w.x, dz = nz - w.z;
+    if(Math.abs(dx) > MUUR_B || Math.abs(dz) > MUUR_B) continue;
+    const c = Math.cos(w.hoek), sn = Math.sin(w.hoek);
+    const lx = dx * c - dz * sn, lz = dx * sn + dz * c;
+    if(Math.abs(lx) < MUUR_B / 2 + 0.35 && Math.abs(lz) < MUUR_D / 2 + 0.35) return true;
+  }
+  return false;
+}
+document.getElementById('maakMuur').addEventListener('click', () => {
+  if(houtBak.aantal < MUUR_KOST) return;
+  houtBak.aantal -= MUUR_KOST;
+  try { localStorage.setItem(houtBak.sleutel, String(houtBak.aantal)); } catch(e) {}
+  toonHout(true);
+  toggleCrafter(false);
+  startPlaatsen();
+});
+addEventListener('keydown', e => {
+  if(e.code === 'KeyQ' && gestart) toggleCrafter();
+  if(e.code === 'Escape'){ if(plaatsMuur) annuleerPlaatsen(); if(crafterOpen) toggleCrafter(false); }
+});
+function geluidHamer(){ metAudio(ac => {          // drie hamertikken
+  for(let i = 0; i < 3; i++){
+    const t0 = ac.currentTime + i * 0.17;
+    const src = ac.createBufferSource(); src.buffer = ruisBuffer(ac, 0.06, 2);
+    const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 1.5;
+    const g = ac.createGain(); g.gain.value = 0.55;
+    src.connect(f); f.connect(g); g.connect(ac.destination); src.start(t0);
+    const o = ac.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(420, t0); o.frequency.exponentialRampToValueAtTime(180, t0 + 0.08);
+    const og = ac.createGain(); og.gain.setValueAtTime(0.35, t0); og.gain.exponentialRampToValueAtTime(0.001, t0 + 0.1);
+    o.connect(og); og.connect(ac.destination); o.start(t0); o.stop(t0 + 0.11);
+  }
+}); }
+
 // ── geluiden (WebAudio, zelfde audioCtx als het zeegeruis) ──
 function metAudio(fn){ if(!audioCtx || !geluidAan) return; try { fn(audioCtx); } catch(e) {} }
 function ruisBuffer(ac, duur, macht){
@@ -3107,7 +3261,7 @@ document.addEventListener('mousemove', e => {
 // telefoon: vegen op de rechterhelft = kijken
 const kijkVingers = new Map();
 addEventListener('touchstart', e => {
-  if(e.target.closest && e.target.closest('#joy,#springKnop,#slaKnop,#geluidKnop,#start,#winscherm,#thuis')) return;
+  if(e.target.closest && e.target.closest('#joy,#springKnop,#slaKnop,#craftKnop,#crafter,#geluidKnop,#start,#winscherm,#thuis')) return;
   for(const t of e.changedTouches){
     if(t.clientX > innerWidth/2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY});
   }
@@ -3162,6 +3316,7 @@ const springKnop = document.getElementById('springKnop');
 springKnop.addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); touchSpring = true; }, {passive:false});
 springKnop.addEventListener('touchend',   e => { touchSpring = false; });
 document.getElementById('slaKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); slaMetVuist(); }, {passive:false});
+document.getElementById('craftKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); toggleCrafter(); }, {passive:false});
 
 // ══════════════════════════════════════════════════════════════════
 // 11. LOPEN, SPRINGEN EN ZWEMMEN
@@ -3206,6 +3361,7 @@ function updateSpeler(dt){
   for(const p of verrePalmen){
     if(Math.abs(nx - p.voetX) < 0.6 && Math.abs(nz - p.voetZ) < 0.6 && Math.hypot(nx - p.voetX, nz - p.voetZ) < 0.5){ nx = oudX; nz = oudZ; break; }
   }
+  if(muren.length && botstMuur(nx, nz)){ nx = oudX; nz = oudZ; }   // niet door je eigen muur heen
   // niet te ver de zee in — haaien! 🦈
   const d = Math.hypot(nx, nz);
   if(d > ZEE_GRENS){
@@ -3421,6 +3577,7 @@ function loop(nu){
     updateBomen(dt);
     updateScraps(dt);
     updateStenen(dt);
+    updateCrafterSpook();
   }
   golfZee(t);
   updateWind(t);      _m.wind     += performance.now() - _t; _t = performance.now();
