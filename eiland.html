@@ -75,7 +75,7 @@
 <a id="thuis" href="index.html">← deluxeedition.nl</a>
 <div id="teller"></div>
 <div id="melding"></div>
-<div id="houtTeller" title="houtscraps — hak bomen om en loop over de stukken hout"></div>
+<div id="houtTeller" title="hout- en steenscraps — hak bomen en rotsen en loop over de stukken"></div>
 <div id="zwemBalk">🏊 je zwemt!</div>
 <div id="geluidKnop">🔊</div>
 
@@ -1729,19 +1729,20 @@ function maakSteenGeometrie(zaadje, mos, detail, uvSchaal){
   return g;
 }
 
+const stenen = [];        // alle rotsen: om te hakken (Brian 5 sep)
 // drie verschillende rotsvormen: één grote met veel vlakjes, twee kleinere
 // die grover mogen zijn. Zo zie je nooit twee dezelfde stenen liggen.
 {
   const SOORTEN = [
     // grote liggende rotsblokken
-    {zaadje: 0.9,  mos: 0.80, detail: 1, aantal: IS_TOUCH ? 16 : 26, maat: [1.7, 2.7], vorm: [1.15, 0.62, 1.35], uv: 3.4},
+    {zaadje: 0.9,  mos: 0.80, detail: 1, aantal: IS_TOUCH ? 32 : 52, maat: [1.7, 2.7], vorm: [1.15, 0.62, 1.35], uv: 3.4},
     // rechtopstaande rotspunten
-    {zaadje: 2.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 12 : 20, maat: [1.2, 2.0], vorm: [0.72, 1.55, 0.80], uv: 2.8},
+    {zaadje: 2.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 24 : 40, maat: [1.2, 2.0], vorm: [0.72, 1.55, 0.80], uv: 2.8},
     // gedrongen keien
-    {zaadje: 3.6,  mos: 1.15, detail: 1, aantal: IS_TOUCH ? 28 : 50, maat: [0.8, 1.6], vorm: [1.10, 0.78, 1.00], uv: 2.2},
+    {zaadje: 3.6,  mos: 1.15, detail: 1, aantal: IS_TOUCH ? 56 : 100, maat: [0.8, 1.6], vorm: [1.10, 0.78, 1.00], uv: 2.2},
     // kleine brokken
-    {zaadje: 6.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 28 : 50, maat: [0.5, 1.2], vorm: [1.00, 0.85, 1.20], uv: 1.8},
-    {zaadje: 11.7, mos: 0.65, detail: 1, aantal: IS_TOUCH ? 22 : 40, maat: [0.6, 1.4], vorm: [1.30, 0.70, 0.90], uv: 2.0},
+    {zaadje: 6.3,  mos: 0.45, detail: 1, aantal: IS_TOUCH ? 56 : 100, maat: [0.5, 1.2], vorm: [1.00, 0.85, 1.20], uv: 1.8},
+    {zaadje: 11.7, mos: 0.65, detail: 1, aantal: IS_TOUCH ? 44 : 80, maat: [0.6, 1.4], vorm: [1.30, 0.70, 0.90], uv: 2.0},
   ];
   const gruisPlek = [];
   for(const soort of SOORTEN){
@@ -1767,6 +1768,7 @@ function maakSteenGeometrie(zaadje, mos, detail, uvSchaal){
       d.scale.set(m * vf[0] * (0.82 + rnd() * 0.4), m * vf[1] * (0.82 + rnd() * 0.4), m * vf[2] * (0.82 + rnd() * 0.4));
       d.updateMatrix();
       mesh.setMatrixAt(i, d.matrix);
+      stenen.push({x: p.x, y: p.h + m * 0.26, z: p.z, maat: m, mesh, idx: i, matrix: d.matrix.clone(), slagen: 0, schud: 0, weg: false});
       // de ene steen is grijzer, de andere warmer bruin — net als in het echt
       const warm = rnd();
       const g2 = 0.86 + rnd() * 0.28;
@@ -2630,7 +2632,11 @@ function slaMetVuist(){
   if(nu - slagTijd < 0.32) return;                        // niet sneller dan je arm kan
   slagTijd = nu;
   const boom = boomVoorJe();
-  if(!boom){ geluidZwaai(); return; }
+  if(!boom){
+    const steen = steenVoorJe();
+    if(steen){ slaSteen(steen); return; }
+    geluidZwaai(); return;
+  }
   boom.slagen = (boom.slagen || 0) + 1;
   boom.schud = 1;                                         // even natrillen
   boom.schudRichting = {x: boom.voetX - camera.position.x, z: boom.voetZ - camera.position.z};
@@ -2638,7 +2644,7 @@ function slaMetVuist(){
   geluidKlop();
   { // een splinter springt van de stam, aan jouw kant
     const dx = camera.position.x - boom.voetX, dz = camera.position.z - boom.voetZ, d = Math.hypot(dx, dz) || 1;
-    strooiScraps(boom.voetX + dx / d * 0.35, boom.voetY + 1.15, boom.voetZ + dz / d * 0.35, 1, 1.6);
+    strooiScraps(houtBak, boom.voetX + dx / d * 0.35, boom.voetY + 1.15, boom.voetZ + dz / d * 0.35, 1, 1.6);
   }
   if(boom.slagen >= SLAGEN_NODIG){
     laatBoomVallen(boom, null, null, 0);
@@ -2785,7 +2791,7 @@ function updateBomen(dt){
           // stukken hout langs de neergekomen stam
           for(let k = 0; k < 4; k++){
             const t = 0.25 + k * 0.2, L = boom.hoogte;
-            strooiScraps(boom.pivot.x + boom.richting.x * L * t, boom.pivot.y + 0.6, boom.pivot.z + boom.richting.z * L * t, 1, 1.2);
+            strooiScraps(houtBak, boom.pivot.x + boom.richting.x * L * t, boom.pivot.y + 0.6, boom.pivot.z + boom.richting.z * L * t, 1, 1.2);
           }
           const d = Math.hypot(boom.pivot.x - camera.position.x, boom.pivot.z - camera.position.z);
           if(d < 25) schok = Math.max(schok, 1 - d / 25);
@@ -2835,83 +2841,185 @@ function updateBomen(dt){
 // links boven springt op. Je voorraad wordt bewaard (localStorage).
 // ══════════════════════════════════════════════════════════════════
 const SCRAP_MAX = 400;
-const scrapGeo = new THREE.BoxGeometry(0.34, 0.12, 0.10);
-{ // de kopse kanten (de eerste 8 hoekpunten = +x en -x vlakken) zijn licht hout: het breukvlak
-  const n = scrapGeo.attributes.position.count, kl = new Float32Array(n * 3);
-  for(let i = 0; i < n; i++){ const kop = i < 8; kl[i*3] = kop ? 1.45 : 1; kl[i*3+1] = kop ? 1.30 : 1; kl[i*3+2] = kop ? 1.02 : 1; }
-  scrapGeo.setAttribute('color', new THREE.Float32BufferAttribute(kl, 3));
+// Een "bak" = één soort scrap: een InstancedMesh + de lijst + de teller.
+// De kopse kanten (eerste 8 hoekpunten van een BoxGeometry) krijgen een lichte kleur: het breukvlak.
+function maakBlokScrapGeo(lengte, hoogte, diep, kop){
+  const g = new THREE.BoxGeometry(lengte, hoogte, diep);
+  const n = g.attributes.position.count, kl = new Float32Array(n * 3);
+  for(let i = 0; i < n; i++){ const k = i < 8; kl[i*3] = k ? kop[0] : 1; kl[i*3+1] = k ? kop[1] : 1; kl[i*3+2] = k ? kop[2] : 1; }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(kl, 3));
+  return g;
 }
-const scraps = new THREE.InstancedMesh(scrapGeo, new THREE.MeshLambertMaterial({map: maakBastTextuur(), vertexColors: true}), SCRAP_MAX);
-scraps.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SCRAP_MAX * 3), 3);
-scraps.count = 0; scraps.castShadow = true; scraps.frustumCulled = false;
-scene.add(scraps);
-const scrapLijst = [];        // per plekje in de InstancedMesh één scrap (of null)
-let scrapVolgende = 0;        // ringbuffer: is alles vol, dan vervangen we de oudste
+function maakScrapBak(geo, mat, sleutel, tint, maatMin, maatVar, rustOmhoog){
+  const mesh = new THREE.InstancedMesh(geo, mat, SCRAP_MAX);
+  mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SCRAP_MAX * 3), 3);
+  mesh.count = 0; mesh.castShadow = true; mesh.frustumCulled = false;
+  scene.add(mesh);
+  let aantal = 0;
+  try { aantal = parseInt(localStorage.getItem(sleutel) || '0', 10) || 0; } catch(e) {}
+  return {mesh, lijst: [], volgende: 0, sleutel, tint, maatMin, maatVar, rustOmhoog, aantal};
+}
+const houtBak = maakScrapBak(
+  maakBlokScrapGeo(0.34, 0.12, 0.10, [1.45, 1.30, 1.02]),
+  new THREE.MeshLambertMaterial({map: maakBastTextuur(), vertexColors: true}),
+  'deluxe-eiland-hout', (c) => c.setHSL(0.08 + Math.random() * 0.03, 0.45, 0.28 + Math.random() * 0.12), 1.15, 0.6, 0.06);
+const steenBak = maakScrapBak(
+  maakSteenGeometrie(8.1, 0.15, 0, 5.5),           // een klein brokje rots (zelfde maker als het gruis)
+  new THREE.MeshPhongMaterial({vertexColors: true, flatShading: true, map: maakGranietTextuur(), shininess: 6, specular: 0x2a2a26}),
+  'deluxe-eiland-steen', (c) => { const g2 = 0.8 + Math.random() * 0.35; c.setRGB(g2, g2 * 0.98, g2 * 0.94); }, 0.16, 0.14, 0.5);
 const scrapDummy = new THREE.Object3D(), scrapKleur = new THREE.Color();
-let houtScraps = 0;
-try { houtScraps = parseInt(localStorage.getItem('deluxe-eiland-hout') || '0', 10) || 0; } catch(e) {}
 function toonHout(plus){
   const el = document.getElementById('houtTeller');
-  el.textContent = '🪵 ' + houtScraps + (houtScraps === 1 ? ' scrap' : ' scraps');
+  el.textContent = '🪵 ' + houtBak.aantal + '   🪨 ' + steenBak.aantal;
   if(plus){ el.classList.remove('plus'); void el.offsetWidth; el.classList.add('plus'); }
 }
-function zetScrapMatrix(i, sc){
+function zetScrapMatrix(bak, i, sc){
   if(sc.weg){ scrapDummy.position.set(0, -999, 0); scrapDummy.scale.setScalar(0.001); }
   else { scrapDummy.position.set(sc.x, sc.y, sc.z); scrapDummy.scale.setScalar(sc.maat); }
   scrapDummy.rotation.set(sc.rx, sc.ry, sc.rz);
   scrapDummy.updateMatrix();
-  scraps.setMatrixAt(i, scrapDummy.matrix);
+  bak.mesh.setMatrixAt(i, scrapDummy.matrix);
 }
-// strooi een aantal stukken hout vanaf (x,y,z) met een beetje vaart
-function strooiScraps(x, y, z, aantal, vaart){
+// strooi een aantal scraps uit de bak vanaf (x,y,z) met een beetje vaart
+function strooiScraps(bak, x, y, z, aantal, vaart){
   for(let k = 0; k < aantal; k++){
-    const i = scrapVolgende; scrapVolgende = (scrapVolgende + 1) % SCRAP_MAX;
-    const hoek = Math.random() * Math.PI * 2, v = vaart * (0.5 + Math.random() * 0.8);
+    const i = bak.volgende; bak.volgende = (bak.volgende + 1) % SCRAP_MAX;
+    const hoek = Math.random() * Math.PI * 2, vsn = vaart * (0.5 + Math.random() * 0.8);
+    const maat = bak.maatMin + Math.random() * bak.maatVar;
     const sc = {
       x: x + (Math.random() - 0.5) * 0.3, y, z: z + (Math.random() - 0.5) * 0.3,
-      vx: Math.cos(hoek) * v, vy: 2.2 + Math.random() * 2.6, vz: Math.sin(hoek) * v,
+      vx: Math.cos(hoek) * vsn, vy: 2.2 + Math.random() * 2.6, vz: Math.sin(hoek) * vsn,
       rx: Math.random() * 6.28, ry: Math.random() * 6.28, rz: Math.random() * 6.28,
       wx: (Math.random() - 0.5) * 14, wy: (Math.random() - 0.5) * 14, wz: (Math.random() - 0.5) * 14,
-      maat: 1.15 + Math.random() * 0.6, rust: false, weg: false
+      maat, rustY: bak.rustOmhoog * (bak.rustOmhoog < 0.2 ? 1 : maat), rust: false, weg: false
     };
-    scrapLijst[i] = sc;
-    scrapKleur.setHSL(0.08 + Math.random() * 0.03, 0.45, 0.28 + Math.random() * 0.12);
-    scraps.setColorAt(i, scrapKleur);
-    zetScrapMatrix(i, sc);
+    bak.lijst[i] = sc;
+    bak.tint(scrapKleur);
+    bak.mesh.setColorAt(i, scrapKleur);
+    zetScrapMatrix(bak, i, sc);
   }
-  scraps.count = Math.max(scraps.count, Math.min(SCRAP_MAX, scrapLijst.length));
-  scraps.instanceMatrix.needsUpdate = true;
-  scraps.instanceColor.needsUpdate = true;
+  bak.mesh.count = Math.max(bak.mesh.count, Math.min(SCRAP_MAX, bak.lijst.length));
+  bak.mesh.instanceMatrix.needsUpdate = true;
+  bak.mesh.instanceColor.needsUpdate = true;
 }
-function updateScraps(dt){
+function updateScrapBak(bak, dt){
   let veranderd = false;
   const px = camera.position.x, pz = camera.position.z, py = camera.position.y - OOG;
-  for(let i = 0; i < scrapLijst.length; i++){
-    const sc = scrapLijst[i];
+  for(let i = 0; i < bak.lijst.length; i++){
+    const sc = bak.lijst[i];
     if(!sc || sc.weg) continue;
     if(!sc.rust){
       sc.vy -= 14 * dt;
       sc.x += sc.vx * dt; sc.y += sc.vy * dt; sc.z += sc.vz * dt;
       sc.rx += sc.wx * dt; sc.ry += sc.wy * dt; sc.rz += sc.wz * dt;
-      const grond = hoogteOp(sc.x, sc.z) + 0.06;
+      const grond = hoogteOp(sc.x, sc.z) + sc.rustY;
       if(sc.y <= grond){
         sc.y = grond;
         if(sc.vy < -1.6){ sc.vy = -sc.vy * 0.3; sc.vx *= 0.5; sc.vz *= 0.5; sc.wx *= 0.5; sc.wz *= 0.5; }   // stuitertje
         else { sc.rust = true; sc.rx = Math.round(sc.rx / Math.PI) * Math.PI; sc.rz = Math.round(sc.rz / Math.PI) * Math.PI; }  // plat neerleggen
       }
-      zetScrapMatrix(i, sc); veranderd = true;
+      zetScrapMatrix(bak, i, sc); veranderd = true;
     }
     // oppakken: loop eroverheen
     if(Math.abs(sc.x - px) < 1.4 && Math.abs(sc.z - pz) < 1.4 && Math.hypot(sc.x - px, sc.z - pz) < 1.4 && Math.abs(sc.y - py) < 2.5){
-      sc.weg = true; zetScrapMatrix(i, sc); veranderd = true;
-      houtScraps++;
-      try { localStorage.setItem('deluxe-eiland-hout', String(houtScraps)); } catch(e) {}
+      sc.weg = true; zetScrapMatrix(bak, i, sc); veranderd = true;
+      bak.aantal++;
+      try { localStorage.setItem(bak.sleutel, String(bak.aantal)); } catch(e) {}
       toonHout(true);
       geluidPlop();
     }
   }
-  if(veranderd) scraps.instanceMatrix.needsUpdate = true;
+  if(veranderd) bak.mesh.instanceMatrix.needsUpdate = true;
 }
+function updateScraps(dt){ updateScrapBak(houtBak, dt); updateScrapBak(steenBak, dt); }
+
+// ══════════════════════════════════════════════════════════════════
+// 9d. STEEN HAKKEN (Brian, 5 sep: "maak dat je steen kan hakken, 20 keer slaan
+//     om kapot te maken, en meer steen op de map")
+// Sla op een rots: hij trilt en tikt. Elke vierde klap springt er een scherf
+// af. Na 20 klappen barst hij: een wolk stof, een lading steenscraps, en de
+// rots is weg. De scraps pak je op zoals hout (🪨-teller).
+// ══════════════════════════════════════════════════════════════════
+const STEEN_SLAGEN = 20;
+const schuddendeStenen = new Set();
+const _sM = new THREE.Matrix4(), _sT = new THREE.Matrix4(), _sAs = new THREE.Vector3(1, 0, 0.6).normalize();
+function steenVoorJe(){
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+  const px = camera.position.x, pz = camera.position.z;
+  let best = null, bestD = 1e9;
+  for(const st of stenen){
+    if(st.weg) continue;
+    const bereik = SLAG_BEREIK + st.maat * 0.9;         // een grote rots raak je ook van iets verder
+    const dx = st.x - px, dz = st.z - pz;
+    if(Math.abs(dx) > bereik || Math.abs(dz) > bereik) continue;
+    const d = Math.hypot(dx, dz);
+    if(d > bereik || d > bestD) continue;
+    if((dx * fx + dz * fz) / (d || 1) < 0.3) continue;
+    best = st; bestD = d;
+  }
+  return best;
+}
+function zetSteenMatrix(st, hoek){                  // trillen om zijn eigen midden
+  _sM.makeRotationAxis(_sAs, hoek);
+  _sT.makeTranslation(-st.x, -st.y, -st.z); _sM.multiply(_sT);
+  _sT.makeTranslation(st.x, st.y, st.z); _sM.premultiply(_sT);
+  _sM.multiply(st.matrix);
+  st.mesh.setMatrixAt(st.idx, _sM);
+  st.mesh.instanceMatrix.needsUpdate = true;
+}
+function slaSteen(st){
+  st.slagen++; st.schud = 1; schuddendeStenen.add(st);
+  geluidSteenTik();
+  const dx = camera.position.x - st.x, dz = camera.position.z - st.z, d = Math.hypot(dx, dz) || 1;
+  if(st.slagen % 4 === 0) strooiScraps(steenBak, st.x + dx / d * st.maat * 0.9, st.y + st.maat * 0.3, st.z + dz / d * st.maat * 0.9, 1, 1.4);
+  if(st.slagen >= STEEN_SLAGEN){
+    st.weg = true; schuddendeStenen.delete(st);
+    _sM.makeScale(0, 0, 0); st.mesh.setMatrixAt(st.idx, _sM); st.mesh.instanceMatrix.needsUpdate = true;
+    strooiScraps(steenBak, st.x, st.y + st.maat * 0.4, st.z, 5 + Math.round(st.maat * 3), 2.6);
+    for(let i = 0; i < 8; i++){                      // grijze stofwolk
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.5, color: 0x9a9690}));
+      sp.position.set(st.x + (Math.random() - 0.5) * st.maat * 1.5, st.y + 0.3, st.z + (Math.random() - 0.5) * st.maat * 1.5);
+      sp.userData = {leeftijd: 0, vx: (Math.random() - 0.5) * 1.5, vz: (Math.random() - 0.5) * 1.5};
+      sp.scale.set(1, 1, 1);
+      scene.add(sp); stofWolken.push(sp);
+    }
+    geluidSteenBreekt();
+    zeg('🪨 KRAK! De rots is kapot');
+  } else {
+    zeg('⛏️ ' + st.slagen + ' / ' + STEEN_SLAGEN);
+  }
+}
+function updateStenen(dt){
+  for(const st of schuddendeStenen){
+    st.schud *= Math.pow(0.02, dt);
+    if(st.schud < 0.01){ zetSteenMatrix(st, 0); schuddendeStenen.delete(st); continue; }
+    zetSteenMatrix(st, Math.sin(performance.now() * 0.05) * 0.04 * st.schud);
+  }
+}
+function geluidSteenTik(){ metAudio(ac => {       // harde tik op steen
+  const t0 = ac.currentTime;
+  const src = ac.createBufferSource(); src.buffer = ruisBuffer(ac, 0.05, 2);
+  const f = ac.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1800;
+  const g = ac.createGain(); g.gain.value = 0.5;
+  src.connect(f); f.connect(g); g.connect(ac.destination); src.start(t0);
+  const o = ac.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(1100, t0); o.frequency.exponentialRampToValueAtTime(650, t0 + 0.06);
+  const og = ac.createGain(); og.gain.setValueAtTime(0.3, t0); og.gain.exponentialRampToValueAtTime(0.001, t0 + 0.08);
+  o.connect(og); og.connect(ac.destination); o.start(t0); o.stop(t0 + 0.09);
+}); }
+function geluidSteenBreekt(){ metAudio(ac => {    // de rots barst
+  const t0 = ac.currentTime;
+  const src = ac.createBufferSource(); src.buffer = ruisBuffer(ac, 0.45, 2);
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1500;
+  const g = ac.createGain(); g.gain.value = 0.75;
+  src.connect(f); f.connect(g); g.connect(ac.destination); src.start(t0);
+  for(let i = 0; i < 7; i++){                        // brokken die neerkletteren
+    const k = ac.createBufferSource(); k.buffer = ruisBuffer(ac, 0.04, 2);
+    const kf = ac.createBiquadFilter(); kf.type = 'highpass'; kf.frequency.value = 1200;
+    const kg = ac.createGain(); kg.gain.value = 0.3;
+    k.connect(kf); kf.connect(kg); kg.connect(ac.destination); k.start(t0 + 0.15 + Math.random() * 0.5);
+  }
+}); }
 function geluidPlop(){ metAudio(ac => {          // vrolijk tikje bij oppakken
   const t0 = ac.currentTime;
   const o = ac.createOscillator(); o.type = 'triangle';
@@ -3312,6 +3420,7 @@ function loop(nu){
     updateRook(dt, t);
     updateBomen(dt);
     updateScraps(dt);
+    updateStenen(dt);
   }
   golfZee(t);
   updateWind(t);      _m.wind     += performance.now() - _t; _t = performance.now();
