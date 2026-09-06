@@ -1616,15 +1616,18 @@ let windTeller = 0;
 function updateWind(t){
   // niet elk beeldje opnieuw — dat scheelt rekenwerk en je ziet het verschil niet
   if(++windTeller % (IS_TOUCH ? 3 : 2) !== 0) return;
-  const vlaag = 0.6 + 0.4 * Math.sin(t * 0.23);     // de wind wordt sterker en zwakker
+  const storm = (typeof onweerKracht !== 'undefined') ? onweerKracht : 0;
+  // de wind wordt sterker en zwakker; bij onweer: harde vlagen (tot 4x zo hard) die aanzwellen
+  const vlaag = (0.6 + 0.4 * Math.sin(t * 0.23)) * (1 + 3 * storm) + storm * 1.5 * Math.max(0, Math.sin(t * 0.7) * Math.sin(t * 0.31 + 1));
+  const stormBuig = 0.28 * storm;                    // alle bladeren worden één kant op geduwd
   for(let i = 0; i < bladData.length; i++){
     const bd = bladData[i];
     const w = bd.wieg * vlaag;
     bladDummy.position.copy(bd.top);
     bladDummy.rotation.set(
       0,
-      bd.hoek + Math.sin(t * 1.3 + bd.fase) * 0.05 * w,
-      -(bd.droop + Math.sin(t * 1.7 + bd.fase) * 0.075 * w)
+      bd.hoek + Math.sin(t * (1.3 + 2.5 * storm) + bd.fase) * 0.05 * w,
+      -(bd.droop + Math.sin(t * (1.7 + 3 * storm) + bd.fase) * 0.075 * w + stormBuig * bd.wieg)
     );
     bladDummy.scale.set(bd.sx, bd.sy, bd.sx);
     bladDummy.updateMatrix();
@@ -3816,7 +3819,7 @@ const UITB_MAX = IS_TOUCH ? 420 : 900;
 let uitbarstTimer = 0, uitbarst = null, rommelt = false, rommelGeluid = null;
 let bomTeller = 0, asTeller = 0, zuilTeller = 0, boemTimer = 0, brokTeller = 0, stroomTimer = 0;
 const brokken = [], lavaStromen = [], lavaStroomSegs = [];
-let zuilMesh = null, _luchtMat = null, _fogKleur = null, _zonSterkte = null;
+let zuilMesh = null, _luchtMat = null, _fogKleur = null, _zonSterkte = null, _fogDichtbij = null, _fogVer = null;
 const lavaPlekken = [];
 const lavaPlekGeo = new THREE.SphereGeometry(1, 10, 7);   // platte gloeiende brok (steekt boven het terrein-raster uit)
 function startRommel(){
@@ -3944,8 +3947,20 @@ function updateBrandendePalmen(dt){
 }
 // ── vulkanische bliksem in de aswolk ──
 let bliksemTimer = 3, bliksemLicht = null, bliksemSprite = null, bliksemT = 0;
-function geluidDonder(vol = 0.8, wacht = 0.25 + Math.random() * 0.5){ metAudio(ac => {
+function geluidDonder(vol = 0.8, wacht = 0.25 + Math.random() * 0.5, afstand = 300){ metAudio(ac => {
   const t0 = ac.currentTime + wacht;
+  if(afstand < 160){                                   // de KNAL: scherp, kort, hard
+    const k = ac.createBufferSource(); k.buffer = ruisBuffer(ac, 0.25, 3);
+    const kf = ac.createBiquadFilter(); kf.type = 'highpass'; kf.frequency.value = 900;
+    const kg = ac.createGain(); kg.gain.setValueAtTime(Math.min(1.2, vol * 1.4), t0); kg.gain.exponentialRampToValueAtTime(0.001, t0 + 0.3);
+    k.connect(kf); kf.connect(kg); kg.connect(ac.destination); k.start(t0);
+  }
+  if(afstand > 250){                                   // ver weg: een tweede, latere echo-rol
+    const e = ac.createBufferSource(); e.buffer = ruisBuffer(ac, 2.6, 1.0);
+    const ef = ac.createBiquadFilter(); ef.type = 'lowpass'; ef.frequency.value = 90;
+    const eg = ac.createGain(); eg.gain.setValueAtTime(0.0001, t0 + 1.2); eg.gain.exponentialRampToValueAtTime(Math.max(0.01, vol * 0.5), t0 + 1.6); eg.gain.exponentialRampToValueAtTime(0.001, t0 + 3.8);
+    e.connect(ef); ef.connect(eg); eg.connect(ac.destination); e.start(t0 + 1.2);
+  }
   const src = ac.createBufferSource(); src.buffer = ruisBuffer(ac, 1.8, 1.2);
   const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(900, t0); f.frequency.exponentialRampToValueAtTime(120, t0 + 1.6);
   const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(Math.max(0.01, vol), t0 + 0.05); g.gain.exponentialRampToValueAtTime(0.001, t0 + 1.8 + vol);
@@ -4120,6 +4135,10 @@ function updateWeerLucht(dt){
   const kU = _luchtKracht, kO = onweerKracht;
   if(kU < 0.002 && kO < 0.002 && hemelFlits <= 0 && !_luchtMat) return;
   if(!_luchtMat){ const bol = scene.children.find(o => o.material && o.material.map === luchtTex && o.material.side === THREE.BackSide); _luchtMat = bol ? bol.material : {color: new THREE.Color()}; _fogKleur = scene.fog.color.clone(); _zonSterkte = zon.intensity; }
+  if(_fogVer === null){ _fogDichtbij = scene.fog.near; _fogVer = scene.fog.far; }
+  scene.fog.near += ((_fogDichtbij * (1 - 0.7 * kO)) - scene.fog.near) * Math.min(1, dt * 0.6);
+  scene.fog.far += ((_fogVer * (1 - 0.68 * kO) * (1 - 0.3 * kU)) - scene.fog.far) * Math.min(1, dt * 0.6);
+  lucht.rotation.y += dt * 0.0025 * (1 + 8 * kO);
   const snelheid = hemelFlits > 0 ? 14 : 0.8;
   const doelL = new THREE.Color(1, 1, 1).lerp(new THREE.Color(0.72, 0.42, 0.28), kU * 0.85).lerp(new THREE.Color(0.30, 0.33, 0.40), kO * 0.8).lerp(new THREE.Color(1.12, 1.12, 1.2), hemelFlits * 0.9);
   _luchtMat.color.lerp(doelL, Math.min(1, dt * snelheid));
@@ -5483,48 +5502,156 @@ function stopRegenGeluid(){
   if(!regenGeluid) return; const r = regenGeluid; regenGeluid = null;
   metAudio(ac => { r.g.gain.setValueAtTime(Math.max(0.0001, r.g.gain.value), ac.currentTime); r.g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 2.5); r.src.stop(ac.currentTime + 2.6); });
 }
+function schichtLijn(van, naar, kartel, stappen){
+  const pts = [];
+  for(let i = 0; i <= stappen; i++){ const f = i / stappen; const k = (i > 0 && i < stappen) ? kartel * (1 - f * 0.4) : 0; pts.push(new THREE.Vector3(van.x + (naar.x - van.x) * f + (Math.random() - 0.5) * k, van.y + (naar.y - van.y) * f + (Math.random() - 0.5) * k * 0.4, van.z + (naar.z - van.z) * f + (Math.random() - 0.5) * k)); }
+  return pts;
+}
 function slaBliksem(){
+  // 35% is BLADBLIKSEM: alleen een flits in de wolken, met gerommel — geen schicht
+  if(Math.random() < 0.35){ hemelFlits = 0.75; geluidDonder(0.35 + Math.random() * 0.3, 1.2 + Math.random() * 2, 600); return; }
   const dichtbij = Math.random() < 0.25;                           // soms griezelig dichtbij
   const a = Math.random() * 6.283, r = dichtbij ? 6 + Math.random() * 30 : 60 + Math.random() * 380;
   const x = camera.position.x + Math.cos(a) * r, z = camera.position.z + Math.sin(a) * r;
   const grond = Math.max(hoogteOp(x, z), -0.5), top = grond + 520;
-  // kartelige schicht van de wolken naar de grond
-  const pts = []; const px = x + (Math.random() - 0.5) * 90, pz = z + (Math.random() - 0.5) * 90, N = 24;
-  for(let i = 0; i <= N; i++){ const f = i / N; const kartel = (i > 0 && i < N) ? 16 * (1 - f * 0.4) : 0; pts.push(new THREE.Vector3(px + (x - px) * f + (Math.random() - 0.5) * kartel, top - (top - grond) * f, pz + (z - pz) * f + (Math.random() - 0.5) * kartel)); }
-  const lijn = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({color: 0xf4f8ff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, fog: false}));
-  scene.add(lijn);
-  const gloed = [];
-  for(let i = 1; i < N; i += 3){ const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, color: 0xcfe0ff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, fog: false})); sp.position.copy(pts[i]); sp.scale.set(16, 16, 1); scene.add(sp); gloed.push(sp); }
-  const licht = new THREE.PointLight(0xdfe8ff, 14, 800, 1); licht.position.set(x, grond + 40, z); scene.add(licht);
-  bolten.push({lijn, gloed, licht, t: 0});
+  const start = new THREE.Vector3(x + (Math.random() - 0.5) * 90, top, z + (Math.random() - 0.5) * 90), eind = new THREE.Vector3(x, grond, z);
+  const lijnen = [], gloed = [];
+  const maakLijn = (pts, dikte) => {
+    const lijn = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({color: dikte > 1 ? 0xf8fbff : 0xbfd4ff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, fog: false}));
+    scene.add(lijn); lijnen.push(lijn);
+    for(let i = 1; i < pts.length - 1; i += (dikte > 1 ? 3 : 5)){ const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, color: 0xcfe0ff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, fog: false})); sp.position.copy(pts[i]); const m = dikte > 1 ? 18 : 8; sp.scale.set(m, m, 1); scene.add(sp); gloed.push(sp); }
+  };
+  const hoofd = schichtLijn(start, eind, 16, 26); maakLijn(hoofd, 2);
+  // 2-3 zijtakken: beginnen ergens op de hoofdschicht, schieten schuin naar beneden en stoppen in de lucht
+  const takken = 2 + Math.floor(Math.random() * 2);
+  for(let k = 0; k < takken; k++){
+    const i0 = 4 + Math.floor(Math.random() * (hoofd.length - 10)); const p0 = hoofd[i0];
+    const tak = schichtLijn(p0, new THREE.Vector3(p0.x + (Math.random() - 0.5) * 140, p0.y - 80 - Math.random() * 140, p0.z + (Math.random() - 0.5) * 140), 10, 9);
+    maakLijn(tak, 1);
+  }
+  const licht = new THREE.PointLight(0xdfe8ff, 14, 900, 1); licht.position.set(x, grond + 40, z); scene.add(licht);
+  bolten.push({lijnen, gloed, licht, t: 0, slagen: 2 + Math.floor(Math.random() * 2)});
   const d = Math.hypot(x - camera.position.x, z - camera.position.z);
-  geluidDonder(Math.max(0.15, 1 - d / 650), 0.15 + d / 340);       // donder komt later naarmate hij verder weg is
+  geluidDonder(Math.max(0.15, 1 - d / 650), 0.05 + d / 340, d);   // donder komt later naarmate hij verder weg is
   schok = Math.max(schok, Math.max(0, 1.3 - d / 70));
   hemelFlits = 1;
+  // waar hij inslaat: op zee een pluim stoom + spetters, op land een zwarte plek + opstuivend zand
+  if(grond < 0.3){ spetter(x, z, 34, 1.6); for(let q = 0; q < 5; q++){ const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.7, color: 0xe8eef2})); sp.position.set(x, 1, z); sp.userData = {vx: (Math.random() - 0.5) * 3, vy: 5 + Math.random() * 4, vz: (Math.random() - 0.5) * 3, leeftijd: 0, maat: 6 + Math.random() * 6, duur: 5}; sp.scale.set(sp.userData.maat, sp.userData.maat, 1); scene.add(sp); asWolken.push(sp); } }
+  else {
+    const sch = new THREE.Mesh(lavaPlekGeo, new THREE.MeshBasicMaterial({color: 0x15100c, transparent: true, opacity: 0.7, depthWrite: false}));
+    sch.position.set(x, grond + 0.06, z); sch.scale.set(3, 0.5, 3); sch.userData = {leeftijd: 0, schroei: true}; scene.add(sch); lavaPlekken.push(sch);
+    if(typeof zandwolk === 'function') zandwolk(x, z, grond, 8);
+    if(typeof steekPalmenAan === 'function') steekPalmenAan(x, z, 5);
+  }
   if(d < 4 && !dood) gaDood('⚡ Getroffen door de bliksem!');
-  if(grond > 0.3 && typeof steekPalmenAan === 'function') steekPalmenAan(x, z, 5);
+}
+// ── stormwolken: laaghangende donkere wolken die met de wind over je heen trekken ──
+const stormWolken = [];
+function updateStormWolken(dt){
+  const N = IS_TOUCH ? 22 : 46;
+  if(onweerKracht > 0.04 && stormWolken.length === 0){
+    for(let i = 0; i < N; i++){
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0, color: 0x262a33, fog: false}));
+      const m = 240 + Math.random() * 220; sp.scale.set(m, m * 0.55, 1); sp.material.rotation = Math.random() * 6.283;
+      sp.position.set(camera.position.x + (Math.random() - 0.5) * 1400, 250 + Math.random() * 140, camera.position.z + (Math.random() - 0.5) * 1400);
+      sp.userData = {spin: (Math.random() - 0.5) * 0.06, v: 18 + Math.random() * 10, tint: 0.7 + Math.random() * 0.5}; scene.add(sp); stormWolken.push(sp);
+    }
+  }
+  for(const sp of stormWolken){
+    sp.material.opacity = 0.92 * Math.min(1, onweerKracht * 1.3);
+    sp.material.rotation += sp.userData.spin * dt;
+    sp.position.x += sp.userData.v * dt; sp.position.z += sp.userData.v * 0.3 * dt;
+    const f = 0.18 * sp.userData.tint * (1 + 2.5 * hemelFlits); sp.material.color.setRGB(f, f * 1.05, f * 1.2);
+    if(sp.position.x - camera.position.x > 720) sp.position.x -= 1440;
+    if(Math.abs(sp.position.z - camera.position.z) > 720) sp.position.z = camera.position.z + (Math.random() - 0.5) * 1400;
+  }
+  if(onweerKracht < 0.02 && stormWolken.length){ for(const sp of stormWolken){ scene.remove(sp); sp.material.dispose(); } stormWolken.length = 0; }
+}
+// ── regenspetters op de grond en op het water ──
+const regenSpatten = []; let spatTeller = 0;
+function updateRegenSpatten(dt){
+  if(onweerKracht > 0.3 && !IS_TOUCH){
+    spatTeller += dt * 70 * onweerKracht;
+    while(spatTeller >= 1 && regenSpatten.length < 90){
+      spatTeller -= 1;
+      const x = camera.position.x + (Math.random() - 0.5) * 22, z = camera.position.z + (Math.random() - 0.5) * 22;
+      const g = Math.max(hoogteOp(x, z), -0.05);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.55, color: 0xe4eef8}));
+      sp.position.set(x, g + 0.12, z); sp.scale.set(0.15, 0.15, 1); sp.userData = {t: 0}; scene.add(sp); regenSpatten.push(sp);
+    }
+  }
+  for(let i = regenSpatten.length - 1; i >= 0; i--){
+    const sp = regenSpatten[i]; sp.userData.t += dt; const f = sp.userData.t / 0.28;
+    sp.scale.set(0.15 + f * 0.7, 0.15 + f * 0.35, 1); sp.material.opacity = 0.55 * (1 - f);
+    if(f >= 1){ scene.remove(sp); sp.material.dispose(); regenSpatten.splice(i, 1); }
+  }
+}
+// ── windgeluid (gehuil) ──
+let windGeluid = null;
+function startWindGeluid(){ metAudio(ac => {
+  if(windGeluid) return;
+  const src = ac.createBufferSource(); src.buffer = ruisBuffer(ac, 4, 0); src.loop = true;
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 380; f.Q.value = 1.4;
+  const lfo = ac.createOscillator(); lfo.frequency.value = 0.17; const lg = ac.createGain(); lg.gain.value = 180; lfo.connect(lg); lg.connect(f.frequency); lfo.start();
+  const g = ac.createGain(); g.gain.value = 0.0001;
+  src.connect(f); f.connect(g); g.connect(ac.destination); src.start();
+  windGeluid = {src, g, lfo};
+}); }
+function stopWindGeluid(){ if(!windGeluid) return; const w = windGeluid; windGeluid = null; metAudio(ac => { w.g.gain.setValueAtTime(Math.max(0.0001, w.g.gain.value), ac.currentTime); w.g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 3); w.src.stop(ac.currentTime + 3.1); w.lfo.stop(ac.currentTime + 3.1); }); }
+// ── de regenboog na de bui ──
+let regenboog = null, regenboogT = -1;
+function regenboogTextuur(){
+  const c = document.createElement('canvas'); c.width = 8; c.height = 128; const g = c.getContext('2d');
+  const kleuren = ['rgba(255,0,0,0)', 'rgba(255,40,40,0.9)', 'rgba(255,150,0,0.9)', 'rgba(255,240,0,0.9)', 'rgba(60,220,60,0.9)', 'rgba(40,120,255,0.9)', 'rgba(140,60,255,0.9)', 'rgba(140,60,255,0)'];
+  const gr = g.createLinearGradient(0, 0, 0, 128); kleuren.forEach((k, i) => gr.addColorStop(i / (kleuren.length - 1), k));
+  g.fillStyle = gr; g.fillRect(0, 0, 8, 128);
+  const tx = new THREE.CanvasTexture(c); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(1, 2);   // alle kleuren op de zichtbare buitenkant van de boog
+  return tx;
+}
+function toonRegenboog(){
+  if(regenboog){ scene.remove(regenboog); regenboog.geometry.dispose(); regenboog.material.dispose(); }
+  const geo = new THREE.TorusGeometry(900, 55, 6, 72, Math.PI);
+  regenboog = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({map: regenboogTextuur(), transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, fog: false}));
+  // tegenover de zon (de zon staat richting +x/+z), verticaal, met de voeten op de zee
+  const hoek = Math.atan2(45, 70) + Math.PI;
+  regenboog.position.set(camera.position.x + Math.sin(hoek) * 1500, -60, camera.position.z + Math.cos(hoek) * 1500);
+  regenboog.rotation.y = hoek; scene.add(regenboog); regenboogT = 0;
+}
+function updateRegenboog(dt){
+  if(!regenboog || regenboogT < 0) return;
+  regenboogT += dt; const D = 34;
+  regenboog.material.opacity = 0.5 * (regenboogT < 5 ? regenboogT / 5 : (regenboogT > D - 8 ? Math.max(0, (D - regenboogT) / 8) : 1));
+  if(regenboogT > D){ scene.remove(regenboog); regenboog.geometry.dispose(); regenboog.material.dispose(); regenboog = null; regenboogT = -1; }
 }
 function updateOnweer(dt){
   if(RAMP_TEST === 'onweer' && !onweerTestGedaan && gestart){ onweerTestGedaan = true; startOnweer(70); }
   if(!onweer){ onweerTimer -= dt; if(onweerTimer <= 0 && !uitbarst){ onweerTimer = 180 + Math.random() * 240; startOnweer(45 + Math.random() * 40); } }
-  if(onweer){ onweer.t += dt; if(onweer.t >= onweer.duur){ onweer = null; stopRegenGeluid(); zeg('🌤️ het onweer trekt weg'); } }
+  if(onweer){
+    onweer.t += dt;
+    // opbouw: eerst gerommel in de verte, dan pas regen en bliksem
+    if(!onweer.rommel1 && onweer.t > 0.8){ onweer.rommel1 = true; geluidDonder(0.3, 0.8, 700); startWindGeluid(); }
+    if(!onweer.rommel2 && onweer.t > 4.5){ onweer.rommel2 = true; geluidDonder(0.45, 0.6, 500); }
+    if(onweer.t >= onweer.duur){ onweer = null; stopRegenGeluid(); stopWindGeluid(); zeg('🌤️ het onweer trekt weg'); if(!uitbarst) toonRegenboog(); }
+  }
+  updateStormWolken(dt); updateRegenSpatten(dt); updateRegenboog(dt);
+  if(windGeluid) windGeluid.g.gain.value = 0.0001 + 0.3 * onweerKracht;
   const doel = onweer ? (onweer.t < 6 ? onweer.t / 6 : (onweer.t > onweer.duur - 8 ? Math.max(0, (onweer.duur - onweer.t) / 8) : 1)) : 0;
   onweerKracht += (doel - onweerKracht) * Math.min(1, dt * 0.5);
   if(regenGeluid) regenGeluid.g.gain.value = 0.0001 + 0.4 * onweerKracht;
   hemelFlits = Math.max(0, hemelFlits - dt * 5);
   // regen: strepen die om je heen naar beneden schieten
-  const N = IS_TOUCH ? 140 : 320;
+  const N = IS_TOUCH ? 160 : 520;
   if(onweerKracht > 0.08 && regen.length === 0){
     for(let i = 0; i < N; i++){
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.3, color: 0xd6e4f5}));
-      sp.scale.set(0.07, 1.4 + Math.random() * 0.8, 1);
+      sp.scale.set(0.06 + Math.random() * 0.04, 1.2 + Math.random() * 1.2, 1); sp.material.rotation = 0.22;   // schuin door de wind
       sp.position.set(camera.position.x + (Math.random() - 0.5) * 44, camera.position.y - 4 + Math.random() * 26, camera.position.z + (Math.random() - 0.5) * 44);
       sp.userData = {v: 26 + Math.random() * 10}; scene.add(sp); regen.push(sp);
     }
   }
   for(const sp of regen){
     sp.material.opacity = 0.32 * Math.min(1, onweerKracht * 1.5);
-    sp.position.y -= sp.userData.v * dt; sp.position.x += 5 * dt;
+    sp.position.y -= sp.userData.v * dt; sp.position.x += 8 * dt;
     if(sp.position.y < camera.position.y - 6 || Math.abs(sp.position.x - camera.position.x) > 26 || Math.abs(sp.position.z - camera.position.z) > 26){
       sp.position.set(camera.position.x + (Math.random() - 0.5) * 44, camera.position.y + 10 + Math.random() * 16, camera.position.z + (Math.random() - 0.5) * 44);
     }
@@ -5534,9 +5661,12 @@ function updateOnweer(dt){
   if(onweerKracht > 0.4){ bliksemWacht -= dt; if(bliksemWacht <= 0){ bliksemWacht = 1.5 + Math.random() * 5; slaBliksem(); } }
   for(let i = bolten.length - 1; i >= 0; i--){
     const b = bolten[i]; b.t += dt;
-    const f = Math.max(0, 1 - b.t / 0.4) * (Math.random() < 0.7 ? 1 : 0.35);
-    b.lijn.material.opacity = f; for(const g of b.gloed) g.material.opacity = 0.85 * f; b.licht.intensity = 14 * f;
-    if(b.t > 0.4){ scene.remove(b.lijn); b.lijn.geometry.dispose(); b.lijn.material.dispose(); for(const g of b.gloed){ scene.remove(g); g.material.dispose(); } scene.remove(b.licht); bolten.splice(i, 1); }
+    // meerdere slagen kort achter elkaar (zo doet echte bliksem het): elke 0,12 s opnieuw fel
+    const slag = Math.min(b.slagen - 1, Math.floor(b.t / 0.12)), inSlag = (b.t - slag * 0.12) / 0.12;
+    const f = Math.max(0, 1 - inSlag * 1.1) * (1 - slag * 0.25) * (Math.random() < 0.8 ? 1 : 0.4);
+    for(const l of b.lijnen) l.material.opacity = f; for(const g of b.gloed) g.material.opacity = 0.85 * f; b.licht.intensity = 14 * f;
+    if(inSlag < 0.1 && slag > 0) hemelFlits = Math.max(hemelFlits, 0.6);
+    if(b.t > b.slagen * 0.12 + 0.05){ for(const l of b.lijnen){ scene.remove(l); l.geometry.dispose(); l.material.dispose(); } for(const g of b.gloed){ scene.remove(g); g.material.dispose(); } scene.remove(b.licht); bolten.splice(i, 1); }
   }
 }
 
