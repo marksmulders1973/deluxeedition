@@ -4182,8 +4182,40 @@ let spelerY = 0, velY = 0, opGrond = true, zwemt = false, loopBob = 0;
 }
 
 let springWas = false;
+// 🕊️ VLIEGEN (admin, Brian 6 sep: "dat ik kan vliegen waar ik heen wil — ik ga naar waar ik kijk")
+// Vooruit = precies de kijkrichting (ook omhoog/omlaag), A/D = opzij, spatie = stijgen,
+// C = dalen, Shift = turbo. Geen zwaartekracht, niet door de grond, wel overal heen.
+const VLIEG = 38, VLIEG_TURBO = 95;
+function updateVliegen(dt){
+  let vx = 0, vz = 0, vy = 0;
+  if(toets['KeyW'] || toets['ArrowUp'])    vz -= 1;
+  if(toets['KeyS'] || toets['ArrowDown'])  vz += 1;
+  if(toets['KeyA'] || toets['ArrowLeft'])  vx -= 1;
+  if(toets['KeyD'] || toets['ArrowRight']) vx += 1;
+  if(toets['Space'] || touchSpring) vy += 1;
+  if(toets['KeyC'] || toets['ControlLeft']) vy -= 1;
+  vx += joyVec.x; vz += joyVec.y;
+  const rent = toets['ShiftLeft'] || toets['ShiftRight'];
+  const snel = (rent ? VLIEG_TURBO : VLIEG) * (adminSnel ? 1.6 : 1);
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  // vooruit = kijkrichting (met hoogte), opzij = plat
+  const fx = -Math.sin(yaw) * cp, fy = sp, fz = -Math.cos(yaw) * cp;
+  const rx = Math.cos(yaw), rz = -Math.sin(yaw);
+  const nx = camera.position.x + (fx * -vz + rx * vx) * snel * dt;
+  const nz = camera.position.z + (fz * -vz + rz * vx) * snel * dt;
+  let ny = camera.position.y + (fy * -vz + vy * 0.7) * snel * dt;
+  // niet door de grond of het water, niet hoger dan de wolken, niet van de kaart af
+  const grond = Math.max(hoogteOp(nx, nz), -0.55);
+  ny = Math.max(grond + 1.2, Math.min(1400, ny));
+  const d = Math.hypot(nx, nz), maxR = ZEE_MAAT * 0.48;
+  camera.position.set(d > maxR ? nx / d * maxR : nx, ny, d > maxR ? nz / d * maxR : nz);
+  spelerY = ny - OOG; velY = 0; opGrond = false; zwemt = false; springWas = !!toets['Space'] || touchSpring;
+  handen[0].position.y = -0.44; handen[1].position.y = -0.44;
+  document.getElementById('zwemBalk').style.display = 'none';
+}
 function updateSpeler(dt){
   if(dood){ updateDood(dt); return; }
+  if(adminVlieg){ updateVliegen(dt); return; }
   let vx = 0, vz = 0;
   if(toets['KeyW'] || toets['ArrowUp'])    vz -= 1;
   if(toets['KeyS'] || toets['ArrowDown'])  vz += 1;
@@ -5188,7 +5220,7 @@ function geluidBorrel(){ metAudio(ac => {            // borrelende zee (een reek
 // en een knop naar het lobby-paneel.
 // ══════════════════════════════════════════════════════════════════
 const IS_NOVAX = (() => { try { return (localStorage.getItem('deluxe-speler') || '').trim() === 'NovaX'; } catch(e){ return false; } })();
-let adminGod = false, adminSnel = false, apOpenStaat = false;
+let adminGod = false, adminSnel = false, adminVlieg = false, apOpenStaat = false;
 function apToon(){ const k = document.getElementById('apKnop'); if(k) k.style.display = (IS_NOVAX && gestart) ? 'block' : 'none'; }
 function apOpen(){ if(!IS_NOVAX) return; apOpenStaat = true; document.getElementById('apPaneel').style.display = 'flex'; apTeken(); if(pointerLocked) document.exitPointerLock(); }
 function apSluit(){ apOpenStaat = false; document.getElementById('apPaneel').style.display = 'none'; }
@@ -5216,6 +5248,7 @@ function apTeken(){
     b.onclick = fn; el.appendChild(b);
   };
   knop('🛡️', 'Onsterfelijk ' + (adminGod ? 'AAN' : 'UIT'), 'lava, Kraken en tentakels kunnen je niets doen', () => { adminGod = !adminGod; zeg(adminGod ? '🛡️ onsterfelijk AAN' : '🛡️ onsterfelijk UIT'); apTeken(); }, adminGod);
+  knop('🕊️', 'Vliegen ' + (adminVlieg ? 'AAN' : 'UIT'), 'W = vooruit waar je kijkt · spatie = omhoog · C = omlaag · Shift = turbo', () => { adminVlieg = !adminVlieg; if(!adminVlieg){ velY = 0; } zeg(adminVlieg ? '🕊️ vliegen AAN — kijk waar je heen wilt en druk W' : '🕊️ vliegen UIT'); apTeken(); }, adminVlieg);
   knop('⚡', 'Supersnel ' + (adminSnel ? 'AAN' : 'UIT'), '2,5× zo snel lopen, rennen en zwemmen', () => { adminSnel = !adminSnel; zeg(adminSnel ? '⚡ supersnel AAN' : '⚡ supersnel UIT'); apTeken(); }, adminSnel);
   knop('🐙', 'Kraken NU', 'de zee gaat meteen borrelen, 12 sec later komt hij', () => apRamp('kraken'));
   knop('🌋', 'Vulkaan NU', 'de vulkaan begint meteen te rommelen', () => apRamp('vulkaan'));
