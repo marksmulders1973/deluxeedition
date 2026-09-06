@@ -996,10 +996,18 @@ const zeeMateriaal = new THREE.ShaderMaterial({
     kleurLucht:  {value: new THREE.Color(0x3f93cf)},
     kleurHorizon:{value: new THREE.Color(0x9cd3ea)},
     kleurZon:    {value: new THREE.Color(0xfff3d0)},
-    luchtMap:    {value: luchtTex}
+    luchtMap:    {value: luchtTex},
+    // 🌊 Kraken-golven (Brian 6 sep): storm = hoe wild de hele zee is (0..1),
+    // ringen = tot 4 ringgolven (x, z, straal, hoogte) die van de Kraken af rollen
+    storm:       {value: 0},
+    ringen:      {value: [new THREE.Vector4(0,0,0,0), new THREE.Vector4(0,0,0,0), new THREE.Vector4(0,0,0,0), new THREE.Vector4(0,0,0,0)]},
+    ringBreedte: {value: 34}
   }]),
   vertexShader: `
     uniform float tijd;
+    uniform float storm;
+    uniform vec4 ringen[4];
+    uniform float ringBreedte;
     attribute float diepte;
     varying vec3 vWereld;
     varying vec3 vNormaal;
@@ -1019,9 +1027,27 @@ const zeeMateriaal = new THREE.ShaderMaterial({
       golf(p.xz, normalize(vec2(-0.2, 1.00)), 0.130, 0.16, 1.50, h, dh);
       golf(p.xz, normalize(vec2( 0.7, 0.70)), 0.160, 0.08, 1.90, h, dh);   // kortere golfjes
       golf(p.xz, normalize(vec2(-0.6, 0.40)), 0.230, 0.045, 2.40, h, dh);
+      // storm: als de Kraken er is, wordt de hele zee wild (tot 7x zo hoge deining)
+      float woest = 1.0 + 6.0 * storm;
+      h *= woest; dh *= woest;
       // op het strand worden de golven lager: ze lopen dood in het zand
       float demp = clamp(diepte / 2.5, 0.12, 1.0);
       h *= demp; dh *= demp;
+      // ringgolven van de Kraken: een hoge kam met een dal erachter, rolt naar buiten
+      float dempRing = clamp(diepte / 2.0, 0.0, 1.0);
+      for(int i = 0; i < 4; i++){
+        vec4 r = ringen[i];
+        if(r.w > 0.0){
+          vec2 naar = p.xz - r.xy; float d = length(naar);
+          float x = (d - r.z) / ringBreedte;
+          float e1 = exp(-x * x), e2 = exp(-(x + 1.3) * (x + 1.3));
+          // het dal achter de kam mag nooit dieper dan het water hier is (anders zie je de zeebodem)
+          float dal = 0.4 * clamp(diepte / (r.w * 0.6 + 0.001), 0.0, 1.0);
+          h += r.w * (e1 - dal * e2) * dempRing;
+          float dprof = (-2.0 * x * e1 + 2.0 * dal * (x + 1.3) * e2) / ringBreedte;
+          dh += (naar / max(d, 0.001)) * (r.w * dprof * dempRing);
+        }
+      }
       p.y += h;
       vHoog = h;
       vNormaal = normalize(vec3(-dh.x, 1.0, -dh.y));
@@ -1156,6 +1182,45 @@ scene.add(zee);
 
 // de golven lopen: alleen de tijd doorgeven, de grafische kaart doet de rest
 function golfZee(t){ zeeMateriaal.uniforms.tijd.value = t; }
+// ── 🌊 HOGE GOLVEN VAN DE KRAKEN (Brian 6 sep: "hoge golven als hij uit het water
+//    komt of gewoon beweegt") ──
+// Een golf = ring die vanuit een punt naar buiten rolt (straal groeit, hoogte
+// zakt langzaam). De zee-shader tekent 'm (kam + dal + schuim op de top), en als
+// jij zwemt dobber je erop. Daarnaast: 'storm' maakt de hele zee wild zolang hij er is.
+const zeeGolven = [];
+let storm = 0;
+function maakGolf(x, z, hoogte, snel = 45, breedte = 34){
+  zeeGolven.push({x, z, r: 6, h: hoogte, snel, breedte, gevoeld: false});
+  if(zeeGolven.length > 8) zeeGolven.shift();
+}
+function golfProfiel(x){ return Math.exp(-x * x) - 0.4 * Math.exp(-(x + 1.3) * (x + 1.3)); }
+function golfRingHoogte(x, z){
+  let h = 0;
+  for(const g of zeeGolven){ const d = Math.hypot(x - g.x, z - g.z); h += g.h * golfProfiel((d - g.r) / g.breedte); }
+  return h;
+}
+function updateZeeGolven(dt){
+  const doel = (typeof kraken !== 'undefined' && kraken) ? (kraken.fase === 'borrelt' ? 0.25 : 1) : 0;
+  storm += (doel - storm) * Math.min(1, dt * (doel > storm ? 0.35 : 0.15));
+  zeeMateriaal.uniforms.storm.value = storm;
+  for(let i = zeeGolven.length - 1; i >= 0; i--){
+    const g = zeeGolven[i];
+    g.r += g.snel * dt;
+    g.h *= Math.exp(-dt / 9);                       // langzaam lager
+    // rolt de kam langs jou? dan schudt het beeld (en op het strand spat hij op)
+    const d = Math.hypot(camera.position.x - g.x, camera.position.z - g.z);
+    if(!g.gevoeld && Math.abs(d - g.r) < g.breedte * 0.6 && g.h > 2.5){
+      g.gevoeld = true; schok = Math.max(schok, Math.min(1.1, g.h / 12));
+      if(hoogteOp(camera.position.x, camera.position.z) > -1.5) spetter(camera.position.x + (Math.random() - 0.5) * 20, camera.position.z + (Math.random() - 0.5) * 20, Math.round(6 + g.h), 0.8 + g.h * 0.06);
+    }
+    if(g.h < 0.4 || g.r > 1500) zeeGolven.splice(i, 1);
+  }
+  // de 4 hoogste golven naar de shader
+  const top = zeeGolven.slice().sort((a, b) => b.h - a.h).slice(0, 4);
+  const u = zeeMateriaal.uniforms.ringen.value;
+  for(let i = 0; i < 4; i++){ const g = top[i]; if(g) u[i].set(g.x, g.z, g.r, g.h); else u[i].set(0, 0, 0, 0); }
+  zeeMateriaal.uniforms.ringBreedte.value = top[0] ? top[0].breedte : 34;
+}
 
 // ══════════════════════════════════════════════════════════════════
 tik('zee');
@@ -4036,7 +4101,7 @@ function updateSpeler(dt){
   // hoofd-wiebel tijdens het lopen (voelt echt)
   if(beweegt && (opGrond || zwemt)) loopBob += dt * (rent ? 13 : 8.5);
   const bob = Math.sin(loopBob) * (beweegt ? 0.055 : 0);
-  camera.position.y = spelerY + (zwemt ? 0.75 : OOG) + bob;
+  camera.position.y = spelerY + (zwemt ? 0.75 : OOG) + bob + (zwemt ? golfRingHoogte(camera.position.x, camera.position.z) * 0.85 : 0);
 
   // je handen wiebelen mee
   handen[0].position.y = -0.44 + Math.sin(loopBob) * 0.03;
@@ -4543,6 +4608,8 @@ function startKraken(){
   zeg('🐙 DE KRAKEN KOMT UIT DE ZEE!!!');
   geluidBrul(); schok = Math.max(schok, 1.6);
   spetter(plek.x, plek.z, 90, 1.6 + KRAKEN_SCHAAL * 0.4);
+  maakGolf(plek.x, plek.z, 24, 50, 46);   // de vloedgolf als hij opkomt
+  kraken.golfTimer = 1.2;
 }
 
 // inktwolk: donkere wolken die zich over het water verspreiden als hij onderduikt
@@ -4665,7 +4732,7 @@ function updateMep(arm, dt, t){
     if(u >= 1 && !m.geraakt){
       m.geraakt = true; m.fase = 'rust'; m.t = 0;
       const T = m.doel;
-      if(hoogteOp(T.x, T.z) < 0.2){ spetter(T.x, T.z, 70, 2.6); geluidPlons(1.0); } else { zandwolk(T.x, T.z, T.y, IS_TOUCH ? 22 : 40); geluidBoem(); }
+      if(hoogteOp(T.x, T.z) < 0.2){ spetter(T.x, T.z, 70, 2.6); geluidPlons(1.0); maakGolf(T.x, T.z, 12, 40, 26); } else { zandwolk(T.x, T.z, T.y, IS_TOUCH ? 22 : 40); geluidBoem(); }
       schok = Math.max(schok, 2.4);
       const d = Math.hypot(T.x - camera.position.x, T.z - camera.position.z);
       if(d < 3.4 * KRAKEN_SCHAAL * 0.5 && !dood) gaDood('🐙 Geplet door een tentakel van de Kraken!');
@@ -4747,16 +4814,18 @@ function updateKraken(dt, t){
     const u = Math.min(1, k.t / KRAKEN_OPKOMST); g.position.y = -45 * KRAKEN_SCHAAL + 45 * KRAKEN_SCHAAL * (1 - Math.pow(1 - u, 3));
     opk = u;
     if(Math.random() < dt * 10) spetter(k.plek.x, k.plek.z, 6, 1 + KRAKEN_SCHAAL * 0.25);
+    k.golfTimer -= dt; if(k.golfTimer <= 0){ k.golfTimer = 1.4; maakGolf(k.plek.x, k.plek.z, 10 + Math.random() * 8, 42, 32); }   // golf na golf
     if(u >= 1){ k.fase = 'vecht'; k.t = 0; }
   } else if(k.fase === 'vecht'){
     g.position.y = Math.sin(t * 0.8) * 0.9 * KRAKEN_SCHAAL * 0.5;
+    k.golfTimer -= dt; if(k.golfTimer <= 0){ k.golfTimer = 3 + Math.random() * 2; maakGolf(k.plek.x + (Math.random() - 0.5) * 60, k.plek.z + (Math.random() - 0.5) * 60, 5 + Math.random() * 5, 38, 30); }   // hij beweegt: de zee blijft golven
     k.gooiTimer -= dt;
     if(k.gooiTimer <= 0 && !dood){ k.gooiTimer = 4.5 + Math.random() * 3; startMep(); }   // (vroeger: waterballen)
     k.brulTimer -= dt;
     if(k.brulTimer <= 0){ k.brulTimer = 12 + Math.random() * 10; geluidBrul(); schok = Math.max(schok, 0.7); k.brult = 1.2; }
     // druppels die van de armen vallen
     if(Math.random() < dt * 3){ const arm = k.armen[Math.floor(Math.random() * k.armen.length)]; const p = armPunt(arm); if(p.y > 2) spetter(p.x, p.z, 2, 0.35); }
-    if(k.t >= KRAKEN_DUUR){ k.fase = 'zakken'; k.t = 0; zeg('🌊 de Kraken duikt weer onder…'); spetter(k.plek.x, k.plek.z, 60, 1.3 + KRAKEN_SCHAAL * 0.3); inktwolk(k.plek.x, k.plek.z, IS_TOUCH ? 16 : 30); }
+    if(k.t >= KRAKEN_DUUR){ k.fase = 'zakken'; k.t = 0; zeg('🌊 de Kraken duikt weer onder…'); spetter(k.plek.x, k.plek.z, 60, 1.3 + KRAKEN_SCHAAL * 0.3); maakGolf(k.plek.x, k.plek.z, 18, 46, 40); inktwolk(k.plek.x, k.plek.z, IS_TOUCH ? 16 : 30); }
   } else if(k.fase === 'zakken'){
     const u = Math.min(1, k.t / 7); g.position.y = -50 * KRAKEN_SCHAAL * u * u;
     opk = 1 - u;
@@ -4829,7 +4898,7 @@ function updateKraken(dt, t){
       if(u > 0.55 && !arm.geklapt){ arm.geklapt = true; geluidPlons(0.5); } }
     else if(ged === 'klap'){  const u = prog; klapF = u < 0.35 ? -Math.sin(u / 0.35 * Math.PI / 2) * 0.5 : Math.sin(Math.PI * Math.min(1, (u - 0.35) / 0.65));
       d.lift = 1.25; d.krom = 0.08; d.golf = 0.03; d.snel = 1; d.zij = 0.02; d.yaw = 0; d.strek = 0.3;
-      if(u > 0.42 && !arm.geklapt){ arm.geklapt = true; const pt = armPunt(arm); spetter(pt.x, pt.z, 40, 1.3 + KRAKEN_SCHAAL * 0.3); geluidPlons(0.9); schok = Math.max(schok, 0.6); } }
+      if(u > 0.42 && !arm.geklapt){ arm.geklapt = true; const pt = armPunt(arm); spetter(pt.x, pt.z, 40, 1.3 + KRAKEN_SCHAAL * 0.3); geluidPlons(0.9); schok = Math.max(schok, 0.6); if(hoogteOp(pt.x, pt.z) < 0) maakGolf(pt.x, pt.z, 7, 36, 24); } }
     else if(ged === 'hang'){  const u = Math.sin(Math.PI * prog); d.lift = 1.2 - 1.3 * u; d.krom = 0.16; d.golf = 0.05; d.snel = 1.2; d.zij = 0.06; d.yaw = 0; d.strek = 0;
       if(u > 0.85 && Math.random() < dt * 4){ const pt = armPunt(arm); spetter(pt.x, pt.z, 3, 0.4); } }
     // zacht naar de doelwaarden schuiven (snel gedrag = sneller schuiven)
@@ -4926,6 +4995,7 @@ function loop(nu){
     updateUitbarsting(dt);
     updateRampen(dt);
     updateKraken(dt, t);
+    updateZeeGolven(dt);
     updateCrafterSpook();
   }
   golfZee(t);
