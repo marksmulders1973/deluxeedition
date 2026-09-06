@@ -4397,7 +4397,7 @@ function maakTentakel(aantal, lenBegin, lenEind, dikBegin, dikEind, mat){
   mesh.add(botten[0]);
   mesh.bind(new THREE.Skeleton(botten));
   basis.add(mesh);
-  return {basis, stukken, mesh, L};
+  return {basis, stukken, mesh, L, lens};
 }
 // geometrieën samenvoegen (positie/normaal/uv/kleur/skin) — three r128 heeft dit niet in de kern
 function voegSamen(geos){
@@ -4588,6 +4588,108 @@ function gooiWaterbal(){
 const _tipV = new THREE.Vector3();
 function armPunt(arm){ const b = arm.stukken[arm.stukken.length - 1]; b.updateWorldMatrix(true, false); return _tipV.set(0, 2, 0).applyMatrix4(b.matrixWorld); }
 
+// ── DE TENTAKEL-MEP (Brian 6 sep: "in plaats van balletjes slaat hij met zijn
+//    tentakels op het eiland") ──
+// Hij kiest de arm die het dichtst bij jouw kant zit, draait die naar je toe,
+// tilt hem hoog op (een donkere schaduw op de grond laat zien waar hij gaat
+// neerkomen: WEGRENNEN!), en slaat hem dan met een dreun op het eiland: zand-
+// wolk, camera-schok, en sta je eronder dan ben je geplet. Daarna trekt hij de
+// arm langzaam terug en gaat hij weer gewoon zwaaien.
+const _mepB = new THREE.Vector3();
+// de arm langer/korter maken: de botten uit elkaar schuiven (de huid rekt mee)
+function rekArm(arm, s){ arm.stukken.forEach((bot, j) => { if(j > 0) bot.position.y = arm.lens[j - 1] * s; }); }
+// hoeveel moet deze arm om zijn basis draaien om precies naar punt T te wijzen?
+// (gemeten vanaf de basis van de arm zelf — die zit tientallen meters uit het midden)
+function mepYaw(arm, T){
+  arm.basis.getWorldPosition(_mepB);
+  const wereld = Math.atan2(T.x - _mepB.x, T.z - _mepB.z);
+  const eigen = kraken.groep.rotation.y + arm.hoek;
+  return Math.atan2(Math.sin(wereld - eigen), Math.cos(wereld - eigen));
+}
+function startMep(){
+  const k = kraken, g = k.groep;
+  // doel: waar jij nu staat (plus een klein beetje toeval)
+  const dx = (Math.random() - 0.5) * 6, dz = (Math.random() - 0.5) * 6;
+  const T = new THREE.Vector3(camera.position.x + dx, 0, camera.position.z + dz);
+  T.y = Math.max(0, hoogteOp(T.x, T.z));
+  // welke arm? die waarvan de richting (in de groep) het best naar jou wijst en nog vrij is
+  let beste = null, besteAf = 9, besteYaw = 0;
+  for(const arm of k.armen){
+    if(arm.mep) continue;
+    const yaw = mepYaw(arm, T), dh = Math.abs(yaw);
+    if(dh < besteAf){ besteAf = dh; beste = arm; besteYaw = yaw; }
+  }
+  if(!beste || besteAf > 1.4) return;   // niemand kan die kant op draaien — volgende keer beter
+  const yaw = besteYaw;
+  const schaduw = new THREE.Mesh(new THREE.CircleGeometry(3.4 * KRAKEN_SCHAAL * 0.55, 36), new THREE.MeshBasicMaterial({color: 0x1a0f0a, transparent: true, opacity: 0.0, depthWrite: false}));
+  schaduw.rotation.x = -Math.PI / 2; schaduw.position.set(T.x, T.y + 0.2, T.z); scene.add(schaduw);
+  beste.mep = {fase: 'hef', t: 0, doel: T, yaw, schaduw, lift: beste.p.lift, s: 1, geraakt: false};
+  beste.gedrag = 'mep'; beste.gedragT = 99;
+  geluidBrul();
+}
+// zandwolk: bruine stofwolken die opstuiven waar de arm neerkomt
+function zandwolk(x, z, y, aantal){
+  for(let i = 0; i < aantal; i++){
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.85, color: 0xc9b07c}));
+    const hoek = Math.random() * 6.283, vaart = 6 + Math.random() * 22;
+    sp.position.set(x + (Math.random() - 0.5) * 8, y + 1 + Math.random() * 3, z + (Math.random() - 0.5) * 8);
+    sp.userData = {vx: Math.cos(hoek) * vaart * 1.6, vy: 8 + Math.random() * 22, vz: Math.sin(hoek) * vaart * 1.6, leeftijd: 0, maat: 10 + Math.random() * 16, zand: true, grond: y};
+    sp.scale.set(sp.userData.maat, sp.userData.maat, 1);
+    scene.add(sp); krakenSpetters.push(sp);
+  }
+}
+function updateMep(arm, dt, t){
+  const m = arm.mep, k = kraken, g = k.groep, N = arm.stukken.length;
+  m.t += dt;
+  // waar zit de basis van de arm in de wereld, en hoe ver is het doel?
+  arm.basis.getWorldPosition(_mepB);
+  const dist = Math.hypot(m.doel.x - _mepB.x, m.doel.z - _mepB.z), dy = m.doel.y - _mepB.y;
+  const nodig = Math.hypot(dist, dy), La = arm.L * KRAKEN_SCHAAL;
+  const sDoel = Math.min(1.8, Math.max(0.6, nodig / La));           // arm uitrekken tot hij precies bij je komt
+  const liftHit = Math.PI / 2 + Math.atan2(-dy, dist);                // hoek waarbij de punt op het doel ligt
+  let lift, s = m.s, yaw = arm.p.yaw;
+  if(m.fase === 'hef'){
+    const u = Math.min(1, m.t / 1.2), e = u * u * (3 - 2 * u);
+    lift = m.lift + (0.25 - m.lift) * e;                             // hoog de lucht in
+    m.yaw = mepYaw(arm, m.doel);                                     // richting elke keer bijsturen (hij draait zelf ook)
+    yaw = arm.p.yaw + (m.yaw - arm.p.yaw) * e;                       // naar jou toe draaien
+    s = m.s + (sDoel - m.s) * e;
+    m.schaduw.material.opacity = 0.15 + 0.45 * u;                    // schaduw wordt donkerder = hij komt eraan
+    m.schaduw.scale.setScalar(1.4 - 0.4 * u);
+    if(u >= 1){ m.fase = 'mep'; m.t = 0; m.liftVan = lift; geluidZwaai(); }
+  } else if(m.fase === 'mep'){
+    const u = Math.min(1, m.t / 0.3), e = u * u;                     // versnellend naar beneden
+    m.yaw = mepYaw(arm, m.doel);
+    lift = m.liftVan + (liftHit - m.liftVan) * e; yaw = m.yaw; s = sDoel;
+    m.schaduw.material.opacity = 0.6;
+    if(u >= 1 && !m.geraakt){
+      m.geraakt = true; m.fase = 'rust'; m.t = 0;
+      const T = m.doel;
+      if(hoogteOp(T.x, T.z) < 0.2){ spetter(T.x, T.z, 70, 2.6); geluidPlons(1.0); } else { zandwolk(T.x, T.z, T.y, IS_TOUCH ? 22 : 40); geluidBoem(); }
+      schok = Math.max(schok, 2.4);
+      const d = Math.hypot(T.x - camera.position.x, T.z - camera.position.z);
+      if(d < 3.4 * KRAKEN_SCHAAL * 0.5 && !dood) gaDood('🐙 Geplet door een tentakel van de Kraken!');
+      scene.remove(m.schaduw); m.schaduw.material.dispose(); m.schaduw = null;
+    }
+  } else if(m.fase === 'rust'){
+    lift = liftHit + Math.sin(t * 3) * 0.01; yaw = m.yaw; s = sDoel;
+    if(m.t > 0.7){ m.fase = 'terug'; m.t = 0; m.liftVan = lift; m.sVan = s; }
+  } else {   // terug
+    const u = Math.min(1, m.t / 1.6), e = u * u * (3 - 2 * u);
+    lift = m.liftVan + (1.1 - m.liftVan) * e; yaw = m.yaw * (1 - e); s = m.sVan + (1 - m.sVan) * e;
+    if(u >= 1){ arm.mep = null; arm.p.lift = 1.1; arm.p.yaw = 0; rekArm(arm, 1); arm.gedrag = null; arm.gedragT = 0; return; }
+  }
+  arm.p.lift = lift; arm.p.yaw = yaw; arm.p.krom = 0; arm.p.golf = 0.02; arm.p.strek = 1;
+  arm.basis.rotation.y = arm.hoek + yaw;
+  rekArm(arm, s);
+  arm.stukken.forEach((bot, j) => {
+    const f = j / (N - 1);
+    bot.rotation.x = j === 0 ? lift : Math.sin(t * 2 - j * 0.8 + arm.fase) * 0.02 * f;   // bijna kaarsrecht
+    bot.rotation.z = j > 0 ? Math.sin(t * 1.5 + arm.fase + j) * 0.015 : 0;
+    bot.rotation.y = 0;
+  });
+}
+
 function updateKraken(dt, t){
   // spetters (en inktwolken: die vallen niet, maar zakken uit en verdwijnen langzaam)
   for(let i = krakenSpetters.length - 1; i >= 0; i--){
@@ -4598,6 +4700,15 @@ function updateKraken(dt, t){
       const s = u.maat * (1 + u.leeftijd * 0.9); sp.scale.set(s, s * 0.5, 1);
       sp.material.opacity = Math.max(0, 0.85 - u.leeftijd * 0.11);
       if(u.leeftijd > 8){ scene.remove(sp); sp.material.dispose(); krakenSpetters.splice(i, 1); }
+      continue;
+    }
+    if(u.zand){
+      u.vy -= 14 * dt; u.vx *= 0.96; u.vz *= 0.96;
+      sp.position.x += u.vx * dt; sp.position.y += u.vy * dt; sp.position.z += u.vz * dt;
+      if(sp.position.y < u.grond + 1){ sp.position.y = u.grond + 1; u.vy = 0; }
+      const sc = u.maat * (1 + u.leeftijd * 0.5); sp.scale.set(sc, sc, 1);
+      sp.material.opacity = Math.max(0, 0.85 - u.leeftijd * 0.28);
+      if(u.leeftijd > 3.2){ scene.remove(sp); sp.material.dispose(); krakenSpetters.splice(i, 1); }
       continue;
     }
     u.vy -= 22 * dt;
@@ -4640,7 +4751,7 @@ function updateKraken(dt, t){
   } else if(k.fase === 'vecht'){
     g.position.y = Math.sin(t * 0.8) * 0.9 * KRAKEN_SCHAAL * 0.5;
     k.gooiTimer -= dt;
-    if(k.gooiTimer <= 0 && !dood){ k.gooiTimer = 4 + Math.random() * 3; gooiWaterbal(); }
+    if(k.gooiTimer <= 0 && !dood){ k.gooiTimer = 4.5 + Math.random() * 3; startMep(); }   // (vroeger: waterballen)
     k.brulTimer -= dt;
     if(k.brulTimer <= 0){ k.brulTimer = 12 + Math.random() * 10; geluidBrul(); schok = Math.max(schok, 0.7); k.brult = 1.2; }
     // druppels die van de armen vallen
@@ -4651,7 +4762,7 @@ function updateKraken(dt, t){
     opk = 1 - u;
     if(Math.random() < dt * 8) spetter(k.plek.x, k.plek.z, 3, 0.8);
     if(k.schuim) k.schuim.material.opacity = 0.55 * (1 - u);
-    if(u >= 1){ scene.remove(g); if(k.schuim){ scene.remove(k.schuim); k.schuim.material.dispose(); } kraken = null; return; }
+    if(u >= 1){ scene.remove(g); if(k.schuim){ scene.remove(k.schuim); k.schuim.material.dispose(); } for(const a of k.armen) if(a.mep && a.mep.schaduw){ scene.remove(a.mep.schaduw); } kraken = null; return; }
   }
   // schuim op het water: draait en ademt mee
   if(k.schuim){ k.schuim.rotation.z += dt * 0.15; const s = 1 + 0.06 * Math.sin(t * 1.7); k.schuim.scale.set(s, s, 1); if(k.fase !== 'zakken') k.schuim.material.opacity = 0.35 + 0.2 * Math.sin(t * 2.3) + (k.fase === 'opkomen' ? 0.25 : 0); }
@@ -4687,6 +4798,7 @@ function updateKraken(dt, t){
   for(const arm of k.armen){
     const N = arm.stukken.length;
     const uit = Math.min(1, Math.max(0, (opk - arm.opkomst) / (1 - arm.opkomst + 0.001)));   // 0 = nog onder water, 1 = helemaal omhoog
+    if(arm.mep){ updateMep(arm, dt, t); continue; }   // deze arm is aan het meppen
     // gedrag kiezen / wisselen
     arm.gedragT -= dt;
     if(arm.gedragT <= 0 || !arm.gedrag){
