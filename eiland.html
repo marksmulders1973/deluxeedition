@@ -5071,6 +5071,7 @@ function armPunt(arm){ const b = arm.stukken[arm.stukken.length - 1]; b.updateWo
 // neerkomen: WEGRENNEN!), en slaat hem dan met een dreun op het eiland: zand-
 // wolk, camera-schok, en sta je eronder dan ben je geplet. Daarna trekt hij de
 // arm langzaam terug en gaat hij weer gewoon zwaaien.
+const MEP_RAAK = 6;                 // binnen 6 m van de klap = geplet; erbuiten = veilig
 const _mepB = new THREE.Vector3();
 // de arm langer/korter maken: de botten uit elkaar schuiven (de huid rekt mee)
 function rekArm(arm, s){ arm.stukken.forEach((bot, j) => { if(j > 0) bot.position.y = arm.lens[j - 1] * s; }); }
@@ -5097,7 +5098,9 @@ function startMep(){
   }
   if(!beste || besteAf > 1.4) return;   // niemand kan die kant op draaien — volgende keer beter
   const yaw = besteYaw;
-  const schaduw = new THREE.Mesh(new THREE.CircleGeometry(3.4 * KRAKEN_SCHAAL * 0.55, 36), new THREE.MeshBasicMaterial({color: 0x1a0f0a, transparent: true, opacity: 0.0, depthWrite: false}));
+  // Brian 6 sep: "je kunt niet ontsnappen, de schaduw is te groot" → raakzone 6 m (was 13,6) en de
+  // schaduw is precies zo groot als de raakzone, zodat je ziet waar je NIET moet staan
+  const schaduw = new THREE.Mesh(new THREE.CircleGeometry(MEP_RAAK, 36), new THREE.MeshBasicMaterial({color: 0x1a0f0a, transparent: true, opacity: 0.0, depthWrite: false}));
   schaduw.rotation.x = -Math.PI / 2; schaduw.position.set(T.x, T.y + 0.2, T.z); scene.add(schaduw);
   beste.mep = {fase: 'hef', t: 0, doel: T, yaw, schaduw, lift: beste.p.lift, s: 1, geraakt: false};
   beste.gedrag = 'mep'; beste.gedragT = 99;
@@ -5125,13 +5128,12 @@ function updateMep(arm, dt, t){
   const liftHit = Math.PI / 2 + Math.atan2(-dy, dist);                // hoek waarbij de punt op het doel ligt
   let lift, s = m.s, yaw = arm.p.yaw;
   if(m.fase === 'hef'){
-    const u = Math.min(1, m.t / 1.2), e = u * u * (3 - 2 * u);
+    const u = Math.min(1, m.t / 2.0), e = u * u * (3 - 2 * u);        // 2 s optillen = tijd om weg te rennen
     lift = m.lift + (0.25 - m.lift) * e;                             // hoog de lucht in
     m.yaw = mepYaw(arm, m.doel);                                     // richting elke keer bijsturen (hij draait zelf ook)
     yaw = arm.p.yaw + (m.yaw - arm.p.yaw) * e;                       // naar jou toe draaien
     s = m.s + (sDoel - m.s) * e;
-    m.schaduw.material.opacity = 0.15 + 0.45 * u;                    // schaduw wordt donkerder = hij komt eraan
-    m.schaduw.scale.setScalar(1.4 - 0.4 * u);
+    m.schaduw.material.opacity = 0.2 + 0.5 * u;                      // schaduw wordt donkerder = hij komt eraan
     if(u >= 1){ m.fase = 'mep'; m.t = 0; m.liftVan = lift; geluidZwaai(); }
   } else if(m.fase === 'mep'){
     const u = Math.min(1, m.t / 0.3), e = u * u;                     // versnellend naar beneden
@@ -5144,7 +5146,7 @@ function updateMep(arm, dt, t){
       if(hoogteOp(T.x, T.z) < 0.2){ spetter(T.x, T.z, 70, 2.6); geluidPlons(1.0); maakGolf(T.x, T.z, 12, 40, 26); } else { zandwolk(T.x, T.z, T.y, IS_TOUCH ? 22 : 40); geluidBoem(); }
       schok = Math.max(schok, 2.4);
       const d = Math.hypot(T.x - camera.position.x, T.z - camera.position.z);
-      if(d < 3.4 * KRAKEN_SCHAAL * 0.5 && !dood) gaDood('🐙 Geplet door een tentakel van de Kraken!');
+      if(d < MEP_RAAK && !dood) gaDood('🐙 Geplet door een tentakel van de Kraken!');
       scene.remove(m.schaduw); m.schaduw.material.dispose(); m.schaduw = null;
     }
   } else if(m.fase === 'rust'){
