@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>🐸 OVERSTEEK-KIKKER — een spel van Claude</title>
-<link rel="stylesheet" href="spel-stijl.css">
+<script>window.onerror=function(m,s,l){var e=document.getElementById("foutmelding");if(e&&e.style.display==="none"){e.textContent="FOUT: "+m+" (r"+l+")";e.style.display="block";}return false;};</script>
+<link rel="stylesheet" href="spel-stijl.css?v=2">
 <style>
   #pijlen { position:fixed; right:14px; bottom:14px; z-index:6; display:none;
     grid-template-columns:repeat(3,56px); grid-template-rows:repeat(2,56px); gap:6px; }
@@ -16,6 +17,7 @@
 </head>
 <body>
 <a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="foutmelding" style="display:none;position:fixed;top:0;left:0;right:0;background:#cc0000;color:#fff;padding:14px;z-index:9999;font-size:15px;word-break:break-all;font-family:monospace;"></div>
 <div id="hud" class="verborgen"></div>
 <canvas id="c"></canvas>
 
@@ -40,7 +42,7 @@
   <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
 </div>
 
-<script src="spel-basis.js"></script>
+<script src="spel-basis.js?v=2"></script>
 <script>
 const STANDAARD = { autoTempo: 130, stroken: 5, levens: 3, autos: "🚗🚕🚙🚌🏎️" };
 let INSTEL = { ...STANDAARD };
@@ -64,7 +66,7 @@ const ctx = m.ctx;
 
 let stand = "start";
 let RIJEN, CEL, BX, BY, KOL;
-let kikker, banen, score, levens, tempoFactor;
+let kikker = {k:0, r:0}, banen = [], score = 0, levens = 3, tempoFactor = 1;
 
 function bouw() {
   RIJEN = INSTEL.stroken + 2;               // onderste + bovenste = stoep
@@ -191,10 +193,12 @@ function teken() {
 
 let vorige = performance.now();
 function loop(nu) {
-  const dt = Math.min(0.033, (nu - vorige) / 1000);
-  vorige = nu;
-  if (stand === "spel") stap(dt);
-  teken();
+  try {
+    const dt = Math.min(0.033, (nu - vorige) / 1000);
+    vorige = nu;
+    if (stand === "spel") stap(dt);
+    teken();
+  } catch(e) { var el=document.getElementById("foutmelding");if(el&&el.style.display==="none"){el.textContent="LOOP FOUT: "+e.message;el.style.display="block";}console.warn("loop fout:", e); }
   requestAnimationFrame(loop);
 }
 

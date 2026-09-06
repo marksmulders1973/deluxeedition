@@ -101,7 +101,7 @@ for (let i = 0; i < 90; i++) sterren.push({ x: Math.random(), y: Math.random(), 
 
 // ── spel-toestand ──
 let stand = "start"; // start | spel | dood
-let raketY, raketVy, torens, score, tijdTotToren, snelheid, vlammen, brokken;
+let raketY = 0, raketVy = 0, torens = [], score = 0, tijdTotToren = 0, snelheid = 215, vlammen = [], brokken = [];
 const RAKET_X = () => Math.max(70, W * 0.24);
 const RAKET_R = 17;
 

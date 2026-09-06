@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>🐍 SLANGEN-SNACK — een spel van Claude</title>
+<script>window.onerror=function(m,s,l){var e=document.getElementById("foutmelding");if(e&&e.style.display==="none"){e.textContent="FOUT: "+m+" (r"+l+")";e.style.display="block";}return false;};</script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { height:100%; overflow:hidden; background:#05060f; font-family:'Segoe UI',Arial,sans-serif; touch-action:none; }
@@ -44,6 +45,7 @@
 </head>
 <body>
 <a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="foutmelding" style="display:none;position:fixed;top:0;left:0;right:0;background:#cc0000;color:#fff;padding:14px;z-index:9999;font-size:15px;word-break:break-all;font-family:monospace;"></div>
 <div id="hud" class="verborgen">0</div>
 <canvas id="c"></canvas>
 
@@ -92,6 +94,18 @@ function geefKeys(n, spel) {
   } catch (e) { return 0; }
 }
 
+// Polyfill: roundRect werkt niet op oudere telefoons
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    const rr = Math.min(typeof r === 'number' ? r : r[0], w / 2, h / 2);
+    this.beginPath();
+    this.moveTo(x + rr, y); this.lineTo(x + w - rr, y);
+    this.arcTo(x + w, y, x + w, y + rr, rr); this.lineTo(x + w, y + h - rr);
+    this.arcTo(x + w, y + h, x + w - rr, y + h, rr); this.lineTo(x + rr, y + h);
+    this.arcTo(x, y + h, x, y + h - rr, rr); this.lineTo(x, y + rr);
+    this.arcTo(x, y, x + rr, y, rr); this.closePath(); return this;
+  };
+}
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 const N = 21;                       // 21×21 vakjes
@@ -110,7 +124,7 @@ maat();
 window.addEventListener("resize", maat);
 
 let stand = "start"; // start | spel | dood
-let slang, richting, wachtrij, appel, goud, goudTeller, goudTijd, score, tikTijd, klok, appelsOp;
+let slang = [], richting, wachtrij = [], appel = null, goud = null, goudTeller = 0, goudTijd = 0, score = 0, tikTijd = 0.15, klok = 0, appelsOp = 0;
 
 function vrijePlek() {
   while (true) {
@@ -239,14 +253,16 @@ function teken() {
 
 let vorige = performance.now();
 function loop(nu) {
-  const dt = Math.min(0.05, (nu - vorige) / 1000);
-  vorige = nu;
-  if (stand === "spel") {
-    klok += dt;
-    if (goud) { goudTijd -= dt; if (goudTijd <= 0) goud = null; }
-    while (klok >= tikTijd) { klok -= tikTijd; tik(); if (stand !== "spel") break; }
-  }
-  teken();
+  try {
+    const dt = Math.min(0.05, (nu - vorige) / 1000);
+    vorige = nu;
+    if (stand === "spel") {
+      klok += dt;
+      if (goud) { goudTijd -= dt; if (goudTijd <= 0) goud = null; }
+      while (klok >= tikTijd) { klok -= tikTijd; tik(); if (stand !== "spel") break; }
+    }
+    teken();
+  } catch(e) { var el=document.getElementById("foutmelding");if(el&&el.style.display==="none"){el.textContent="LOOP FOUT: "+e.message;el.style.display="block";}console.warn("loop fout:", e); }
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);

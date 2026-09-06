@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>🏃 LAVA-SPRINT — een spel van Claude</title>
-<link rel="stylesheet" href="spel-stijl.css">
+<script>window.onerror=function(m,s,l){var e=document.getElementById("foutmelding");if(e&&e.style.display==="none"){e.textContent="FOUT: "+m+" (r"+l+")";e.style.display="block";}return false;};</script>
+<link rel="stylesheet" href="spel-stijl.css?v=2">
 <style>
   #bukKnop { position:fixed; left:14px; bottom:14px; z-index:6; display:none;
     font-size:26px; border:none; border-radius:14px; color:#fff; padding:14px 22px;
@@ -15,6 +16,7 @@
 </head>
 <body>
 <a class="home" href="index.html">← deluxeedition.nl</a>
+<div id="foutmelding" style="display:none;position:fixed;top:0;left:0;right:0;background:#cc0000;color:#fff;padding:14px;z-index:9999;font-size:15px;word-break:break-all;font-family:monospace;"></div>
 <div id="hud" class="verborgen"></div>
 <canvas id="c"></canvas>
 <button id="bukKnop">⬇️ BUK</button>
@@ -35,7 +37,7 @@
   <button class="knop" id="nogEenKeer" style="margin-top:20px">🔁 NOG EEN KEER</button>
 </div>
 
-<script src="spel-basis.js"></script>
+<script src="spel-basis.js?v=2"></script>
 <script>
 const STANDAARD = { startTempo: 240, versnelling: 4, springKracht: 560, grondEmoji: "🌋", luchtEmoji: "🦅" };
 let INSTEL = { ...STANDAARD };
@@ -59,7 +61,7 @@ const ctx = m.ctx;
 const SPELER_X = () => Math.max(70, m.W * 0.2);
 
 let stand = "start";
-let voetY, vy, bukt, bukTijd, tempo, afstand, obstakels, totVolgende, wolkjes;
+let voetY = 0, vy = 0, bukt = false, bukTijd = 0, tempo = 1, afstand = 0, obstakels = [], totVolgende = 0, wolkjes = [];
 
 function grondY() { return m.H - 80; }
 
@@ -183,10 +185,12 @@ function teken() {
 
 let vorige = performance.now();
 function loop(nu) {
-  const dt = Math.min(0.033, (nu - vorige) / 1000);
-  vorige = nu;
-  if (stand === "spel") stap(dt);
-  teken();
+  try {
+    const dt = Math.min(0.033, (nu - vorige) / 1000);
+    vorige = nu;
+    if (stand === "spel") stap(dt);
+    teken();
+  } catch(e) { var el=document.getElementById("foutmelding");if(el&&el.style.display==="none"){el.textContent="LOOP FOUT: "+e.message;el.style.display="block";}console.warn("loop fout:", e); }
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
