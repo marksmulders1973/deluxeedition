@@ -4257,7 +4257,11 @@ addEventListener('resize', () => {
 //   🌋 DE VULKAAN — de gewone uitbarsting (7c): rommelen, lavabommen, as.
 // Testen: open eiland.html?ramp=kraken of ?ramp=vulkaan → begint na 3 sec.
 const RAMP_MIN = 90, RAMP_MAX = 180;         // seconden tussen twee rampen
-const KRAKEN_DUUR = 70, KRAKEN_OPKOMST = 7;   // hoe lang hij blijft / hoe lang het opkomen duurt
+const KRAKEN_DUUR = 70, KRAKEN_OPKOMST = 11;  // hoe lang hij blijft / hoe lang het opkomen duurt
+// Brian 6 sep: "maak de Kraken 100x groter" — hij is nu 8x zo groot als eerst: zo hoog als de
+// vulkaan (mantel ~200 m, armen ~280 m). Alles wat in meters staat (opkomen, waterbal, schuim,
+// afstand tot jou) schaalt hiermee mee.
+const KRAKEN_SCHAAL = 8;
 let rampTimer = 0, rampVolgende = 50, rampKeuze = null;   // eerste ramp na ~50 s
 const RAMP_TEST = new URLSearchParams(location.search).get('ramp');
 let rampTestGedaan = false, rampForce = null;
@@ -4417,12 +4421,12 @@ function krakenPlek(){
   const kijk = yaw + Math.PI;                         // de camera kijkt langs -Z bij yaw 0
   const richtingen = [0, 0.35, -0.35, 0.7, -0.7, 1.1, -1.1, 1.6, -1.6, 2.2, -2.2, Math.PI];
   for(const off of richtingen){
-    for(let d = 70; d <= 200; d += 12){
+    for(let d = 36 * KRAKEN_SCHAAL; d <= 58 * KRAKEN_SCHAAL; d += 12){
       const x = px + Math.sin(kijk + off) * d, z = pz + Math.cos(kijk + off) * d;
-      if(hoogteOp(x, z) < -4 && Math.hypot(x, z) < ZEE_GRENS + 60) return {x, z};
+      if(hoogteOp(x, z) < -4 && Math.hypot(x, z) < ZEE_GRENS + 45 * KRAKEN_SCHAAL) return {x, z};
     }
   }
-  const a = Math.atan2(px, pz), r = ZEE_GRENS * 0.85;   // noodgeval: zelfde kant van het eiland
+  const a = Math.atan2(px, pz), r = ZEE_GRENS + 20 * KRAKEN_SCHAAL;   // noodgeval: zelfde kant van het eiland, ver in zee
   return {x: Math.sin(a) * r, z: Math.cos(a) * r};
 }
 
@@ -4431,7 +4435,7 @@ function startKrakenWaarschuwing(){
   kraken = {fase: 'borrelt', t: 0, plek, groep: null, armen: [], baard: [], ogen: [], gooiTimer: 3, brulTimer: 0, ring: null};
   zeg('🌊 de zee borrelt… er komt iets uit het water!');
   geluidBorrel();
-  const ring = new THREE.Mesh(new THREE.RingGeometry(6, 14, 40), new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide}));
+  const ring = new THREE.Mesh(new THREE.RingGeometry(6 * KRAKEN_SCHAAL * 0.6, 14 * KRAKEN_SCHAAL * 0.6, 48), new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide}));
   ring.rotation.x = -Math.PI / 2; ring.position.set(plek.x, 0.25, plek.z);
   scene.add(ring); kraken.ring = ring;
 }
@@ -4439,7 +4443,7 @@ function startKrakenWaarschuwing(){
 function startKraken(){
   if(!kraken) startKrakenWaarschuwing();
   const plek = kraken.plek;
-  const g = new THREE.Group(); g.position.set(plek.x, -45, plek.z);
+  const g = new THREE.Group(); g.position.set(plek.x, -45 * KRAKEN_SCHAAL, plek.z); g.scale.setScalar(KRAKEN_SCHAAL);
   g.rotation.y = Math.atan2(camera.position.x - plek.x, camera.position.z - plek.z);   // hij kijkt naar jou
   const huid = krakenDonkerMat();
   // ── de mantel (kop): een gedraaid profiel — breed onderin, bol, spits naar achteren ──
@@ -4529,7 +4533,7 @@ function startKraken(){
     g.add(tk.basis); armen.push(tk);
   }
   // ── schuimring op het water rond het lijf ──
-  const schuim = new THREE.Mesh(new THREE.RingGeometry(9, 19, 48), new THREE.MeshBasicMaterial({map: rookTex, color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide}));
+  const schuim = new THREE.Mesh(new THREE.RingGeometry(9 * KRAKEN_SCHAAL, 19 * KRAKEN_SCHAAL, 64), new THREE.MeshBasicMaterial({map: rookTex, color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide}));
   schuim.rotation.x = -Math.PI / 2; schuim.position.set(plek.x, 0.3, plek.z); scene.add(schuim);
   scene.add(g);
   kraken.groep = g; kraken.kop = kop; kraken.ogen = ogen; kraken.oogleden = oogleden; kraken.pupillen = pupillen; kraken.armen = armen; kraken.baard = baard; kraken.schuim = schuim;
@@ -4538,16 +4542,16 @@ function startKraken(){
   if(kraken.ring){ scene.remove(kraken.ring); kraken.ring.material.dispose(); kraken.ring = null; }
   zeg('🐙 DE KRAKEN KOMT UIT DE ZEE!!!');
   geluidBrul(); schok = Math.max(schok, 1.6);
-  spetter(plek.x, plek.z, 60, 1.6);
+  spetter(plek.x, plek.z, 90, 1.6 + KRAKEN_SCHAAL * 0.4);
 }
 
 // inktwolk: donkere wolken die zich over het water verspreiden als hij onderduikt
 function inktwolk(x, z, aantal){
   for(let i = 0; i < aantal; i++){
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.85, color: 0x120a16}));
-    const hoek = Math.random() * 6.283, r = Math.random() * 8;
+    const hoek = Math.random() * 6.283, r = Math.random() * 8 * KRAKEN_SCHAAL;
     sp.position.set(x + Math.sin(hoek) * r, 0.6 + Math.random() * 2, z + Math.cos(hoek) * r);
-    sp.userData = {vx: Math.sin(hoek) * (2 + Math.random() * 4), vy: 0.4, vz: Math.cos(hoek) * (2 + Math.random() * 4), leeftijd: 0, maat: 4 + Math.random() * 6, inkt: true};
+    sp.userData = {vx: Math.sin(hoek) * (2 + Math.random() * 4) * KRAKEN_SCHAAL * 0.5, vy: 0.4, vz: Math.cos(hoek) * (2 + Math.random() * 4) * KRAKEN_SCHAAL * 0.5, leeftijd: 0, maat: (4 + Math.random() * 6) * KRAKEN_SCHAAL * 0.6, inkt: true};
     sp.scale.set(sp.userData.maat, sp.userData.maat * 0.5, 1);
     scene.add(sp); krakenSpetters.push(sp);
   }
@@ -4558,8 +4562,8 @@ function spetter(x, z, aantal, kracht){
   for(let i = 0; i < aantal; i++){
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.9, color: 0xeaf6ff}));
     const hoek = Math.random() * 6.283, vaart = (2 + Math.random() * 9) * kracht;
-    sp.position.set(x + (Math.random() - 0.5) * 10, 0.5, z + (Math.random() - 0.5) * 10);
-    sp.userData = {vx: Math.cos(hoek) * vaart, vy: (6 + Math.random() * 14) * kracht, vz: Math.sin(hoek) * vaart, leeftijd: 0, maat: 1.2 + Math.random() * 2.2};
+    sp.position.set(x + (Math.random() - 0.5) * 10 * Math.max(1, kracht), 0.5, z + (Math.random() - 0.5) * 10 * Math.max(1, kracht));
+    sp.userData = {vx: Math.cos(hoek) * vaart, vy: (6 + Math.random() * 14) * kracht, vz: Math.sin(hoek) * vaart, leeftijd: 0, maat: (1.2 + Math.random() * 2.2) * Math.max(1, kracht * 0.6)};
     sp.scale.set(sp.userData.maat, sp.userData.maat, 1);
     scene.add(sp); krakenSpetters.push(sp);
   }
@@ -4570,13 +4574,13 @@ function gooiWaterbal(){
   const g = kraken.groep;
   const doelX = camera.position.x + (Math.random() - 0.5) * 4, doelZ = camera.position.z + (Math.random() - 0.5) * 4;
   const doelY = Math.max(0, hoogteOp(doelX, doelZ));
-  const start = new THREE.Vector3(g.position.x, g.position.y + 12, g.position.z);
-  const bal = new THREE.Mesh(new THREE.SphereGeometry(1.6, 12, 9), new THREE.MeshLambertMaterial({color: 0x3aa0e0, transparent: true, opacity: 0.85, emissive: 0x0a3a60}));
+  const start = new THREE.Vector3(g.position.x, g.position.y + 12 * KRAKEN_SCHAAL, g.position.z);
+  const bal = new THREE.Mesh(new THREE.SphereGeometry(1.6 * KRAKEN_SCHAAL * 0.4, 14, 10), new THREE.MeshLambertMaterial({color: 0x3aa0e0, transparent: true, opacity: 0.85, emissive: 0x0a3a60}));
   bal.position.copy(start); scene.add(bal);
-  const sch = new THREE.Mesh(new THREE.CircleGeometry(3.4, 24), new THREE.MeshBasicMaterial({color: 0x08202e, transparent: true, opacity: 0.0, depthWrite: false}));
+  const sch = new THREE.Mesh(new THREE.CircleGeometry(3.4 * KRAKEN_SCHAAL * 0.4, 32), new THREE.MeshBasicMaterial({color: 0x08202e, transparent: true, opacity: 0.0, depthWrite: false}));
   sch.rotation.x = -Math.PI / 2; sch.position.set(doelX, doelY + 0.15, doelZ); scene.add(sch);
   const afst = Math.hypot(doelX - start.x, doelZ - start.z);
-  krakenBallen.push({bal, sch, start, doel: new THREE.Vector3(doelX, doelY, doelZ), t: 0, duur: 1.6 + afst / 60, hoog: 18 + afst * 0.18});
+  krakenBallen.push({bal, sch, start, doel: new THREE.Vector3(doelX, doelY, doelZ), t: 0, duur: 1.6 + afst / 80, hoog: 18 * KRAKEN_SCHAAL * 0.5 + afst * 0.18});
   geluidPlons(0.35);
 }
 
@@ -4611,10 +4615,11 @@ function updateKraken(dt, t){
     b.sch.material.opacity = 0.15 + 0.5 * u;                     // de schaduw wordt donkerder = hij komt eraan
     b.sch.scale.setScalar(1.3 - 0.3 * u);
     if(u >= 1){
-      spetter(b.doel.x, b.doel.z, 14, 0.7); geluidPlons(0.9);
+      spetter(b.doel.x, b.doel.z, 14 + 3 * KRAKEN_SCHAAL, 0.7 + KRAKEN_SCHAAL * 0.15); geluidPlons(0.9);
       const d = Math.hypot(b.doel.x - camera.position.x, b.doel.z - camera.position.z);
-      if(d < 12) schok = Math.max(schok, 0.8 * (1 - d / 12));
-      if(d < 3.4 && !dood) gaDood('🐙 Geraakt door de Kraken!');
+      const raak = 3.4 * KRAKEN_SCHAAL * 0.3;
+      if(d < raak * 3) schok = Math.max(schok, 0.9 * (1 - d / (raak * 3)));
+      if(d < raak && !dood) gaDood('🐙 Geraakt door de Kraken!');
       scene.remove(b.bal); scene.remove(b.sch); b.bal.material.dispose(); b.sch.material.dispose(); krakenBallen.splice(i, 1);
     }
   }
@@ -4628,21 +4633,21 @@ function updateKraken(dt, t){
   const g = k.groep;
   let opk = 1;   // hoe ver de armen 'uit het water' zijn (0..1), per arm verschoven
   if(k.fase === 'opkomen'){
-    const u = Math.min(1, k.t / KRAKEN_OPKOMST); g.position.y = -45 + 45 * (1 - Math.pow(1 - u, 3));
+    const u = Math.min(1, k.t / KRAKEN_OPKOMST); g.position.y = -45 * KRAKEN_SCHAAL + 45 * KRAKEN_SCHAAL * (1 - Math.pow(1 - u, 3));
     opk = u;
-    if(Math.random() < dt * 10) spetter(k.plek.x, k.plek.z, 4, 1);
+    if(Math.random() < dt * 10) spetter(k.plek.x, k.plek.z, 6, 1 + KRAKEN_SCHAAL * 0.25);
     if(u >= 1){ k.fase = 'vecht'; k.t = 0; }
   } else if(k.fase === 'vecht'){
-    g.position.y = Math.sin(t * 0.8) * 0.9;
+    g.position.y = Math.sin(t * 0.8) * 0.9 * KRAKEN_SCHAAL * 0.5;
     k.gooiTimer -= dt;
     if(k.gooiTimer <= 0 && !dood){ k.gooiTimer = 4 + Math.random() * 3; gooiWaterbal(); }
     k.brulTimer -= dt;
     if(k.brulTimer <= 0){ k.brulTimer = 12 + Math.random() * 10; geluidBrul(); schok = Math.max(schok, 0.7); k.brult = 1.2; }
     // druppels die van de armen vallen
     if(Math.random() < dt * 3){ const arm = k.armen[Math.floor(Math.random() * k.armen.length)]; const p = armPunt(arm); if(p.y > 2) spetter(p.x, p.z, 2, 0.35); }
-    if(k.t >= KRAKEN_DUUR){ k.fase = 'zakken'; k.t = 0; zeg('🌊 de Kraken duikt weer onder…'); spetter(k.plek.x, k.plek.z, 40, 1.3); inktwolk(k.plek.x, k.plek.z, IS_TOUCH ? 14 : 26); }
+    if(k.t >= KRAKEN_DUUR){ k.fase = 'zakken'; k.t = 0; zeg('🌊 de Kraken duikt weer onder…'); spetter(k.plek.x, k.plek.z, 60, 1.3 + KRAKEN_SCHAAL * 0.3); inktwolk(k.plek.x, k.plek.z, IS_TOUCH ? 16 : 30); }
   } else if(k.fase === 'zakken'){
-    const u = Math.min(1, k.t / 5); g.position.y = -50 * u * u;
+    const u = Math.min(1, k.t / 7); g.position.y = -50 * KRAKEN_SCHAAL * u * u;
     opk = 1 - u;
     if(Math.random() < dt * 8) spetter(k.plek.x, k.plek.z, 3, 0.8);
     if(k.schuim) k.schuim.material.opacity = 0.55 * (1 - u);
@@ -4712,7 +4717,7 @@ function updateKraken(dt, t){
       if(u > 0.55 && !arm.geklapt){ arm.geklapt = true; geluidPlons(0.5); } }
     else if(ged === 'klap'){  const u = prog; klapF = u < 0.35 ? -Math.sin(u / 0.35 * Math.PI / 2) * 0.5 : Math.sin(Math.PI * Math.min(1, (u - 0.35) / 0.65));
       d.lift = 1.25; d.krom = 0.08; d.golf = 0.03; d.snel = 1; d.zij = 0.02; d.yaw = 0; d.strek = 0.3;
-      if(u > 0.42 && !arm.geklapt){ arm.geklapt = true; const pt = armPunt(arm); spetter(pt.x, pt.z, 26, 1.3); geluidPlons(0.9); schok = Math.max(schok, 0.4); } }
+      if(u > 0.42 && !arm.geklapt){ arm.geklapt = true; const pt = armPunt(arm); spetter(pt.x, pt.z, 40, 1.3 + KRAKEN_SCHAAL * 0.3); geluidPlons(0.9); schok = Math.max(schok, 0.6); } }
     else if(ged === 'hang'){  const u = Math.sin(Math.PI * prog); d.lift = 1.2 - 1.3 * u; d.krom = 0.16; d.golf = 0.05; d.snel = 1.2; d.zij = 0.06; d.yaw = 0; d.strek = 0;
       if(u > 0.85 && Math.random() < dt * 4){ const pt = armPunt(arm); spetter(pt.x, pt.z, 3, 0.4); } }
     // zacht naar de doelwaarden schuiven (snel gedrag = sneller schuiven)
