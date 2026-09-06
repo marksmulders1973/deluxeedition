@@ -4264,33 +4264,151 @@ let rampTestGedaan = false, rampForce = null;
 
 let kraken = null;                 // {groep, kop, ogen, armen, baard, t, fase, plek}
 const krakenBallen = [], krakenSpetters = [];
-const KRAKEN_KLEUR = 0x2f4a40, KRAKEN_DONKER = 0x22362f;
-let _krakenMat = null, _krakenDonkerMat = null;
-function krakenMat(){ return _krakenMat || (_krakenMat = new THREE.MeshLambertMaterial({color: KRAKEN_KLEUR})); }
-function krakenDonkerMat(){ return _krakenDonkerMat || (_krakenDonkerMat = new THREE.MeshLambertMaterial({color: KRAKEN_DONKER})); }
-
-// een tentakel = keten van scharnieren (pivots): elk stuk hangt aan het vorige
-function maakTentakel(aantal, lenBegin, lenEind, dikBegin, dikEind, mat){
-  const stukken = []; let ouder = new THREE.Group();
-  const basis = ouder;
-  for(let j = 0; j < aantal; j++){
-    const f = j / Math.max(1, aantal - 1);
-    const len = lenBegin + (lenEind - lenBegin) * f;
-    const d0 = dikBegin + (dikEind - dikBegin) * f;
-    const d1 = dikBegin + (dikEind - dikBegin) * Math.min(1, (j + 1) / Math.max(1, aantal - 1));
-    const piv = new THREE.Group();
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(d1, d0, len, 9, 1), mat);
-    m.position.y = len / 2; m.castShadow = true; piv.add(m);
-    // zuignapjes: bolletjes aan de onderkant
-    if(j < aantal - 1) for(let k = 0; k < 3; k++){
-      const z = new THREE.Mesh(new THREE.SphereGeometry(d0 * 0.32, 6, 5), krakenDonkerMat());
-      z.position.set(0, len * (0.2 + 0.3 * k), -d0 * 0.9); piv.add(z);
-    }
-    if(j === aantal - 1){ const tip = new THREE.Mesh(new THREE.SphereGeometry(d1 * 1.1, 8, 6), mat); tip.position.y = len; piv.add(tip); }
-    ouder.add(piv); stukken.push(piv);
-    const volgende = new THREE.Group(); volgende.position.y = len; piv.add(volgende); ouder = volgende;
+// ── DE KRAKEN v2 (Brian 6 sep: "maak de Kraken 100x realistischer") ──
+// Geen bolletjes en buisjes meer, maar een echte reuze-octopus:
+//   • huid: roodbruin met vlekken en bobbeltjes (canvas-textuur + bump), bleke
+//     onderkant, nat-glanzend (MeshStandard, lage ruwheid);
+//   • armen: één doorlopende, taps toelopende buis per arm die soepel buigt
+//     via botten (SkinnedMesh) — geen knikken meer — met twee rijen bleke
+//     zuignappen die kleiner worden naar de punt;
+//   • mantel (kop) als gedraaid profiel met huidplooien, oogbulten, glanzende
+//     ogen met een horizontale spleet-pupil (echte octopus-ogen), oogleden die
+//     knipperen, en een zwarte papegaaien-snavel tussen de voorste armen;
+//   • water: schuimring op het wateroppervlak, druppels van de armen, en een
+//     inktwolk als hij weer onderduikt.
+const KRAKEN_KLEUR = 0x7a3a2c, KRAKEN_DONKER = 0x4a2119, KRAKEN_BLEEK = 0xd9b39c, KRAKEN_ZUIGNAP = 0xe9d6c4;
+let _krakenHuid = null, _krakenHuidVast = null, _krakenTex = null;
+// huid-textuur: vlekken, sproeten en bobbeltjes (bump) — 256×256, herhaalbaar
+function krakenHuidTextuur(){
+  if(_krakenTex) return _krakenTex;
+  const N = 256, c = document.createElement('canvas'); c.width = c.height = N;
+  const g = c.getContext('2d');
+  let zaad = 777; const rnd = () => { zaad = (zaad * 1664525 + 1013904223) >>> 0; return zaad / 4294967296; };
+  g.fillStyle = '#b9b0aa'; g.fillRect(0, 0, N, N);
+  // grote zachte vlekken (licht en donker)
+  for(let i = 0; i < 70; i++){
+    const x = rnd() * N, y = rnd() * N, r = 10 + rnd() * 34, licht = rnd() < 0.5;
+    const v = g.createRadialGradient(x, y, 0, x, y, r);
+    v.addColorStop(0, licht ? 'rgba(235,225,215,0.55)' : 'rgba(70,40,35,0.5)'); v.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = v; g.beginPath(); g.arc(x, y, r, 0, 6.3); g.fill();
+    // herhaalbaar over de rand: dezelfde vlek nog eens verschoven
+    for(const [dx, dy] of [[-N, 0], [N, 0], [0, -N], [0, N]]){ const v2 = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r); v2.addColorStop(0, licht ? 'rgba(235,225,215,0.55)' : 'rgba(70,40,35,0.5)'); v2.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = v2; g.beginPath(); g.arc(x + dx, y + dy, r, 0, 6.3); g.fill(); }
   }
-  return {basis, stukken};
+  // bobbeltjes (papillen): kleine lichte puntjes met donker randje
+  for(let i = 0; i < 900; i++){
+    const x = rnd() * N, y = rnd() * N, r = 0.8 + rnd() * 2.6;
+    g.fillStyle = 'rgba(40,20,18,' + (0.15 + rnd() * 0.3) + ')'; g.beginPath(); g.arc(x + 0.8, y + 0.8, r, 0, 6.3); g.fill();
+    g.fillStyle = 'rgba(240,225,215,' + (0.25 + rnd() * 0.4) + ')'; g.beginPath(); g.arc(x, y, r * 0.8, 0, 6.3); g.fill();
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  _krakenTex = t; return t;
+}
+function krakenHuidMat(skinning){
+  const t = krakenHuidTextuur();
+  const m = new THREE.MeshStandardMaterial({color: 0xffffff, map: t, bumpMap: t, bumpScale: 0.35, roughness: 0.38, metalness: 0.0, vertexColors: true, skinning: !!skinning});
+  return m;
+}
+function krakenMat(){ return _krakenHuid || (_krakenHuid = krakenHuidMat(true)); }
+function krakenDonkerMat(){ return _krakenHuidVast || (_krakenHuidVast = krakenHuidMat(false)); }
+
+// kleur per hoekpunt: bovenkant roodbruin, onderkant (waar de zuignappen zitten) bleek
+const _kA = new THREE.Color(KRAKEN_KLEUR), _kB = new THREE.Color(KRAKEN_BLEEK), _kD = new THREE.Color(KRAKEN_DONKER), _kZ = new THREE.Color(KRAKEN_ZUIGNAP);
+function zetKleur(arr, i, c){ arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+
+// een tentakel = één doorlopende buis met botten erin (SkinnedMesh):
+// de botten zijn de 'stukken' die de animatie draait, de huid buigt soepel mee.
+// Zuignappen zitten in dezelfde mesh (samengevoegd), dus ze bewegen gratis mee.
+function maakTentakel(aantal, lenBegin, lenEind, dikBegin, dikEind, mat){
+  const stukken = []; const basis = new THREE.Group();
+  const lens = []; let L = 0;
+  for(let j = 0; j < aantal; j++){ const f = j / Math.max(1, aantal - 1); const len = lenBegin + (lenEind - lenBegin) * f; lens.push(len); L += len; }
+  // botten: keten, elk bot begint waar het vorige eindigt
+  const botten = []; let ouder = null;
+  for(let j = 0; j < aantal; j++){
+    const b = new THREE.Bone(); b.position.y = j === 0 ? 0 : lens[j - 1];
+    if(ouder) ouder.add(b); botten.push(b); stukken.push(b); ouder = b;
+  }
+  // de huid: taps toelopende cilinder, veel ringen zodat hij mooi buigt
+  const radiaal = IS_TOUCH ? 10 : 16, ringen = aantal * 5;
+  const geo = new THREE.CylinderGeometry(Math.max(0.08, dikEind * 0.25), dikBegin, L, radiaal, ringen, false);
+  geo.translate(0, L / 2, 0);
+  // profiel: iets dikker vlak boven de basis, dan mooi taps; de punt krult
+  const pos = geo.attributes.position, n = pos.count;
+  const kleur = new Float32Array(n * 3), skinIdx = new Uint16Array(n * 4), skinW = new Float32Array(n * 4);
+  const uv = geo.attributes.uv;
+  for(let i = 0; i < n; i++){
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const f = Math.min(1, Math.max(0, y / L));
+    // bolling: 1 bij de basis, iets breder rond 15%, dan taps
+    const bol = 1 + 0.12 * Math.sin(Math.PI * Math.min(1, f / 0.3));
+    pos.setX(i, x * bol); pos.setZ(i, z * bol);
+    // kleur: onderkant (−z) bleek, bovenkant roodbruin, naar de punt iets donkerder
+    const r = Math.hypot(x, z) || 1; const onder = Math.max(0, -z / r);
+    const c = _kA.clone().lerp(_kB, Math.pow(onder, 1.6) * 0.85).lerp(_kD, f * 0.25);
+    zetKleur(kleur, i, c);
+    // textuur herhalen langs de arm
+    uv.setY(i, uv.getY(i) * (L / 6));
+    // botten: welk bot en hoe ver erin → mengen met het volgende bot (soepel)
+    let acc = 0, j = 0; while(j < aantal - 1 && y > acc + lens[j]){ acc += lens[j]; j++; }
+    const in_ = lens[j] > 0 ? Math.min(1, Math.max(0, (y - acc) / lens[j])) : 0;
+    const w2 = j < aantal - 1 ? Math.pow(in_, 1.5) * 0.5 : 0;   // richting het volgende bot
+    skinIdx[i * 4] = j; skinW[i * 4] = 1 - w2; skinIdx[i * 4 + 1] = Math.min(aantal - 1, j + 1); skinW[i * 4 + 1] = w2;
+  }
+  geo.computeVertexNormals();
+  geo.setAttribute('color', new THREE.BufferAttribute(kleur, 3));
+  geo.setAttribute('skinIndex', new THREE.BufferAttribute(skinIdx, 4));
+  geo.setAttribute('skinWeight', new THREE.BufferAttribute(skinW, 4));
+  // zuignappen: twee rijen aan de onderkant, kleiner naar de punt — samengevoegd in dezelfde mesh
+  const napGeos = [];
+  const napRadiaal = IS_TOUCH ? 6 : 8;
+  let yy = 0;
+  for(let j = 0; j < aantal - 1; j++){
+    const perStuk = 2;
+    for(let k = 0; k < perStuk; k++){
+      const y = yy + lens[j] * ((k + 0.5) / perStuk);
+      const f = y / L, dik = (dikBegin + (dikEind - dikBegin) * f) * (1 + 0.12 * Math.sin(Math.PI * Math.min(1, f / 0.3)));
+      const rn = Math.max(0.06, dik * 0.42 * (1 - f * 0.35));
+      for(const zijde of [-1, 1]){
+        const hoek = zijde * 0.55;     // twee rijen, links en rechts van het midden van de onderkant
+        const cx = Math.sin(hoek) * dik * 0.92, cz = -Math.cos(hoek) * dik * 0.92;
+        const nap = new THREE.TorusGeometry(rn, rn * 0.42, 5, napRadiaal);
+        // naar buiten laten wijzen (weg van de as van de arm)
+        const m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(0, -hoek, 0));
+        nap.applyMatrix4(m);
+        nap.translate(cx, y, cz);
+        const cnt = nap.attributes.position.count;
+        const kl = new Float32Array(cnt * 3), si = new Uint16Array(cnt * 4), sw = new Float32Array(cnt * 4);
+        for(let i = 0; i < cnt; i++){ zetKleur(kl, i, _kZ); si[i * 4] = j; sw[i * 4] = 1; }
+        nap.setAttribute('color', new THREE.BufferAttribute(kl, 3));
+        nap.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
+        nap.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+        napGeos.push(nap);
+      }
+    }
+    yy += lens[j];
+  }
+  const alles = voegSamen([geo, ...napGeos]);
+  const mesh = new THREE.SkinnedMesh(alles, mat);
+  mesh.castShadow = !IS_TOUCH; mesh.frustumCulled = false;
+  mesh.add(botten[0]);
+  mesh.bind(new THREE.Skeleton(botten));
+  basis.add(mesh);
+  return {basis, stukken, mesh, L};
+}
+// geometrieën samenvoegen (positie/normaal/uv/kleur/skin) — three r128 heeft dit niet in de kern
+function voegSamen(geos){
+  const namen = ['position', 'normal', 'uv', 'color', 'skinIndex', 'skinWeight'];
+  const lijst = geos.map(g => g.index ? g.toNonIndexed() : g);
+  const uit = new THREE.BufferGeometry();
+  for(const naam of namen){
+    const eerste = lijst[0].attributes[naam]; if(!eerste) continue;
+    const size = eerste.itemSize; let tot = 0; for(const g of lijst) tot += g.attributes[naam].count;
+    const isInt = naam === 'skinIndex';
+    const arr = isInt ? new Uint16Array(tot * size) : new Float32Array(tot * size);
+    let off = 0; for(const g of lijst){ arr.set(g.attributes[naam].array, off); off += g.attributes[naam].array.length; }
+    uit.setAttribute(naam, new THREE.BufferAttribute(arr, size));
+  }
+  return uit;
 }
 
 // waar komt hij op? In de zee, in de richting waar je kijkt (dan zie je 'm!)
@@ -4323,47 +4441,115 @@ function startKraken(){
   const plek = kraken.plek;
   const g = new THREE.Group(); g.position.set(plek.x, -45, plek.z);
   g.rotation.y = Math.atan2(camera.position.x - plek.x, camera.position.z - plek.z);   // hij kijkt naar jou
-  const mat = krakenMat();
-  // kop: dikke bol met een bult erop
-  const kop = new THREE.Mesh(new THREE.SphereGeometry(9, 22, 16), mat); kop.scale.set(1, 1.15, 1); kop.position.y = 7; kop.castShadow = true; g.add(kop);
-  const kruin = new THREE.Mesh(new THREE.SphereGeometry(6.5, 18, 12), krakenDonkerMat()); kruin.scale.set(1, 1.35, 1); kruin.position.set(0, 14, 1); g.add(kruin);
-  for(let i = 0; i < 9; i++){   // bulten en wratten
-    const b = new THREE.Mesh(new THREE.SphereGeometry(1 + Math.random() * 1.6, 8, 6), krakenDonkerMat());
-    const a = Math.random() * 6.283, h = 4 + Math.random() * 12;
-    b.position.set(Math.sin(a) * 8.2, h, Math.cos(a) * 8.2 * 0.9); g.add(b);
+  const huid = krakenDonkerMat();
+  // ── de mantel (kop): een gedraaid profiel — breed onderin, bol, spits naar achteren ──
+  const profiel = [];
+  const prof = [[0, 0], [6.5, 0.4], [8.6, 3], [9.6, 7], [9.3, 11], [8.2, 15], [6.4, 18.5], [4.2, 21.5], [2.0, 23.6], [0.001, 24.6]];
+  for(const [r, y] of prof) profiel.push(new THREE.Vector2(r, y));
+  const kopGeo = new THREE.LatheGeometry(profiel, IS_TOUCH ? 28 : 44);
+  {
+    // huidplooien + kleur: bovenkant roodbruin, de voorkant onderaan (bij de ogen/mond) bleker
+    const pos = kopGeo.attributes.position, n = pos.count, kl = new Float32Array(n * 3);
+    for(let i = 0; i < n; i++){
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const r = Math.hypot(x, z) || 1, hoek = Math.atan2(x, z);
+      const plooi = 1 + 0.035 * Math.sin(hoek * 9 + y * 0.6) + 0.02 * Math.sin(hoek * 17 - y * 1.3);
+      pos.setX(i, x * plooi); pos.setZ(i, z * plooi);
+      const voor = Math.max(0, z / r), laag = Math.max(0, 1 - y / 12);
+      const c = _kA.clone().lerp(_kB, voor * laag * 0.55).lerp(_kD, Math.max(0, (y - 14) / 12) * 0.5);
+      zetKleur(kl, i, c);
+    }
+    kopGeo.attributes.uv.array.forEach((v, i, a) => { if(i % 2 === 1) a[i] = v * 3; else a[i] = v * 4; });
+    kopGeo.computeVertexNormals();
+    kopGeo.setAttribute('color', new THREE.BufferAttribute(kl, 3));
   }
-  // ogen: geel en gloeiend, met een zwarte spleet en boze wenkbrauwen
-  const oogMat = new THREE.MeshLambertMaterial({color: 0xffcc33, emissive: 0xffaa00, emissiveIntensity: 0.9});
-  const ogen = [];
+  const kop = new THREE.Mesh(kopGeo, huid); kop.position.y = 2; kop.rotation.x = -0.22; kop.castShadow = !IS_TOUCH; g.add(kop);
+  // het vlies (de 'rok') tussen de armen: verbergt de aanhechting en maakt hem massief
+  const rokGeo = new THREE.LatheGeometry([new THREE.Vector2(3, 0.9), new THREE.Vector2(8.5, 0.5), new THREE.Vector2(11.5, -0.8), new THREE.Vector2(13.5, -3.5)], IS_TOUCH ? 24 : 40);
+  { const pos = rokGeo.attributes.position, n = pos.count, kl = new Float32Array(n * 3); for(let i = 0; i < n; i++){ const y = pos.getY(i); zetKleur(kl, i, _kD.clone().lerp(_kA, 0.5).lerp(_kB, Math.max(0, -y / 4) * 0.6)); } rokGeo.computeVertexNormals(); rokGeo.setAttribute('color', new THREE.BufferAttribute(kl, 3)); }
+  const rok = new THREE.Mesh(rokGeo, new THREE.MeshStandardMaterial({color: 0xffffff, map: krakenHuidTextuur(), bumpMap: krakenHuidTextuur(), bumpScale: 0.3, roughness: 0.4, vertexColors: true, side: THREE.DoubleSide}));
+  g.add(rok);
+  // papillen: een paar bobbels/hoorntjes op de kop (echte octopussen hebben ze boven de ogen)
+  for(let i = 0; i < 10; i++){
+    const a = (i / 10) * 6.283 + 0.3, h = 9 + (i % 3) * 3.2;
+    const rr = 9.4 - Math.max(0, (h - 9)) * 0.28;
+    const bobbel = new THREE.Mesh(new THREE.ConeGeometry(0.55 + (i % 2) * 0.35, 1.1 + (i % 3) * 0.5, 7), huid);
+    const cnt = bobbel.geometry.attributes.position.count, kl = new Float32Array(cnt * 3); for(let q = 0; q < cnt; q++) zetKleur(kl, q, _kD); bobbel.geometry.setAttribute('color', new THREE.BufferAttribute(kl, 3));
+    bobbel.position.set(Math.sin(a) * rr, h + 2, Math.cos(a) * rr * 0.96);
+    bobbel.lookAt(bobbel.position.clone().multiplyScalar(2)); bobbel.rotateX(Math.PI / 2);
+    g.add(bobbel);
+  }
+  // ── ogen: oogbult, oogbol met gouden iris + horizontale spleet-pupil, glanzend hoornvlies, oogleden ──
+  const ogen = [], oogleden = [], pupillen = [];
+  const irisMat = new THREE.MeshStandardMaterial({color: 0xd9a63a, emissive: 0x6a4a08, emissiveIntensity: 0.55, roughness: 0.35});
+  const witMat = new THREE.MeshStandardMaterial({color: 0xe8e0d0, roughness: 0.3});
+  const glansMat = new THREE.MeshStandardMaterial({color: 0xffffff, transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.0, depthWrite: false});
   for(const sx of [-1, 1]){
-    const oog = new THREE.Mesh(new THREE.SphereGeometry(1.7, 14, 10), oogMat); oog.position.set(sx * 4.2, 8.5, 7.6); g.add(oog); ogen.push(oog);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.75, 10, 8), new THREE.MeshBasicMaterial({color: 0x050505})); pupil.scale.set(0.55, 1.6, 1); pupil.position.set(sx * 4.2, 8.5, 9.1); g.add(pupil);
-    const wenk = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.1, 1.6), krakenDonkerMat()); wenk.position.set(sx * 4.1, 10.6, 7.6); wenk.rotation.z = -sx * 0.35; g.add(wenk);
+    const bult = new THREE.Mesh(new THREE.SphereGeometry(3.2, 16, 12), huid);
+    { const cnt = bult.geometry.attributes.position.count, kl = new Float32Array(cnt * 3); for(let q = 0; q < cnt; q++) zetKleur(kl, q, _kA); bult.geometry.setAttribute('color', new THREE.BufferAttribute(kl, 3)); }
+    bult.scale.set(1.15, 1, 1); bult.position.set(sx * 6.2, 9.6, 6.2); g.add(bult);
+    const oog = new THREE.Group(); oog.position.set(sx * 6.6, 9.7, 8.3); oog.rotation.y = sx * 0.45; g.add(oog);
+    const bol = new THREE.Mesh(new THREE.SphereGeometry(1.9, 18, 14), witMat); oog.add(bol);
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(1.35, 18, 14), irisMat); iris.scale.set(1, 1, 0.55); iris.position.z = 1.25; oog.add(iris);
+    const pupil = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.42, 0.3), new THREE.MeshBasicMaterial({color: 0x050403})); pupil.position.z = 1.95; oog.add(pupil); pupillen.push(pupil);
+    const glans = new THREE.Mesh(new THREE.SphereGeometry(2.05, 18, 14), glansMat); oog.add(glans);
+    const lichtje = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), new THREE.MeshBasicMaterial({color: 0xffffff})); lichtje.position.set(-0.55 * sx, 0.7, 1.85); oog.add(lichtje);
+    // oogleden: twee huid-kapjes die dichtklappen bij het knipperen
+    const lidGeo = new THREE.SphereGeometry(2.15, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.42);
+    { const cnt = lidGeo.attributes.position.count, kl = new Float32Array(cnt * 3); for(let q = 0; q < cnt; q++) zetKleur(kl, q, _kA); lidGeo.setAttribute('color', new THREE.BufferAttribute(kl, 3)); }
+    const lidBoven = new THREE.Mesh(lidGeo, huid); lidBoven.rotation.x = -0.9; oog.add(lidBoven);
+    const lidOnder = new THREE.Mesh(lidGeo, huid); lidOnder.rotation.x = Math.PI + 0.9; oog.add(lidOnder);
+    oogleden.push({boven: lidBoven, onder: lidOnder});
+    ogen.push(iris);
   }
-  // baard: 7 tentakels die voor de mond hangen
+  // ── de snavel: zwart, als van een papegaai, tussen de voorste armen ──
+  const snavelMat = new THREE.MeshStandardMaterial({color: 0x1a1210, roughness: 0.35, metalness: 0.1});
+  const snavelB = new THREE.Mesh(new THREE.ConeGeometry(1.4, 2.6, 4), snavelMat); snavelB.position.set(0, 3.2, 8.4); snavelB.rotation.set(Math.PI * 0.5 + 0.3, Math.PI / 4, 0); g.add(snavelB);
+  const snavelO = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.0, 4), snavelMat); snavelO.position.set(0, 2.2, 8.2); snavelO.rotation.set(-Math.PI * 0.5 - 0.3, Math.PI / 4, 0); g.add(snavelO);
+  kraken.snavel = {boven: snavelB, onder: snavelO};
+  // ── baard: 6 kortere armen vóór de mond ──
   const baard = [];
-  for(let i = 0; i < 7; i++){
-    const tk = maakTentakel(5, 2.2, 1.6, 1.0, 0.35, krakenDonkerMat());
-    tk.basis.position.set((i - 3) * 2.1, 3.5, 7.2); tk.basis.rotation.x = Math.PI * 0.82 + (Math.random() - 0.5) * 0.2; tk.basis.rotation.z = (i - 3) * 0.12;
+  for(let i = 0; i < 6; i++){
+    const tk = maakTentakel(6, 2.4, 1.5, 1.1, 0.25, krakenMat());
+    const sx = (i - 2.5) * 1.9;
+    tk.basis.position.set(sx, 3.2, 7.0); tk.basis.rotation.x = Math.PI * 0.72 + (i % 2) * 0.12; tk.basis.rotation.z = -sx * 0.06;
     tk.fase = i * 1.1; g.add(tk.basis); baard.push(tk);
   }
-  // acht grote armen rondom, uit het water omhoog
+  // ── acht grote armen rondom ──
   const armen = [];
   for(let i = 0; i < 8; i++){
     const a = (i / 8) * 6.283 + 0.2 + (Math.random() - 0.5) * 0.3;
-    const tk = maakTentakel(9, 4.0, 2.6, 2.1, 0.45, mat);
-    tk.basis.position.set(Math.sin(a) * 8.5, -1.5, Math.cos(a) * 8.5);
-    tk.basis.rotation.y = a;                          // wijst naar buiten
-    tk.hoek = a; tk.fase = Math.random() * 6.283; tk.kromming = 0.16 + Math.random() * 0.08;
+    const tk = maakTentakel(10, 4.4, 2.4, 2.3, 0.3, krakenMat());
+    tk.basis.position.set(Math.sin(a) * 9.5, -0.8, Math.cos(a) * 9.5);
+    tk.basis.rotation.y = a;
+    tk.hoek = a; tk.fase = Math.random() * 6.283; tk.kromming = 0.14 + Math.random() * 0.07;
+    tk.opkomst = 0.15 + (i / 8) * 0.6 + Math.random() * 0.15;   // elke arm komt op z'n eigen moment uit het water
+    tk.slaan = 0; tk.slaanT = 0;
     g.add(tk.basis); armen.push(tk);
   }
+  // ── schuimring op het water rond het lijf ──
+  const schuim = new THREE.Mesh(new THREE.RingGeometry(9, 19, 48), new THREE.MeshBasicMaterial({map: rookTex, color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide}));
+  schuim.rotation.x = -Math.PI / 2; schuim.position.set(plek.x, 0.3, plek.z); scene.add(schuim);
   scene.add(g);
-  kraken.groep = g; kraken.kop = kop; kraken.ogen = ogen; kraken.armen = armen; kraken.baard = baard;
+  kraken.groep = g; kraken.kop = kop; kraken.ogen = ogen; kraken.oogleden = oogleden; kraken.pupillen = pupillen; kraken.armen = armen; kraken.baard = baard; kraken.schuim = schuim;
+  kraken.knipper = 3 + Math.random() * 3; kraken.knipperT = 0; kraken.slaanTimer = 6; kraken.inkt = [];
   kraken.fase = 'opkomen'; kraken.t = 0;
   if(kraken.ring){ scene.remove(kraken.ring); kraken.ring.material.dispose(); kraken.ring = null; }
   zeg('🐙 DE KRAKEN KOMT UIT DE ZEE!!!');
   geluidBrul(); schok = Math.max(schok, 1.6);
   spetter(plek.x, plek.z, 60, 1.6);
+}
+
+// inktwolk: donkere wolken die zich over het water verspreiden als hij onderduikt
+function inktwolk(x, z, aantal){
+  for(let i = 0; i < aantal; i++){
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.85, color: 0x120a16}));
+    const hoek = Math.random() * 6.283, r = Math.random() * 8;
+    sp.position.set(x + Math.sin(hoek) * r, 0.6 + Math.random() * 2, z + Math.cos(hoek) * r);
+    sp.userData = {vx: Math.sin(hoek) * (2 + Math.random() * 4), vy: 0.4, vz: Math.cos(hoek) * (2 + Math.random() * 4), leeftijd: 0, maat: 4 + Math.random() * 6, inkt: true};
+    sp.scale.set(sp.userData.maat, sp.userData.maat * 0.5, 1);
+    scene.add(sp); krakenSpetters.push(sp);
+  }
 }
 
 // waterspetters (witte sprites die opspatten en weer vallen)
@@ -4393,11 +4579,23 @@ function gooiWaterbal(){
   geluidPlons(0.35);
 }
 
+// wereldpositie van de punt van een arm (voor spetters als hij op het water slaat)
+const _tipV = new THREE.Vector3();
+function armPunt(arm){ const b = arm.stukken[arm.stukken.length - 1]; b.updateWorldMatrix(true, false); return _tipV.set(0, 2, 0).applyMatrix4(b.matrixWorld); }
+
 function updateKraken(dt, t){
-  // spetters
+  // spetters (en inktwolken: die vallen niet, maar zakken uit en verdwijnen langzaam)
   for(let i = krakenSpetters.length - 1; i >= 0; i--){
     const sp = krakenSpetters[i], u = sp.userData;
-    u.leeftijd += dt; u.vy -= 22 * dt;
+    u.leeftijd += dt;
+    if(u.inkt){
+      sp.position.x += u.vx * dt; sp.position.z += u.vz * dt; u.vx *= 0.97; u.vz *= 0.97;
+      const s = u.maat * (1 + u.leeftijd * 0.9); sp.scale.set(s, s * 0.5, 1);
+      sp.material.opacity = Math.max(0, 0.85 - u.leeftijd * 0.11);
+      if(u.leeftijd > 8){ scene.remove(sp); sp.material.dispose(); krakenSpetters.splice(i, 1); }
+      continue;
+    }
+    u.vy -= 22 * dt;
     sp.position.x += u.vx * dt; sp.position.y += u.vy * dt; sp.position.z += u.vz * dt;
     sp.material.opacity = Math.max(0, 0.9 - u.leeftijd * 0.5);
     if(sp.position.y < -1 || u.leeftijd > 2.2){ scene.remove(sp); sp.material.dispose(); krakenSpetters.splice(i, 1); }
@@ -4427,8 +4625,10 @@ function updateKraken(dt, t){
     return;
   }
   const g = k.groep;
+  let opk = 1;   // hoe ver de armen 'uit het water' zijn (0..1), per arm verschoven
   if(k.fase === 'opkomen'){
     const u = Math.min(1, k.t / KRAKEN_OPKOMST); g.position.y = -45 + 45 * (1 - Math.pow(1 - u, 3));
+    opk = u;
     if(Math.random() < dt * 10) spetter(k.plek.x, k.plek.z, 4, 1);
     if(u >= 1){ k.fase = 'vecht'; k.t = 0; }
   } else if(k.fase === 'vecht'){
@@ -4436,29 +4636,60 @@ function updateKraken(dt, t){
     k.gooiTimer -= dt;
     if(k.gooiTimer <= 0 && !dood){ k.gooiTimer = 4 + Math.random() * 3; gooiWaterbal(); }
     k.brulTimer -= dt;
-    if(k.brulTimer <= 0){ k.brulTimer = 12 + Math.random() * 10; geluidBrul(); schok = Math.max(schok, 0.7); }
-    if(k.t >= KRAKEN_DUUR){ k.fase = 'zakken'; k.t = 0; zeg('🌊 de Kraken duikt weer onder…'); spetter(k.plek.x, k.plek.z, 40, 1.3); }
+    if(k.brulTimer <= 0){ k.brulTimer = 12 + Math.random() * 10; geluidBrul(); schok = Math.max(schok, 0.7); k.brult = 1.2; }
+    // af en toe slaat een arm met een klap op het water
+    k.slaanTimer -= dt;
+    if(k.slaanTimer <= 0){ k.slaanTimer = 5 + Math.random() * 6; const arm = k.armen[Math.floor(Math.random() * k.armen.length)]; if(!arm.slaan){ arm.slaan = 1; arm.slaanT = 0; } }
+    // druppels die van de armen vallen
+    if(Math.random() < dt * 3){ const arm = k.armen[Math.floor(Math.random() * k.armen.length)]; const p = armPunt(arm); if(p.y > 2) spetter(p.x, p.z, 2, 0.35); }
+    if(k.t >= KRAKEN_DUUR){ k.fase = 'zakken'; k.t = 0; zeg('🌊 de Kraken duikt weer onder…'); spetter(k.plek.x, k.plek.z, 40, 1.3); inktwolk(k.plek.x, k.plek.z, IS_TOUCH ? 14 : 26); }
   } else if(k.fase === 'zakken'){
     const u = Math.min(1, k.t / 5); g.position.y = -50 * u * u;
+    opk = 1 - u;
     if(Math.random() < dt * 8) spetter(k.plek.x, k.plek.z, 3, 0.8);
-    if(u >= 1){ scene.remove(g); kraken = null; return; }
+    if(k.schuim) k.schuim.material.opacity = 0.55 * (1 - u);
+    if(u >= 1){ scene.remove(g); if(k.schuim){ scene.remove(k.schuim); k.schuim.material.dispose(); } kraken = null; return; }
   }
-  // hij draait langzaam met je mee en deint
+  // schuim op het water: draait en ademt mee
+  if(k.schuim){ k.schuim.rotation.z += dt * 0.15; const s = 1 + 0.06 * Math.sin(t * 1.7); k.schuim.scale.set(s, s, 1); if(k.fase !== 'zakken') k.schuim.material.opacity = 0.35 + 0.2 * Math.sin(t * 2.3) + (k.fase === 'opkomen' ? 0.25 : 0); }
+  // hij draait langzaam met je mee en deint; de mantel ademt
   const doelHoek = Math.atan2(camera.position.x - g.position.x, camera.position.z - g.position.z);
   let dh = doelHoek - g.rotation.y; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
   g.rotation.y += dh * Math.min(1, dt * 0.8);
   g.rotation.z = Math.sin(t * 0.6) * 0.03; g.rotation.x = Math.sin(t * 0.45) * 0.03;
-  for(const o of k.ogen) o.material.emissiveIntensity = 0.7 + 0.3 * Math.sin(t * 3);
-  // armen: eerste stuk steil omhoog, daarna elk stuk verder omkrullen, en alles zwaait
+  const adem = 1 + 0.035 * Math.sin(t * 1.4);
+  k.kop.scale.set(adem, 1 + 0.02 * Math.sin(t * 1.4 + 1), adem);
+  // ogen: gloed, pupil die groter/kleiner wordt, knipperen
+  for(const o of k.ogen) o.material.emissiveIntensity = 0.45 + 0.25 * Math.sin(t * 2.2);
+  k.knipper -= dt;
+  if(k.knipper <= 0){ k.knipper = 3 + Math.random() * 4; k.knipperT = 0.28; }
+  const dicht = k.knipperT > 0 ? Math.sin(Math.PI * Math.min(1, (0.28 - k.knipperT) / 0.28)) : 0;
+  if(k.knipperT > 0) k.knipperT -= dt;
+  for(const lid of k.oogleden){ lid.boven.rotation.x = -0.9 + 0.95 * dicht; lid.onder.rotation.x = Math.PI + 0.9 - 0.85 * dicht; }
+  for(const p of k.pupillen){ p.scale.y = 1 + 0.9 * (0.5 + 0.5 * Math.sin(t * 0.9)) + (k.brult > 0 ? 1.2 : 0); }
+  // snavel klappert als hij brult
+  if(k.brult > 0){ k.brult -= dt; const o = 0.5 + 0.5 * Math.sin(t * 18); k.snavel.boven.position.y = 3.2 + o * 0.9; k.snavel.onder.position.y = 2.2 - o * 0.7; } else { k.snavel.boven.position.y = 3.2; k.snavel.onder.position.y = 2.2; }
+  // armen: elke arm komt op z'n eigen moment omhoog; golf loopt van basis naar punt; punt krult;
+  // af en toe een klap op het water
   for(const arm of k.armen){
-    const zw = Math.sin(t * 1.3 + arm.fase) * 0.12, zij = Math.sin(t * 0.7 + arm.fase) * 0.05;
-    arm.stukken.forEach((piv, j) => {
-      piv.rotation.x = (j === 0 ? 1.15 : -arm.kromming) + zw * (j === 0 ? 1 : 0.45) + Math.sin(t * 2.1 + arm.fase + j * 0.6) * 0.04;
-      piv.rotation.z = zij * (j > 0 ? 1 : 0);
+    const N = arm.stukken.length;
+    const uit = Math.min(1, Math.max(0, (opk - arm.opkomst) / (1 - arm.opkomst + 0.001)));   // 0 = nog onder water, 1 = helemaal omhoog
+    const zw = Math.sin(t * 1.1 + arm.fase) * 0.10, zij = Math.sin(t * 0.6 + arm.fase) * 0.05;
+    let slaanF = 0;
+    if(arm.slaan){ arm.slaanT += dt; const d = 1.6; const p = arm.slaanT / d; slaanF = p < 0.35 ? -Math.sin(p / 0.35 * Math.PI / 2) * 0.5 : Math.sin(Math.PI * Math.min(1, (p - 0.35) / 0.65)); if(p > 0.4 && !arm.geklapt){ arm.geklapt = true; const pt = armPunt(arm); spetter(pt.x, pt.z, 22, 1.2); geluidPlons(0.8); schok = Math.max(schok, 0.35); } if(p >= 1){ arm.slaan = 0; arm.geklapt = false; } }
+    arm.stukken.forEach((bot, j) => {
+      const f = j / (N - 1);
+      const golf = Math.sin(t * 1.9 - j * 0.55 + arm.fase) * 0.06 * (0.3 + f);
+      const krul = j === 0 ? 0 : -arm.kromming * (0.7 + 0.9 * f * f);     // steeds sterker krullen naar de punt
+      const basisHoek = j === 0 ? 1.25 * uit - 0.3 * (1 - uit) : krul;
+      const klap = j === 0 ? slaanF * 0.9 : slaanF * 0.12 * (1 - f);
+      bot.rotation.x = basisHoek + (j === 0 ? zw : zw * 0.4) + golf + klap;
+      bot.rotation.z = j > 0 ? zij + Math.sin(t * 1.3 + arm.fase + j * 0.7) * 0.03 : 0;
+      bot.rotation.y = j > 0 ? Math.sin(t * 0.8 + arm.fase + j) * 0.04 : 0;
     });
   }
   for(const b of k.baard){
-    b.stukken.forEach((piv, j) => { piv.rotation.x = (j === 0 ? 0 : 0.22) + Math.sin(t * 1.7 + b.fase + j * 0.8) * 0.13; piv.rotation.z = Math.sin(t * 1.1 + b.fase) * 0.08; });
+    b.stukken.forEach((bot, j) => { const f = j / (b.stukken.length - 1); bot.rotation.x = (j === 0 ? 0 : 0.18 + 0.25 * f) + Math.sin(t * 1.7 + b.fase + j * 0.8) * 0.12; bot.rotation.z = Math.sin(t * 1.1 + b.fase + j * 0.5) * 0.08; });
   }
 }
 
