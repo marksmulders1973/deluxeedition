@@ -58,6 +58,17 @@
               background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.25);border-radius:12px;padding:8px 12px;color:#fff}
 
   /* ── telefoon-knoppen: alleen op aanraakschermen ── */
+  /* 🔒 ADMIN PANEEL op het eiland — alleen voor NovaX (Brian 6 sep), zelfde regenboog-AP als in de lobby */
+  #apKnop{position:fixed;top:12px;left:12px;z-index:16;display:none;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.25);border-radius:10px;padding:7px 12px;cursor:pointer;font-size:14px;font-weight:900;letter-spacing:3px;}
+  #apKnop span{background:linear-gradient(90deg,#ff3b3b,#ff9f3b,#ffd93b,#3bff6e,#3b82ff,#a855f7);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  #apPaneel{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);}
+  #apInhoud{width:min(92vw,420px);max-height:88vh;overflow:auto;background:#0f1320;color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:18px;padding:6px 22px 22px;font-family:inherit;box-shadow:0 20px 60px rgba(0,0,0,0.6);}
+  #apInhoud h2{font-size:19px;font-weight:900;letter-spacing:2px;margin:0;flex:1}
+  .apKnopRij{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:#fff;border-radius:12px;padding:12px 14px;margin:7px 0;cursor:pointer;font-size:14px;font-family:inherit}
+  .apKnopRij:hover{background:rgba(255,255,255,0.12)}
+  .apKnopRij .em{font-size:22px;width:30px;text-align:center}
+  .apKnopRij .info{display:block;font-size:11px;color:rgba(255,255,255,0.5);font-weight:400}
+  .apKnopRij.aan{border-color:#3bff6e;background:rgba(59,255,110,0.12)}
   .touch-ui{display:none}
   @media (pointer:coarse){ .touch-ui{display:block} }
   #joy{position:fixed;left:18px;bottom:22px;width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,0.10);
@@ -120,6 +131,8 @@
   <div class="klein tip">Na "Maak": loop naar een plek, richt, en klik (of F) om het neer te zetten. Kijk je naar een muur, dan komt het er bovenop (zo zet je een dak op je huis). Esc = toch niet.</div>
 </div>
 <button id="craftKnop" class="touch-ui">🛠️</button>
+<button id="apKnop" title="Admin paneel (NovaX)"><span>AP</span></button>
+<div id="apPaneel"><div id="apInhoud"></div></div>
 <div id="zwemBalk">🏊 je zwemt!</div>
 <div id="doodScherm"><div class="kop">🔥 Je bent in de lava gevallen!</div><div class="sub">je begint zo weer op het strand…</div></div>
 <div id="geluidKnop">🔊</div>
@@ -4074,7 +4087,7 @@ function updateSpeler(dt){
   let stapX = 0, stapZ = 0;
   if(beweegt){
     const nvx = vx / Math.max(1, len), nvz = vz / Math.max(1, len);
-    const snel = zwemt ? ZWEM : (rent ? REN : LOOP);
+    const snel = (zwemt ? ZWEM : (rent ? REN : LOOP)) * (adminSnel ? 2.5 : 1);
     stapX = ( nvx*cos + nvz*sin) * snel * dt;
     stapZ = (-nvx*sin + nvz*cos) * snel * dt;
   }
@@ -4160,6 +4173,7 @@ let terugDuwMelding = false;
 // ══════════════════════════════════════════════════════════════════
 let dood = false, doodT = 0, lavaWaarschuwing = false;
 function gaDood(kop){
+  if(typeof adminGod !== 'undefined' && adminGod){ zeg('🛡️ admin: dat deed geen pijn'); schok = Math.max(schok, 0.5); return; }
   if(dood) return;
   dood = true; doodT = 0; velY = 0;
   document.querySelector('#doodScherm .kop').textContent = kop || '🔥 Je bent in de lava gevallen!';
@@ -4323,7 +4337,7 @@ document.getElementById('geluidKnop').addEventListener('click', () => {
 let gestart = false, vorigeTijd = 0, schaduwTeller = 0;
 
 document.querySelector('#start .knop').addEventListener('click', () => {
-  gestart = true;
+  gestart = true; apToon();
   document.getElementById('start').style.display = 'none';
   for(const id of ['thuis','teller','geluidKnop','houtTeller']) document.getElementById(id).style.display = 'block';
   toonHout();
@@ -5053,6 +5067,56 @@ function geluidBorrel(){ metAudio(ac => {            // borrelende zee (een reek
     o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0 + 0.32);
   }
 }); }
+
+// ══════════════════════════════════════════════════════════════════
+// 🔒 ADMIN PANEEL op het eiland (Brian 6 sep: "de speler met de naam NovaX
+//    ziet linksboven een admin paneel, net als in de lobby")
+// Dezelfde naam-login als de lobby (localStorage 'deluxe-speler'); alleen
+// "NovaX" ziet de regenboog-AP-knop. Krachten: onsterfelijk, supersnel,
+// Kraken of vulkaan NU, +100 hout/steen, teleporteren, eiland resetten,
+// en een knop naar het lobby-paneel.
+// ══════════════════════════════════════════════════════════════════
+const IS_NOVAX = (() => { try { return (localStorage.getItem('deluxe-speler') || '').trim() === 'NovaX'; } catch(e){ return false; } })();
+let adminGod = false, adminSnel = false, apOpenStaat = false;
+function apToon(){ const k = document.getElementById('apKnop'); if(k) k.style.display = (IS_NOVAX && gestart) ? 'block' : 'none'; }
+function apOpen(){ if(!IS_NOVAX) return; apOpenStaat = true; document.getElementById('apPaneel').style.display = 'flex'; apTeken(); if(pointerLocked) document.exitPointerLock(); }
+function apSluit(){ apOpenStaat = false; document.getElementById('apPaneel').style.display = 'none'; }
+function apTeleport(x, z, tekst){
+  camera.position.x = x; camera.position.z = z;
+  spelerY = Math.max(hoogteOp(x, z), -0.55); velY = 0; opGrond = true;
+  camera.position.y = spelerY + OOG;
+  apSluit(); zeg(tekst);
+}
+function apRamp(soort){
+  if(uitbarst || (kraken && kraken.fase !== 'borrelt')){ zeg('⏳ er is al een ramp bezig'); return; }
+  rampForce = soort; rampKeuze = null; rampTimer = Math.max(rampTimer, rampVolgende - UITBARST_WAARSCHUW);
+  apSluit(); zeg(soort === 'kraken' ? '🐙 admin: de Kraken komt eraan…' : '🌋 admin: de vulkaan gaat uitbarsten…');
+}
+function apTeken(){
+  const el = document.getElementById('apInhoud'); el.innerHTML = '';
+  const hdr = document.createElement('div'); hdr.style.cssText = 'display:flex;align-items:center;gap:12px;padding:18px 0 14px';
+  const tit = document.createElement('h2'); tit.textContent = '🔒 ADMIN PANEEL'; hdr.appendChild(tit);
+  const x = document.createElement('button'); x.textContent = '✕'; x.style.cssText = 'background:none;border:none;color:rgba(255,255,255,0.5);font-size:22px;cursor:pointer;padding:4px 8px;'; x.onclick = apSluit; hdr.appendChild(x);
+  el.appendChild(hdr);
+  const sub = document.createElement('div'); sub.style.cssText = 'font-size:11px;color:rgba(255,255,255,0.45);letter-spacing:1px;margin-bottom:10px'; sub.textContent = '🏝️ EILAND · ingelogd als NovaX'; el.appendChild(sub);
+  const knop = (em, naam, info, fn, aan) => {
+    const b = document.createElement('button'); b.className = 'apKnopRij' + (aan ? ' aan' : '');
+    b.innerHTML = '<span class="em">' + em + '</span><span><b>' + naam + '</b><span class="info">' + info + '</span></span>';
+    b.onclick = fn; el.appendChild(b);
+  };
+  knop('🛡️', 'Onsterfelijk ' + (adminGod ? 'AAN' : 'UIT'), 'lava, Kraken en tentakels kunnen je niets doen', () => { adminGod = !adminGod; zeg(adminGod ? '🛡️ onsterfelijk AAN' : '🛡️ onsterfelijk UIT'); apTeken(); }, adminGod);
+  knop('⚡', 'Supersnel ' + (adminSnel ? 'AAN' : 'UIT'), '2,5× zo snel lopen, rennen en zwemmen', () => { adminSnel = !adminSnel; zeg(adminSnel ? '⚡ supersnel AAN' : '⚡ supersnel UIT'); apTeken(); }, adminSnel);
+  knop('🐙', 'Kraken NU', 'de zee gaat meteen borrelen, 12 sec later komt hij', () => apRamp('kraken'));
+  knop('🌋', 'Vulkaan NU', 'de vulkaan begint meteen te rommelen', () => apRamp('vulkaan'));
+  knop('🪵', '+100 hout & +100 steen', 'genoeg voor muren, daken en de pickaxe', () => { houtBak.aantal += 100; steenBak.aantal += 100; try { localStorage.setItem(houtBak.sleutel, String(houtBak.aantal)); localStorage.setItem(steenBak.sleutel, String(steenBak.aantal)); } catch(e) {} toonHout(true); zeg('🪵 +100 hout · 🪨 +100 steen'); apTeken(); });
+  knop('🌋', 'Teleport: kraterrand', 'boven op de vulkaan, bij het lavameer', () => apTeleport(VULKAAN.x + VULKAAN.kraterR * 1.4, VULKAAN.z, '🌋 je staat op de kraterrand'));
+  knop('🏖️', 'Teleport: strand', 'terug naar het beginstrand', () => apTeleport(0, THUIS.z, '🏖️ terug op het strand'));
+  knop('🧹', 'Eiland resetten', 'muren, daken, gaten, hout en steen weg — begint opnieuw', () => { if(!confirm('Alles van het eiland wissen en opnieuw beginnen?')) return; try { Object.keys(localStorage).filter(k => k.startsWith('deluxe-eiland')).forEach(k => localStorage.removeItem(k)); } catch(e) {} location.reload(); });
+  knop('🏠', 'Naar het lobby-paneel', 'de AP van deluxeedition.nl (verbannen, mods, vibes)', () => { location.href = 'index.html'; });
+}
+document.getElementById('apKnop').addEventListener('click', apOpen);
+document.getElementById('apPaneel').addEventListener('click', e => { if(e.target.id === 'apPaneel') apSluit(); });
+addEventListener('keydown', e => { if(e.code === 'Escape' && apOpenStaat) apSluit(); });
 
 function loop(nu){
   requestAnimationFrame(loop);
