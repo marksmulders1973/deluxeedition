@@ -5006,7 +5006,7 @@ function kFbm3(x, y, z){ let a = 0.5, fr = 1, r = 0; for(let i = 0; i < 4; i++){
 // kaart (groeven mat, ruggen nat-glanzend). 512×512, naadloos herhaalbaar.
 function krakenHuidKaarten(){
   if(_krakenTex) return;
-  const N = 512, P = 6;
+  const N = IS_TOUCH ? 512 : 1024, P = 6;
   const H = new Float32Array(N * N);
   let zaad = 4242; const rnd = () => { zaad = (zaad * 1664525 + 1013904223) >>> 0; return zaad / 4294967296; };
   for(let y = 0; y < N; y++) for(let x = 0; x < N; x++){
@@ -5015,7 +5015,8 @@ function krakenHuidKaarten(){
     const lang = 1 - Math.abs(2 * kFbmP(u * 3.2 + 40, v * 0.7 + 17, P, 3) - 1);  // v4: lange rimpels in de lengte
     const plooi = kFbmP(u * 0.6 + 3, v * 0.6 + 7, P, 3);                      // grote zachte plooien
     const fijn = kFbmP(u * 6 + 11, v * 6 + 5, P, 3);                           // fijne korrel
-    H[y * N + x] = 0.42 * Math.pow(rug, 1.25) + 0.36 * Math.pow(lang, 1.5) + 0.19 * plooi + 0.03 * fijn;
+    const micro = 1 - Math.abs(2 * kFbmP(u * 14 + 31, v * 14 + 2, P, 2) - 1);     // v5: micro-rimpeltjes
+    H[y * N + x] = 0.40 * Math.pow(rug, 1.25) + 0.34 * Math.pow(lang, 1.5) + 0.17 * plooi + 0.03 * fijn + 0.06 * Math.pow(micro, 2.0);
   }
   // wratten / papillen: bolletjes op de hoogtekaart (tegelbaar)
   for(let i = 0; i < 110; i++){
@@ -5057,6 +5058,8 @@ function krakenHuidKaarten(){
 function krakenNormaalTex(){ krakenHuidKaarten(); return _krakenNormaal; }
 function krakenRuwTex(){ krakenHuidKaarten(); return _krakenRuw; }
 function krakenHuidTextuur(){ krakenHuidKaarten(); return _krakenTex; }
+// de kaarten kosten ~3 s rekenwerk (1024²): alvast maken kort na het laden, zodat de Kraken later zonder hapering opkomt
+setTimeout(() => { try { krakenHuidKaarten(); } catch(e) {} }, 6000);
 // (oude v2-textuur hieronder wordt niet meer gebruikt — bewaard voor de geschiedenis)
 function krakenHuidTextuurV2(){
   if(_krakenTex) return _krakenTex;
@@ -5110,7 +5113,11 @@ function krakenHuidMat(skinning){
   m.onBeforeCompile = (sh) => {
     sh.uniforms.tijd = {value: 0}; sh.uniforms.schrik = {value: 0};
     sh.vertexShader = 'varying vec3 vWP;' + String.fromCharCode(10) + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>' + String.fromCharCode(10) + ' vWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = 'uniform float tijd; uniform float schrik; varying vec3 vWP;' + String.fromCharCode(10) + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+    sh.uniforms.flits = {value: 0};
+    sh.fragmentShader = 'uniform float tijd; uniform float schrik; uniform float flits; varying vec3 vWP;' + String.fromCharCode(10) + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      // v5: randlicht — waar je schuin over de natte huid kijkt schijnt het (storm)licht er blauwwit doorheen
+      { vec3 vd = normalize(vViewPosition); float rim = pow(1.0 - clamp(dot(normalize(normal), vd), 0.0, 1.0), 2.6);
+        totalEmissiveRadiance += rim * vec3(0.22, 0.30, 0.42) * (0.7 + 2.2 * flits) + rim * rim * vec3(0.35, 0.40, 0.45) * flits; }`).replace('#include <color_fragment>', `#include <color_fragment>
       float g1 = sin(vWP.x * 0.045 + vWP.y * 0.03 + tijd * 1.3) * sin(vWP.z * 0.05 - tijd * 0.9 + vWP.y * 0.02);
       float golfK = smoothstep(0.15, 0.75, g1);
       float flik = 0.5 + 0.5 * sin(vWP.x * 1.7 + tijd * 6.0) * sin(vWP.z * 1.9 - tijd * 5.0) * sin(vWP.y * 1.3 + tijd * 4.0);
@@ -5154,8 +5161,8 @@ function maakTentakel(aantal, lenBegin, lenEind, dikBegin, dikEind, mat){
     const f = Math.min(1, Math.max(0, y / L));
     // bolling: 1 bij de basis, iets breder rond 15%, dan taps
     const hoekA = Math.atan2(x, z);
-    const bol = (1 + 0.12 * Math.sin(Math.PI * Math.min(1, f / 0.3))) * (1 + 0.045 * (kFbm3(hoekA * 1.2, y * 0.9, 7) - 0.5) * 2 + 0.02 * Math.sin(y * 3.1 + hoekA * 2));   // v4: rimpelringen + bobbels
-    pos.setX(i, x * bol); pos.setZ(i, z * bol);
+    const bol = (1 + 0.12 * Math.sin(Math.PI * Math.min(1, f / 0.3))) * (1 + 0.07 * (kFbm3(hoekA * 1.2, y * 0.9, 7) - 0.5) * 2 + 0.03 * (kFbm3(hoekA * 0.4 + 3, y * 0.25, 1) - 0.5) * 2 + 0.02 * Math.sin(y * 3.1 + hoekA * 2));   // v5: rimpelringen + grote bobbels
+    pos.setX(i, x * bol * 1.18); pos.setZ(i, z * bol * 0.92);                       // v5: ovaal (breder dan hoog)
     // kleur: onderkant (−z) bleek, bovenkant roodbruin, naar de punt iets donkerder
     const r = Math.hypot(x, z) || 1; const onder = Math.max(0, -z / r);
     const c = _kA.clone().lerp(_kB, Math.pow(onder, 1.6) * 0.85).lerp(_kD, f * 0.25);
@@ -5185,12 +5192,15 @@ function maakTentakel(aantal, lenBegin, lenEind, dikBegin, dikEind, mat){
       for(const zijde of [-1, 1]){
         const hoek = zijde * 0.55;     // twee rijen, links en rechts van het midden van de onderkant
         const cx = Math.sin(hoek) * dik * 0.92, cz = -Math.cos(hoek) * dik * 0.92;
-        const nap = new THREE.TorusGeometry(rn, rn * 0.36, 6, napRadiaal);
-        // v3: een donkere kom ín de zuignap (iets verzonken) — zo zie je dat het echt nappen zijn
-        const kom = new THREE.CircleGeometry(rn * 0.78, napRadiaal); kom.translate(0, 0, -rn * 0.12);
+        const rv = rn * (0.85 + Math.random() * 0.3);                                  // v5: niet alle nappen even groot
+        const nap = new THREE.TorusGeometry(rv, rv * 0.3, 6, napRadiaal);
+        // v5: een steeltje onder de nap (afgeknotte kegel), zodat de nap uit de arm steekt als een echte kom
+        const steel = new THREE.CylinderGeometry(rv * 1.05, rv * 0.7, rv * 0.7, napRadiaal, 1, true); steel.rotateX(Math.PI / 2); steel.translate(0, 0, -rv * 0.35);
+        // de donkere kom ín de zuignap (iets verzonken)
+        const kom = new THREE.CircleGeometry(rv * 0.8, napRadiaal); kom.translate(0, 0, -rv * 0.14);
         // naar buiten laten wijzen (weg van de as van de arm)
         const m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(0, -hoek, 0));
-        for(const [geo2, kleurNap] of [[nap, _kZ], [kom, _kD]]){
+        for(const [geo2, kleurNap] of [[nap, _kZ], [steel, _kB], [kom, _kD]]){
           geo2.applyMatrix4(m);
           geo2.translate(cx, y, cz);
           const cnt = geo2.attributes.position.count;
@@ -5289,7 +5299,8 @@ function startKraken(){
         wenkbrauw += Math.exp(-Math.pow((dy - 2.6) / 2.2, 2) - Math.pow(dx / 5.5, 2)) * Math.max(0, z / r);
       }
       const basisPlooi = Math.exp(-y / 7) * Math.pow(Math.abs(Math.sin(hoek * 5 + 0.4)), 1.5);          // dikke plooien waar de kop op de armen zit
-      const plooi = 1 + 0.14 * bult + 0.13 * Math.pow(groef, 2.0) * Math.min(1, y / 4) - 0.16 * oogRimpel + 0.08 * wenkbrauw + 0.09 * basisPlooi + 0.01 * Math.sin(hoek * 23 + y * 0.6);
+      const scheef = kFbm3(x * 0.045 + 19, y * 0.05 + 4, z * 0.045 + 7) - 0.5;                          // v5: grote asymmetrische bulten (geen symmetrisch ei)
+      const plooi = 1 + 0.14 * bult + 0.13 * Math.pow(groef, 2.0) * Math.min(1, y / 4) - 0.16 * oogRimpel + 0.08 * wenkbrauw + 0.09 * basisPlooi + 0.16 * scheef * Math.min(1, y / 3) + 0.01 * Math.sin(hoek * 23 + y * 0.6);
       pos.setX(i, x * plooi); pos.setZ(i, z * plooi);
       const voor = Math.max(0, z / r), laag = Math.max(0, 1 - y / 12);
       const c = _kA.clone().lerp(_kB, voor * laag * 0.55).lerp(_kD, Math.max(0, (y - 14) / 12) * 0.5);
@@ -5403,6 +5414,7 @@ function krakenExtraMaak(g, plek){
   const k = kraken;
   k.tegen = new THREE.PointLight(0xa9c8ff, 0, 260 * KRAKEN_SCHAAL, 1.2); scene.add(k.tegen);
   k.spot = new THREE.SpotLight(0xdfe9ff, 0, 0, 0.42, 0.7, 1); k.spot.position.set(plek.x, 70 * KRAKEN_SCHAAL, plek.z); k.spot.target = g; scene.add(k.spot);
+  k.zeeLicht = new THREE.PointLight(0x4fa3c8, 0, 60 * KRAKEN_SCHAAL, 1.4); k.zeeLicht.position.set(plek.x, 1.5, plek.z); scene.add(k.zeeLicht);   // v5: blauw licht van het water op de onderkant
   k.nevel = [];
   const N = IS_TOUCH ? 12 : 26;
   for(let i = 0; i < N; i++){
@@ -5418,6 +5430,7 @@ function krakenExtraMaak(g, plek){
 function krakenExtraWeg(k){
   if(k.tegen){ scene.remove(k.tegen); k.tegen = null; }
   if(k.spot){ scene.remove(k.spot); k.spot = null; }
+  if(k.zeeLicht){ scene.remove(k.zeeLicht); k.zeeLicht = null; }
   if(k.nevel){ for(const sp of k.nevel){ scene.remove(sp); sp.material.dispose(); } k.nevel = null; }
 }
 const _botW = new THREE.Vector3();
@@ -5432,6 +5445,7 @@ function krakenExtraUpdate(k, dt, t, opk){
     k.tegen.intensity = zicht * (3.4 + 0.6 * Math.sin(t * 0.7) + 10 * flits);
   }
   if(k.spot){ k.spot.position.set(g.position.x + Math.sin(t * 0.2) * 20, 70 * KRAKEN_SCHAAL, g.position.z + Math.cos(t * 0.2) * 20); k.spot.intensity = zicht * (1.1 + 3 * flits); }
+  if(k.zeeLicht){ k.zeeLicht.position.set(g.position.x, 1.5, g.position.z); k.zeeLicht.intensity = zicht * (1.6 + 0.4 * Math.sin(t * 1.7)); }
   // nevel kruipt rond het lijf
   if(k.nevel) for(const sp of k.nevel){
     const u = sp.userData; u.a += u.snel * dt;
@@ -5701,7 +5715,7 @@ function updateKraken(dt, t){
   // huid: kleurgolven lopen door; bij brullen schrikt hij bleek en kleurt hij langzaam terug
   if(k.brult > 0 && k.brult > 1.1) k.schrik = 1;
   k.schrik = Math.max(0, (k.schrik || 0) - dt * 0.45);
-  for(const sh of krakenShaders){ sh.uniforms.tijd.value = t; sh.uniforms.schrik.value = k.schrik; }
+  for(const sh of krakenShaders){ sh.uniforms.tijd.value = t; sh.uniforms.schrik.value = k.schrik; if(sh.uniforms.flits) sh.uniforms.flits.value = (typeof hemelFlits !== 'undefined' ? hemelFlits : 0); }
   // de ogen volgen jou (met een grens, anders draaien ze uit hun kas)
   if(k.oogGroepen) for(const oog of k.oogGroepen){
     const sx = oog.userData.sx;
