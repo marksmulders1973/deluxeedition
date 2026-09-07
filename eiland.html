@@ -6028,19 +6028,30 @@ function slaBliksem(){
   const grond = Math.max(hoogteOp(x, z), -0.5), top = grond + 520;
   const start = new THREE.Vector3(x + (Math.random() - 0.5) * 90, top, z + (Math.random() - 0.5) * 90), eind = new THREE.Vector3(x, grond, z);
   const lijnen = [], gloed = [];
+  // v3: de schicht is een echte BUIS (TubeGeometry) — een witte kern met een blauwwitte gloed-
+  // buis eromheen. Van ver een dikke lichtstreep, van dichtbij een brullende bliksem.
   const maakLijn = (pts, dikte) => {
-    const lijn = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({color: dikte > 1 ? 0xf8fbff : 0xbfd4ff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, fog: false}));
-    scene.add(lijn); lijnen.push(lijn);
-    for(let i = 1; i < pts.length - 1; i += (dikte > 1 ? 3 : 5)){ const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, color: 0xcfe0ff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, fog: false})); sp.position.copy(pts[i]); const m = dikte > 1 ? 18 : 8; sp.scale.set(m, m, 1); scene.add(sp); gloed.push(sp); }
+    // hoekig houden (echte bliksem is kartelig, niet glad): rechte stukjes aan elkaar
+    const curve = new THREE.CurvePath(); for(let i = 0; i < pts.length - 1; i++) curve.add(new THREE.LineCurve3(pts[i], pts[i + 1]));
+    const segs = Math.min(200, pts.length * 4);
+    const rKern = dikte > 1 ? 1.6 : 0.6, rGloed = dikte > 1 ? 7 : 2.8;
+    const kern = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, rKern, 6, false), new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false, fog: false}));
+    const waas = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, rGloed, 8, false), new THREE.MeshBasicMaterial({color: 0x8fb4ff, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, fog: false}));
+    for(const m of [kern, waas]){ m.frustumCulled = false; scene.add(m); lijnen.push(m); }
+    kern.userData.op = 1; waas.userData.op = 0.28;
   };
-  const hoofd = schichtLijn(start, eind, 16, 26); maakLijn(hoofd, 2);
-  // 2-3 zijtakken: beginnen ergens op de hoofdschicht, schieten schuin naar beneden en stoppen in de lucht
-  const takken = 2 + Math.floor(Math.random() * 2);
+  const hoofd = schichtLijn(start, eind, 46, 40); maakLijn(hoofd, 2);
+  // v3: 4-6 zijtakken mét sub-takjes: beginnen op de hoofdschicht, schieten schuin naar beneden en stoppen in de lucht
+  const takken = 4 + Math.floor(Math.random() * 3);
   for(let k = 0; k < takken; k++){
-    const i0 = 4 + Math.floor(Math.random() * (hoofd.length - 10)); const p0 = hoofd[i0];
-    const tak = schichtLijn(p0, new THREE.Vector3(p0.x + (Math.random() - 0.5) * 140, p0.y - 80 - Math.random() * 140, p0.z + (Math.random() - 0.5) * 140), 10, 9);
+    const i0 = 3 + Math.floor(Math.random() * (hoofd.length - 10)); const p0 = hoofd[i0];
+    const tak = schichtLijn(p0, new THREE.Vector3(p0.x + (Math.random() - 0.5) * 160, p0.y - 70 - Math.random() * 160, p0.z + (Math.random() - 0.5) * 160), 26, 12);
     maakLijn(tak, 1);
+    if(Math.random() < 0.7){ const j0 = 3 + Math.floor(Math.random() * (tak.length - 5)); const q0 = tak[j0]; maakLijn(schichtLijn(q0, new THREE.Vector3(q0.x + (Math.random() - 0.5) * 70, q0.y - 40 - Math.random() * 60, q0.z + (Math.random() - 0.5) * 70), 7, 6), 1); }
   }
+  // lichtring op de grond waar hij inslaat
+  { const ring = new THREE.Mesh(new THREE.RingGeometry(0.2, 1, 40), new THREE.MeshBasicMaterial({color: 0xdfe9ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false}));
+    ring.rotation.x = -Math.PI / 2; ring.position.set(x, grond + 0.4, z); ring.scale.setScalar(6); ring.userData.op = 0.9; scene.add(ring); gloed.push(ring); }
   const licht = new THREE.PointLight(0xdfe8ff, 14, 900, 1); licht.position.set(x, grond + 40, z); scene.add(licht);
   bolten.push({lijnen, gloed, licht, t: 0, slagen: 2 + Math.floor(Math.random() * 2)});
   const d = Math.hypot(x - camera.position.x, z - camera.position.z);
@@ -6135,6 +6146,103 @@ function updateRegenboog(dt){
   regenboog.material.opacity = 0.5 * (regenboogT < 5 ? regenboogT / 5 : (regenboogT > D - 8 ? Math.max(0, (D - regenboogT) / 8) : 1));
   if(regenboogT > D){ scene.remove(regenboog); regenboog.geometry.dispose(); regenboog.material.dispose(); regenboog = null; regenboogT = -1; }
 }
+// ══════════════════════════════════════════════════════════════════
+// ⛈️⛈️ ONWEER v3 (Brian 7 sep 2026: "100x realistischer")
+//   • REGEN op de videokaart: duizenden dunne strepen (LineSegments met eigen shader) die
+//     schuin door de wind vallen, in vlagen harder en zachter, oplichtend bij elke bliksem;
+//     de druppels staan stil in de wereld (je loopt er doorheen, ze lopen niet met je mee);
+//   • DRUPPELS OP JE OGEN: een 2D-laag over het beeld met druppels die aanslaan, uitzakken en
+//     naar beneden lopen (zoals regen op een cameralens);
+//   • BLIKSEM v3: dikkere hoofdschicht met dubbele gloed, 4-6 zijtakken mét sub-takjes, een
+//     lichtring op de grond waar hij inslaat, en de regen licht mee op;
+//   • WINDVLAGEN: de regen en het regengeluid zwellen aan en af met de vlagen.
+// ══════════════════════════════════════════════════════════════════
+let regenGPU = null, regenVlaag = 0, lensCanvas = null, lensCtx = null; const lensDruppels = [];
+const REGEN_N = IS_TOUCH ? 3000 : 9000, REGEN_H = 42, REGEN_B = 80;
+function maakRegenGPU(){
+  if(regenGPU) return;
+  const basis = new Float32Array(REGEN_N * 2 * 3), vaart = new Float32Array(REGEN_N * 2), eind = new Float32Array(REGEN_N * 2), lengte = new Float32Array(REGEN_N * 2);
+  for(let i = 0; i < REGEN_N; i++){
+    const x = (Math.random() - 0.5) * REGEN_B, y = Math.random() * REGEN_H, z = (Math.random() - 0.5) * REGEN_B;
+    const v = 24 + Math.random() * 14, L = 0.7 + Math.random() * 1.3;
+    for(let k = 0; k < 2; k++){ const j = i * 2 + k; basis[j * 3] = x; basis[j * 3 + 1] = y; basis[j * 3 + 2] = z; vaart[j] = v; eind[j] = k; lengte[j] = L; }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(basis, 3));
+  geo.setAttribute('aVaart', new THREE.BufferAttribute(vaart, 1));
+  geo.setAttribute('aEind', new THREE.BufferAttribute(eind, 1));
+  geo.setAttribute('aLen', new THREE.BufferAttribute(lengte, 1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {tijd: {value: 0}, cam: {value: new THREE.Vector3()}, wind: {value: new THREE.Vector2(0.35, 0.1)}, kracht: {value: 0}, flits: {value: 0}, H: {value: REGEN_H}, B: {value: REGEN_B}},
+    vertexShader: `attribute float aVaart; attribute float aEind; attribute float aLen;
+      uniform float tijd, kracht, H, B; uniform vec3 cam; uniform vec2 wind; varying float vA;
+      void main(){
+        // val: y loopt van boven naar beneden en springt weer omhoog (mod); x/z staan stil in de wereld,
+        // gewikkeld rond de camera zodat er altijd regen om je heen is
+        float y = mod(position.y - tijd * aVaart, H);
+        float wx = mod(position.x - cam.x, B) - B * 0.5 + cam.x;
+        float wz = mod(position.z - cam.z, B) - B * 0.5 + cam.z;
+        // wind: hoe lager de druppel, hoe verder hij opzij is geblazen
+        float schuin = (H - y) / H;
+        vec3 p = vec3(wx + wind.x * schuin * 9.0, cam.y - 9.0 + y, wz + wind.y * schuin * 9.0);
+        vec3 richting = normalize(vec3(wind.x * 0.35, -1.0, wind.y * 0.35));
+        if(aEind > 0.5) p += richting * aLen * (aVaart / 28.0);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        float d = -mv.z;
+        vA = kracht * (0.55 - 0.35 * smoothstep(6.0, 40.0, d)) * (0.6 + 0.4 * aEind);
+        gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform float flits; varying float vA;
+      void main(){ if(vA < 0.01) discard; gl_FragColor = vec4(vec3(0.78, 0.86, 0.96) * (1.0 + 1.6 * flits), vA); }`,
+    transparent: true, depthWrite: false, blending: THREE.NormalBlending,
+  });
+  regenGPU = new THREE.LineSegments(geo, mat); regenGPU.frustumCulled = false; regenGPU.visible = false; scene.add(regenGPU);
+}
+function updateRegenGPU(dt, t){
+  if(onweerKracht < 0.03){ if(regenGPU) regenGPU.visible = false; return; }
+  maakRegenGPU();
+  // vlagen: de wind zwelt aan en af (zelfde ritme als de palmen), de regen zwelt mee
+  const vlaag = 0.55 + 0.45 * Math.sin(t * 0.23) + 0.5 * Math.max(0, Math.sin(t * 0.7) * Math.sin(t * 0.31 + 1));
+  regenVlaag += (vlaag - regenVlaag) * Math.min(1, dt * 1.5);
+  const u = regenGPU.material.uniforms;
+  u.tijd.value = t; u.cam.value.copy(camera.position);
+  u.wind.value.set(0.25 + 0.55 * regenVlaag, 0.08 + 0.2 * Math.sin(t * 0.11));
+  u.kracht.value = Math.min(1, onweerKracht * 1.4) * (0.55 + 0.45 * regenVlaag);
+  u.flits.value = hemelFlits;
+  regenGPU.visible = true;
+  if(regenGeluid) regenGeluid.g.gain.value = 0.0001 + 0.45 * onweerKracht * (0.6 + 0.4 * regenVlaag);
+}
+// ── druppels op je ogen (2D-laag over het beeld) ──
+function maakLens(){
+  if(lensCanvas) return;
+  lensCanvas = document.createElement('canvas'); lensCanvas.id = 'regenLens';
+  lensCanvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9;';
+  document.body.appendChild(lensCanvas); lensCtx = lensCanvas.getContext('2d');
+}
+function updateLensDruppels(dt){
+  if(onweerKracht < 0.2 && !lensDruppels.length){ if(lensCanvas) lensCanvas.style.display = 'none'; return; }
+  maakLens(); lensCanvas.style.display = 'block';
+  const W = innerWidth, Hh = innerHeight;
+  if(lensCanvas.width !== W || lensCanvas.height !== Hh){ lensCanvas.width = W; lensCanvas.height = Hh; }
+  const g = lensCtx; g.clearRect(0, 0, W, Hh);
+  // nieuwe druppels slaan aan (meer bij harde regen), niet onder water
+  if(onweerKracht > 0.2 && !(typeof zwemt !== 'undefined' && zwemt) && lensDruppels.length < (IS_TOUCH ? 28 : 55) && Math.random() < dt * 14 * onweerKracht * (0.5 + regenVlaag)){
+    lensDruppels.push({x: Math.random() * W, y: Math.random() * Hh * 0.9, r: 3 + Math.random() * 9, t: 0, duur: 2.5 + Math.random() * 5, vy: 0, wieb: Math.random() * 6.283, loopt: Math.random() < 0.45});
+  }
+  for(let i = lensDruppels.length - 1; i >= 0; i--){
+    const d = lensDruppels[i]; d.t += dt;
+    if(d.loopt && d.t > 0.6){ d.vy = Math.min(220, d.vy + 260 * dt * (d.r / 8)); d.y += d.vy * dt; d.x += Math.sin(d.t * 7 + d.wieb) * 18 * dt; }
+    const f = d.t / d.duur, alpha = Math.min(1, d.t * 6) * (1 - f * f);
+    if(f >= 1 || d.y > Hh + 20){ lensDruppels.splice(i, 1); continue; }
+    // de druppel: doorzichtig blauwgrijs bolletje met een licht randje en een glimpje
+    const rr = d.r * (d.loopt ? 1 + Math.min(0.6, d.vy / 300) : 1);
+    const grad = g.createRadialGradient(d.x - rr * 0.25, d.y - rr * 0.3, rr * 0.1, d.x, d.y, rr);
+    grad.addColorStop(0, 'rgba(230,240,255,' + (0.28 * alpha) + ')'); grad.addColorStop(0.7, 'rgba(120,150,190,' + (0.16 * alpha) + ')'); grad.addColorStop(1, 'rgba(200,220,240,' + (0.34 * alpha) + ')');
+    g.fillStyle = grad; g.beginPath(); g.ellipse(d.x, d.y, rr * 0.85, rr * (d.loopt ? 1.25 : 1), 0, 0, 6.283); g.fill();
+    if(d.loopt && d.vy > 20){ g.strokeStyle = 'rgba(190,210,235,' + (0.14 * alpha) + ')'; g.lineWidth = rr * 0.55; g.beginPath(); g.moveTo(d.x, d.y - rr); g.lineTo(d.x - Math.sin(d.t * 7 + d.wieb) * 4, d.y - rr - Math.min(60, d.vy * 0.35)); g.stroke(); }
+    g.fillStyle = 'rgba(255,255,255,' + (0.35 * alpha) + ')'; g.beginPath(); g.arc(d.x - rr * 0.3, d.y - rr * 0.35, rr * 0.18, 0, 6.283); g.fill();
+  }
+}
+function updateOnweerV3(dt, t){ updateRegenGPU(dt, t); updateLensDruppels(dt); }
 function updateOnweer(dt){
   if(RAMP_TEST === 'onweer' && !onweerTestGedaan && gestart){ onweerTestGedaan = true; startOnweer(70); }
   if(!onweer){ onweerTimer -= dt; if(onweerTimer <= 0 && !uitbarst){ onweerTimer = 180 + Math.random() * 240; startOnweer(45 + Math.random() * 40); } }
@@ -6151,24 +6259,8 @@ function updateOnweer(dt){
   onweerKracht += (doel - onweerKracht) * Math.min(1, dt * 0.5);
   if(regenGeluid) regenGeluid.g.gain.value = 0.0001 + 0.4 * onweerKracht;
   hemelFlits = Math.max(0, hemelFlits - dt * 5);
-  // regen: strepen die om je heen naar beneden schieten
-  const N = IS_TOUCH ? 160 : 520;
-  if(onweerKracht > 0.08 && regen.length === 0){
-    for(let i = 0; i < N; i++){
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.3, color: 0xd6e4f5}));
-      sp.scale.set(0.06 + Math.random() * 0.04, 1.2 + Math.random() * 1.2, 1); sp.material.rotation = 0.22;   // schuin door de wind
-      sp.position.set(camera.position.x + (Math.random() - 0.5) * 44, camera.position.y - 4 + Math.random() * 26, camera.position.z + (Math.random() - 0.5) * 44);
-      sp.userData = {v: 26 + Math.random() * 10}; scene.add(sp); regen.push(sp);
-    }
-  }
-  for(const sp of regen){
-    sp.material.opacity = 0.32 * Math.min(1, onweerKracht * 1.5);
-    sp.position.y -= sp.userData.v * dt; sp.position.x += 8 * dt;
-    if(sp.position.y < camera.position.y - 6 || Math.abs(sp.position.x - camera.position.x) > 26 || Math.abs(sp.position.z - camera.position.z) > 26){
-      sp.position.set(camera.position.x + (Math.random() - 0.5) * 44, camera.position.y + 10 + Math.random() * 16, camera.position.z + (Math.random() - 0.5) * 44);
-    }
-  }
-  if(onweerKracht < 0.02 && regen.length){ for(const sp of regen){ scene.remove(sp); sp.material.dispose(); } regen.length = 0; }
+  // v3: regen op de videokaart (duizenden strepen) + druppels op je ogen — zie ONWEER v3 hierboven
+  updateOnweerV3(dt, performance.now() / 1000);
   // bliksem
   if(onweerKracht > 0.4){ bliksemWacht -= dt; if(bliksemWacht <= 0){ bliksemWacht = 1.5 + Math.random() * 5; slaBliksem(); } }
   for(let i = bolten.length - 1; i >= 0; i--){
@@ -6176,7 +6268,7 @@ function updateOnweer(dt){
     // meerdere slagen kort achter elkaar (zo doet echte bliksem het): elke 0,12 s opnieuw fel
     const slag = Math.min(b.slagen - 1, Math.floor(b.t / 0.12)), inSlag = (b.t - slag * 0.12) / 0.12;
     const f = Math.max(0, 1 - inSlag * 1.1) * (1 - slag * 0.25) * (Math.random() < 0.8 ? 1 : 0.4);
-    for(const l of b.lijnen) l.material.opacity = f; for(const g of b.gloed) g.material.opacity = 0.85 * f; b.licht.intensity = 14 * f;
+    for(const l of b.lijnen) l.material.opacity = (l.userData.op || 1) * f; for(const g of b.gloed){ g.material.opacity = (g.userData.op || 0.85) * f; if(g.isMesh) g.scale.setScalar(6 + b.t * 90); } b.licht.intensity = 22 * f;
     if(inSlag < 0.1 && slag > 0) hemelFlits = Math.max(hemelFlits, 0.6);
     if(b.t > b.slagen * 0.12 + 0.05){ for(const l of b.lijnen){ scene.remove(l); l.geometry.dispose(); l.material.dispose(); } for(const g of b.gloed){ scene.remove(g); g.material.dispose(); } scene.remove(b.licht); bolten.splice(i, 1); }
   }
