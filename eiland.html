@@ -2941,6 +2941,16 @@ for(const kant of [-1, 1]){
   handen.push(arm);
 }
 // (geen extra handlicht: dat maakte de handen spierwit)
+// 🙈 Armen verbergen (Brian 7 sep 2026, via het admin-paneel): alleen het
+// arm-materiaal gaat uit, dus de pickaxe in je rechterhand blijft gewoon te
+// zien. Keuze wordt onthouden (deluxe-eiland-armen).
+let armenZichtbaar = true;
+function zetArmen(zichtbaar){
+  armenZichtbaar = !!zichtbaar;
+  for(const h of handen) h.material.visible = armenZichtbaar;
+  try { localStorage.setItem("deluxe-eiland-armen", armenZichtbaar ? "aan" : "uit"); } catch(e) {}
+}
+try { if(localStorage.getItem("deluxe-eiland-armen") === "uit") zetArmen(false); } catch(e) {}
 
 // ══════════════════════════════════════════════════════════════════
 // 9b. HAKKEN MET JE VUIST (Brian, 5 sep: "een boom omhakken met je vuist,
@@ -5460,6 +5470,7 @@ function apTeken(){
   knop('🛡️', 'Onsterfelijk ' + (adminGod ? 'AAN' : 'UIT'), 'lava, Kraken en tentakels kunnen je niets doen', () => { adminGod = !adminGod; zeg(adminGod ? '🛡️ onsterfelijk AAN' : '🛡️ onsterfelijk UIT'); apTeken(); }, adminGod);
   knop('🕊️', 'Vliegen ' + (adminVlieg ? 'AAN' : 'UIT'), 'W = vooruit waar je kijkt · spatie = omhoog · C = omlaag · Shift = turbo', () => { adminVlieg = !adminVlieg; if(!adminVlieg){ velY = 0; } zeg(adminVlieg ? '🕊️ vliegen AAN — kijk waar je heen wilt en druk W' : '🕊️ vliegen UIT'); apTeken(); }, adminVlieg);
   knop('⚡', 'Supersnel ' + (adminSnel ? 'AAN' : 'UIT'), '2,5× zo snel lopen, rennen en zwemmen', () => { adminSnel = !adminSnel; zeg(adminSnel ? '⚡ supersnel AAN' : '⚡ supersnel UIT'); apTeken(); }, adminSnel);
+  knop('🙈', 'Armen ' + (armenZichtbaar ? 'ZICHTBAAR' : 'VERBORGEN'), 'je eigen armen niet meer in beeld · de pickaxe blijft te zien', () => { zetArmen(!armenZichtbaar); zeg(armenZichtbaar ? '👐 armen weer zichtbaar' : '🙈 armen verborgen'); apTeken(); }, !armenZichtbaar);
   knop('⛈️', 'Onweer NU', 'donkere lucht, regen, bliksem en donder, ~60 sec', () => { startOnweer(60); apSluit(); });
   knop('🐙', 'Kraken NU', 'de zee gaat meteen borrelen, 12 sec later komt hij', () => apRamp('kraken'));
   knop('🌋', 'Vulkaan NU', 'de vulkaan begint meteen te rommelen', () => apRamp('vulkaan'));
