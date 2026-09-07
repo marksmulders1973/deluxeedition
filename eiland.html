@@ -3856,8 +3856,8 @@ function startUitbarsting(){
   lavaStromen.length = 0;
   for(let i = 0; i < 6; i++){ const a = (i / 6) * 6.283 + Math.random() * 0.6; const r = VULKAAN.kraterR * 1.35; lavaStromen.push({x: VULKAAN.x + Math.cos(a) * r, z: VULKAAN.z + Math.sin(a) * r, klaar: false, wacht: Math.random() * 6}); }
   zeg('🌋 DE VULKAAN BARST UIT!!! WEG VAN DE BERG!');
-  geluidExplosie();
   schok = Math.max(schok, 2);
+  startKnal();                                            // 💥 v3: vuurbal + schokgolf + flits + 3 knallen
 }
 function bomKomtNeer(x, grond, z, maat){
   // gloeiende plek die langzaam dooft
@@ -3910,11 +3910,10 @@ function updateBommen(dt){
     const b = bomLijst[i];
     b.vy -= 26 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt; b.rx += b.sx * dt; b.ry += b.sy * dt;
     b.vonk -= dt;
-    if(b.vonk <= 0 && lavaDeeltjes.length < UITB_MAX){                 // vonken- en rookstaart
-      b.vonk = 0.11;
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.9, color: Math.random() < 0.5 ? 0xffb03a : 0x4a3228}));
-      sp.position.set(b.x, b.y, b.z); sp.userData = {vx: (Math.random() - 0.5) * 3, vy: 1 + Math.random() * 2, vz: (Math.random() - 0.5) * 3, leeftijd: 6.5, maat: b.maat * (0.8 + Math.random())};
-      sp.scale.set(sp.userData.maat, sp.userData.maat, 1); scene.add(sp); lavaDeeltjes.push(sp);
+    if(b.vonk <= 0 && vuurSys){                                          // 💥 v3: vuurstaart
+      b.vonk = 0.045;
+      zetDeeltje(vuurSys, {x: b.x, y: b.y, z: b.z, vx: (Math.random() - 0.5) * 5, vy: 2 + Math.random() * 3, vz: (Math.random() - 0.5) * 5, duur: 0.8 + Math.random() * 0.9, maat: b.maat * 2.4, soort: 0, k0: K_GEEL, k1: K_ROOD});
+      if(Math.random() < 0.5) zetDeeltje(rookSys, {x: b.x, y: b.y, z: b.z, vx: (Math.random() - 0.5) * 3, vy: 1, vz: (Math.random() - 0.5) * 3, duur: 4 + Math.random() * 3, maat: b.maat * 1.6, soort: 2, k0: K_AS0, k1: K_AS1});
     }
     const grond = hoogteOp(b.x, b.z);
     if(b.y - b.maat * 0.4 < grond || b.y < -5){
@@ -4028,7 +4027,7 @@ let uitbarstLicht = null;
 function updateUitbarstLicht(kracht){
   if(!uitbarstLicht){ uitbarstLicht = new THREE.PointLight(0xff7a2a, 0, 1300, 1); scene.add(uitbarstLicht); }
   uitbarstLicht.position.set(VULKAAN.x, kraterTop + 50, VULKAAN.z);
-  uitbarstLicht.intensity = kracht * (5 + 2 * Math.sin(performance.now() / 90) * Math.sin(performance.now() / 37));
+  uitbarstLicht.intensity = kracht * (6 + 2.5 * Math.sin(performance.now() / 90) * Math.sin(performance.now() / 37));
 }
 // ── gloeiende rotsblokken: echte 3D-brokken met een rookstaart ──
 const brokGeo = new THREE.DodecahedronGeometry(1, 0);
@@ -4160,8 +4159,257 @@ function updateWeerLucht(dt){
   scene.fog.color.lerp(doelF, Math.min(1, dt * snelheid));
   zon.intensity += ((_zonSterkte * (1 - 0.5 * kU) * (1 - 0.65 * kO) + 0.3 * hemelFlits) - zon.intensity) * Math.min(1, dt * snelheid);
 }
+// ══════════════════════════════════════════════════════════════════
+// 💥💥 UITBARSTING v3 — "EXPLOSIE-CHAOS" (Brian 7 sep 2026: "nu is het een domme
+// lijn die heen en weer gaat"). De dunne lichtkegel is weg. In de plaats:
+//   • een GPU-deeltjessysteem (duizenden vuurdeeltjes op de videokaart, dus goedkoop):
+//     vuurfontein van honderden meters hoog, wit-heet onderin, oranje, rood, dan zwart;
+//   • de KNAL op t=0: een vuurbal die uit de krater groeit, een schokgolf-ring die over
+//     het hele eiland raast (voel je als hij langs je komt), een lichtflits, drie knallen;
+//   • gloedwolken (pyroclastische stromen): zwarte gloeiende wolken die met 30 m/s langs
+//     de hellingen naar beneden razen en alles verzwelgen — erin = af;
+//   • vonkenregen, vuurstaarten achter de lavabommen, dikke zwarte as-pluim erboven;
+//   • de berg brult: het gerommel wordt een gebrul zolang hij uitbarst.
+// ══════════════════════════════════════════════════════════════════
+function vuurTextuur(){
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.18, 'rgba(255,240,190,0.95)');
+  r.addColorStop(0.45, 'rgba(255,150,60,0.55)'); r.addColorStop(0.75, 'rgba(255,80,20,0.18)'); r.addColorStop(1, 'rgba(255,40,0,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(c); return t;
+}
+const vuurTex = vuurTextuur();
+// Eén deeltjessysteem = één THREE.Points met eigen shader. Per deeltje: plek, vaart,
+// leeftijd, duur, grootte, begin- en eindkleur, soort (0 vuur, 1 vonk, 2 rook, 3 gloedwolk).
+function maakDeeltjesSysteem(N, tex, additief){
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N * 3), kleur = new Float32Array(N * 3), grootte = new Float32Array(N), alpha = new Float32Array(N);
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('kleur', new THREE.BufferAttribute(kleur, 3));
+  geo.setAttribute('grootte', new THREE.BufferAttribute(grootte, 1));
+  geo.setAttribute('alpha', new THREE.BufferAttribute(alpha, 1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {map: {value: tex}, fogNear: {value: 100}, fogFar: {value: 3000}},
+    vertexShader: `attribute float grootte; attribute float alpha; attribute vec3 kleur;
+      uniform float fogNear, fogFar; varying float vA; varying vec3 vK;
+      void main(){ vK = kleur; vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        float d = -mv.z; float mist = smoothstep(fogNear, fogFar, d);
+        vA = alpha * (1.0 - 0.85 * mist);
+        gl_PointSize = clamp(grootte * (460.0 / max(d, 1.0)), 0.0, 900.0);
+        gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform sampler2D map; varying float vA; varying vec3 vK;
+      void main(){ if(vA < 0.004) discard; vec4 t = texture2D(map, gl_PointCoord);
+        gl_FragColor = vec4(vK * t.rgb, t.a * vA); }`,
+    transparent: true, depthWrite: false, depthTest: true,
+    blending: additief ? THREE.AdditiveBlending : THREE.NormalBlending,
+  });
+  const punten = new THREE.Points(geo, mat); punten.frustumCulled = false; scene.add(punten);
+  const s = {N, geo, mat, punten, pos, kleur, grootte, alpha, levend: 0,
+    px: new Float32Array(N), py: new Float32Array(N), pz: new Float32Array(N),
+    vx: new Float32Array(N), vy: new Float32Array(N), vz: new Float32Array(N),
+    leven: new Float32Array(N), duur: new Float32Array(N), maat: new Float32Array(N), soort: new Uint8Array(N),
+    k0: new Float32Array(N * 3), k1: new Float32Array(N * 3), aan: new Uint8Array(N), vrij: []};
+  for(let i = N - 1; i >= 0; i--) s.vrij.push(i);
+  return s;
+}
+const VUUR_N = IS_TOUCH ? 2200 : 6000, ROOK_N = IS_TOUCH ? 500 : 1400, GLOED_N = IS_TOUCH ? 350 : 900;
+let vuurSys = null, rookSys = null, gloedSys = null;   // gloedwolken hebben een eigen pool, anders verdringt de as-pluim ze
+function deeltjesKlaar(){ if(!vuurSys){ vuurSys = maakDeeltjesSysteem(VUUR_N, vuurTex, true); rookSys = maakDeeltjesSysteem(ROOK_N, rookTex, false); gloedSys = maakDeeltjesSysteem(GLOED_N, rookTex, false); } }
+// een deeltje uitzetten: o = {x,y,z,vx,vy,vz,duur,maat,soort,k0:[r,g,b],k1:[r,g,b]}
+function zetDeeltje(s, o){
+  if(!s.vrij.length) return -1;
+  const i = s.vrij.pop(); s.aan[i] = 1; s.levend++;
+  s.px[i] = o.x; s.py[i] = o.y; s.pz[i] = o.z; s.vx[i] = o.vx; s.vy[i] = o.vy; s.vz[i] = o.vz;
+  s.leven[i] = 0; s.duur[i] = o.duur; s.maat[i] = o.maat; s.soort[i] = o.soort;
+  s.k0[i * 3] = o.k0[0]; s.k0[i * 3 + 1] = o.k0[1]; s.k0[i * 3 + 2] = o.k0[2];
+  s.k1[i * 3] = o.k1[0]; s.k1[i * 3 + 1] = o.k1[1]; s.k1[i * 3 + 2] = o.k1[2];
+  return i;
+}
+let gloedwolkCheck = 0;
+function updateDeeltjesSysteem(s, dt){
+  if(!s) return;
+  s.mat.uniforms.fogNear.value = scene.fog ? scene.fog.near : 100; s.mat.uniforms.fogFar.value = scene.fog ? scene.fog.far : 3000;
+  const wind = 3.5, N = s.N;
+  const checkGloed = s === gloedSys && gloedwolkCheck <= 0 && !dood;
+  for(let i = 0; i < N; i++){
+    if(!s.aan[i]){ s.alpha[i] = 0; s.grootte[i] = 0; continue; }
+    const soort = s.soort[i];
+    s.leven[i] += dt;
+    const f = s.leven[i] / s.duur[i];
+    if(f >= 1){ s.aan[i] = 0; s.vrij.push(i); s.levend--; s.alpha[i] = 0; s.grootte[i] = 0; continue; }
+    let g = 0, rem = 1;
+    if(soort === 0){ g = 34; rem = Math.pow(0.55, dt); }             // vuur: zwaar, remt af
+    else if(soort === 1){ g = 42; rem = Math.pow(0.8, dt); }         // vonk
+    else if(soort === 2){ g = -6; rem = Math.pow(0.35, dt); s.vx[i] += wind * dt; }   // rook: stijgt, waait weg
+    else { g = 9; rem = Math.pow(0.75, dt); }                        // gloedwolk: blijft laag, dendert door
+    s.vy[i] -= g * dt; s.vx[i] *= rem; s.vz[i] *= rem; if(soort !== 3) s.vy[i] *= (soort === 2 ? Math.pow(0.6, dt) : 1);
+    s.px[i] += s.vx[i] * dt; s.py[i] += s.vy[i] * dt; s.pz[i] += s.vz[i] * dt;
+    if(soort === 3){                                                 // hugt de helling, raast omlaag
+      const grond = hoogteOp(s.px[i], s.pz[i]);
+      const dx = s.px[i] - VULKAAN.x, dz = s.pz[i] - VULKAAN.z, dd = Math.hypot(dx, dz) || 1;
+      const gx = (hoogteOp(s.px[i] + 6, s.pz[i]) - hoogteOp(s.px[i] - 6, s.pz[i])) / 12, gz = (hoogteOp(s.px[i], s.pz[i] + 6) - hoogteOp(s.px[i], s.pz[i] - 6)) / 12;
+      s.vx[i] += (-gx * 60 + dx / dd * 8) * dt; s.vz[i] += (-gz * 60 + dz / dd * 8) * dt;   // helling af + van de berg weg
+      const minY = Math.max(grond, -0.4) + 3 + s.maat[i] * 0.25 * (0.5 + f);
+      if(s.py[i] < minY){ s.py[i] = minY; s.vy[i] = Math.max(s.vy[i], 0); }
+      if(grond < 0.2 && f > 0.35){ s.vx[i] *= 0.9; s.vz[i] *= 0.9; }          // op zee komt hij tot rust
+      if(checkGloed && f < 0.75){
+        const ddx = s.px[i] - camera.position.x, ddz = s.pz[i] - camera.position.z;
+        if(ddx * ddx + ddz * ddz < 14 * 14 && Math.abs(s.py[i] - camera.position.y) < 22) gaDood('🌫️ Verzwolgen door de gloedwolk!');
+      }
+    } else if(soort === 0 || soort === 1){
+      if(s.py[i] < hoogteOp(s.px[i], s.pz[i]) - 1){ s.aan[i] = 0; s.vrij.push(i); s.levend--; s.alpha[i] = 0; s.grootte[i] = 0; continue; }
+    }
+    // kleur van begin naar eind, grootte en doorzicht per soort
+    const m = soort === 0 ? Math.min(1, f * 2.2) : (soort === 1 ? f : Math.min(1, f * 1.6));
+    s.kleur[i * 3] = s.k0[i * 3] + (s.k1[i * 3] - s.k0[i * 3]) * m;
+    s.kleur[i * 3 + 1] = s.k0[i * 3 + 1] + (s.k1[i * 3 + 1] - s.k0[i * 3 + 1]) * m;
+    s.kleur[i * 3 + 2] = s.k0[i * 3 + 2] + (s.k1[i * 3 + 2] - s.k0[i * 3 + 2]) * m;
+    if(soort === 0){ s.grootte[i] = s.maat[i] * (0.6 + 1.9 * f); s.alpha[i] = Math.pow(1 - f, 3) * Math.min(1, s.leven[i] * 8); }
+    else if(soort === 1){ s.grootte[i] = s.maat[i]; s.alpha[i] = 1 - f * f; }
+    else if(soort === 2){ s.grootte[i] = s.maat[i] * (0.5 + 3.2 * f); s.alpha[i] = 0.8 * (1 - f) * Math.min(1, f * 5); }
+    else { s.grootte[i] = s.maat[i] * (0.6 + 3.4 * f); s.alpha[i] = 0.97 * (1 - f * f) * Math.min(1, f * 6); }
+    s.pos[i * 3] = s.px[i]; s.pos[i * 3 + 1] = s.py[i]; s.pos[i * 3 + 2] = s.pz[i];
+  }
+  s.geo.attributes.position.needsUpdate = true; s.geo.attributes.kleur.needsUpdate = true;
+  s.geo.attributes.grootte.needsUpdate = true; s.geo.attributes.alpha.needsUpdate = true;
+}
+const K_WIT = [1.0, 0.98, 0.82], K_GEEL = [1.0, 0.82, 0.32], K_ORANJE = [1.0, 0.42, 0.08], K_ROOD = [0.6, 0.10, 0.0], K_DONKER = [0.22, 0.04, 0.0];   // einde zonder blauw: anders wordt vuur roze tegen de lucht
+const K_AS0 = [0.30, 0.22, 0.18], K_AS1 = [0.16, 0.15, 0.15], K_GLOED0 = [0.75, 0.32, 0.12], K_GLOED1 = [0.20, 0.17, 0.16];
+// ── de vuurfontein: honderden deeltjes per seconde recht omhoog uit de krater ──
+let fonteinRest = 0, vonkRest = 0, pluimRest = 0, gloedwolkRest = 0;
+function spuitVuur(dt, kracht){
+  deeltjesKlaar();
+  const top = kraterTop + 4;
+  fonteinRest += dt * (IS_TOUCH ? 300 : 780) * kracht;
+  while(fonteinRest >= 1){
+    fonteinRest -= 1;
+    const a = Math.random() * 6.283, r = Math.random() * 11, spreid = Math.random() * 14;
+    const heet = Math.random();
+    zetDeeltje(vuurSys, {x: VULKAAN.x + Math.cos(a) * r, y: top + Math.random() * 6, z: VULKAAN.z + Math.sin(a) * r,
+      vx: Math.cos(a) * spreid, vy: 95 + Math.random() * 135 * kracht, vz: Math.sin(a) * spreid,
+      duur: 3.2 + Math.random() * 3.5, maat: 11 + Math.random() * 22, soort: 0,
+      k0: heet < 0.35 ? K_WIT : (heet < 0.8 ? K_GEEL : K_ORANJE), k1: heet < 0.5 ? K_ROOD : K_DONKER});
+  }
+  vonkRest += dt * (IS_TOUCH ? 90 : 260) * kracht;                       // felle vonken, vliegen ver
+  while(vonkRest >= 1){
+    vonkRest -= 1;
+    const a = Math.random() * 6.283, v = 20 + Math.random() * 70;
+    zetDeeltje(vuurSys, {x: VULKAAN.x + (Math.random() - 0.5) * 12, y: top + 2, z: VULKAAN.z + (Math.random() - 0.5) * 12,
+      vx: Math.cos(a) * v, vy: 80 + Math.random() * 120, vz: Math.sin(a) * v, duur: 2 + Math.random() * 3.5, maat: 1.2 + Math.random() * 2.2, soort: 1, k0: K_WIT, k1: K_ORANJE});
+  }
+  pluimRest += dt * (IS_TOUCH ? 18 : 40) * kracht;                       // zwarte as bovenop de fontein
+  while(pluimRest >= 1){
+    pluimRest -= 1;
+    const a = Math.random() * 6.283, r = Math.random() * 30;
+    zetDeeltje(rookSys, {x: VULKAAN.x + Math.cos(a) * r, y: top + 90 + Math.random() * 160, z: VULKAAN.z + Math.sin(a) * r,
+      vx: (Math.random() - 0.5) * 12, vy: 26 + Math.random() * 30, vz: (Math.random() - 0.5) * 12,
+      duur: 18 + Math.random() * 14, maat: 22 + Math.random() * 30, soort: 2, k0: K_AS0, k1: K_AS1});
+  }
+}
+// ── de KNAL: vuurbal, schokgolf, flits, drie klappen ──
+let vuurbal = null, schokgolf = null, schokgolfR = 0, schokgolfLangs = false, blastTijd = 0;
+function startKnal(){
+  deeltjesKlaar();
+  blastTijd = 0; schokgolfR = 0; schokgolfLangs = false;
+  const top = kraterTop + 6;
+  // vuurbal: 700 grote hete deeltjes alle kanten op (bovenste helft)
+  for(let i = 0; i < (IS_TOUCH ? 260 : 700); i++){
+    const a = Math.random() * 6.283, hoek = Math.random() * 1.35, v = 45 + Math.random() * 130;
+    zetDeeltje(vuurSys, {x: VULKAAN.x + (Math.random() - 0.5) * 20, y: top + Math.random() * 10, z: VULKAAN.z + (Math.random() - 0.5) * 20,
+      vx: Math.cos(a) * Math.sin(hoek) * v, vy: Math.cos(hoek) * v + 30, vz: Math.sin(a) * Math.sin(hoek) * v,
+      duur: 2.5 + Math.random() * 3, maat: 18 + Math.random() * 30, soort: 0, k0: Math.random() < 0.5 ? K_WIT : K_GEEL, k1: K_DONKER});
+  }
+  for(let i = 0; i < (IS_TOUCH ? 200 : 600); i++){                      // vonken-explosie
+    const a = Math.random() * 6.283, hoek = Math.random() * 1.5, v = 60 + Math.random() * 160;
+    zetDeeltje(vuurSys, {x: VULKAAN.x, y: top + 4, z: VULKAAN.z, vx: Math.cos(a) * Math.sin(hoek) * v, vy: Math.cos(hoek) * v, vz: Math.sin(a) * Math.sin(hoek) * v,
+      duur: 2.5 + Math.random() * 3, maat: 1.5 + Math.random() * 3, soort: 1, k0: K_WIT, k1: K_ORANJE});
+  }
+  for(let i = 0; i < (IS_TOUCH ? 60 : 160); i++){                       // eerste zwarte wolk
+    const a = Math.random() * 6.283, v = 15 + Math.random() * 40;
+    zetDeeltje(rookSys, {x: VULKAAN.x, y: top + 20 + Math.random() * 40, z: VULKAAN.z, vx: Math.cos(a) * v, vy: 30 + Math.random() * 50, vz: Math.sin(a) * v,
+      duur: 14 + Math.random() * 10, maat: 30 + Math.random() * 40, soort: 2, k0: K_GLOED0, k1: K_AS1});
+  }
+  // de vuurbal-bol boven de krater
+  if(!vuurbal){
+    vuurbal = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), new THREE.MeshBasicMaterial({color: 0xffc070, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false}));
+    scene.add(vuurbal);
+  }
+  vuurbal.visible = true; vuurbal.position.set(VULKAAN.x, top + 20, VULKAAN.z); vuurbal.scale.setScalar(6);
+  // de schokgolf: een platte ring die over het eiland raast
+  if(!schokgolf){
+    schokgolf = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, 96), new THREE.MeshBasicMaterial({color: 0xffd9a0, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false}));
+    schokgolf.rotation.x = -Math.PI / 2; scene.add(schokgolf);
+  }
+  schokgolf.visible = true; schokgolf.position.set(VULKAAN.x, kraterTop - 60, VULKAAN.z); schokgolf.scale.setScalar(1);
+  if(typeof hemelFlits !== 'undefined') hemelFlits = Math.max(hemelFlits, 1);
+  geluidExplosie(); setTimeout(geluidExplosie, 350); setTimeout(geluidExplosie, 900);
+  setTimeout(() => geluidDonder(1.0, 0.1, 100), 1400);
+  schok = Math.max(schok, 3.2);
+  brulSterker(true);
+}
+function updateKnal(dt){
+  if(!vuurbal || !vuurbal.visible) return;
+  blastTijd += dt;
+  const f = blastTijd / 3.2;
+  if(f >= 1){ vuurbal.visible = false; schokgolf.visible = false; return; }
+  // vuurbal groeit snel, wordt donkerder en vervaagt
+  vuurbal.scale.setScalar(6 + 150 * Math.sqrt(f));
+  vuurbal.position.y = kraterTop + 20 + 90 * f;
+  vuurbal.material.opacity = 0.9 * (1 - f) * (1 - f);
+  vuurbal.material.color.setRGB(1, 0.75 - 0.5 * f, 0.44 - 0.4 * f);
+  // schokgolf: 230 m/s over het eiland, zakt mee met het terrein
+  schokgolfR += 230 * dt;
+  schokgolf.scale.setScalar(schokgolfR);
+  schokgolf.material.opacity = 0.85 * Math.max(0, 1 - schokgolfR / 900);
+  schokgolf.position.y = Math.max(0.5, hoogteOp(VULKAAN.x + schokgolfR, VULKAAN.z)) + 4;
+  const dSpeler = Math.hypot(camera.position.x - VULKAAN.x, camera.position.z - VULKAAN.z);
+  if(!schokgolfLangs && schokgolfR >= dSpeler){                       // de klap komt langs: dreun + windvlaag
+    schokgolfLangs = true; schok = Math.max(schok, 2.6); geluidBoem();
+    if(typeof hemelFlits !== 'undefined') hemelFlits = Math.max(hemelFlits, 0.6);
+  }
+}
+// ── gloedwolken: vanaf t≈5 s rollen drie zwarte wolken de hellingen af (dodelijk) ──
+let gloedwolkRichting = [];
+function spuitGloedwolken(dt, kracht, t){
+  if(t < 5 || t > 30 || kracht < 0.5) return;
+  if(!gloedwolkRichting.length){
+    const basis = Math.random() * 6.283;
+    for(let i = 0; i < 3; i++) gloedwolkRichting.push(basis + i * 2.094 + (Math.random() - 0.5) * 0.7);
+    zeg('🌫️ GLOEDWOLKEN rollen van de berg — WEGWEZEN!');
+  }
+  gloedwolkRest += dt * (IS_TOUCH ? 24 : 60);
+  while(gloedwolkRest >= 1){
+    gloedwolkRest -= 1;
+    const a = gloedwolkRichting[Math.floor(Math.random() * gloedwolkRichting.length)] + (Math.random() - 0.5) * 0.5;
+    const r = VULKAAN.kraterR * (1.2 + Math.random() * 0.6), v = 22 + Math.random() * 22;
+    const x = VULKAAN.x + Math.cos(a) * r, z = VULKAAN.z + Math.sin(a) * r;
+    zetDeeltje(gloedSys, {x, y: hoogteOp(x, z) + 8, z, vx: Math.cos(a) * v, vy: 6 + Math.random() * 10, vz: Math.sin(a) * v,
+      duur: 13 + Math.random() * 7, maat: 20 + Math.random() * 22, soort: 3, k0: K_GLOED0, k1: K_GLOED1});
+    // gloeiende brokjes die in de wolk meerollen
+    if(Math.random() < 0.5 && vuurSys) zetDeeltje(vuurSys, {x, y: hoogteOp(x, z) + 6, z, vx: Math.cos(a) * v * 1.05, vy: 8 + Math.random() * 8, vz: Math.sin(a) * v * 1.05, duur: 3 + Math.random() * 3, maat: 3 + Math.random() * 5, soort: 1, k0: K_GEEL, k1: K_ROOD});
+  }
+}
+// ── de berg brult zolang hij uitbarst ──
+function brulSterker(aan){
+  if(!rommelGeluid) return;
+  metAudio(ac => {
+    const r = rommelGeluid; r.g.gain.cancelScheduledValues(ac.currentTime);
+    r.g.gain.setValueAtTime(Math.max(0.0001, r.g.gain.value), ac.currentTime);
+    r.g.gain.exponentialRampToValueAtTime(aan ? 1.4 : 0.5, ac.currentTime + 1.2);
+  });
+}
+function updateExplosieChaos(dt){
+  updateKnal(dt);
+  updateDeeltjesSysteem(vuurSys, dt);
+  updateDeeltjesSysteem(rookSys, dt);
+  updateDeeltjesSysteem(gloedSys, dt);
+  gloedwolkCheck -= dt; if(gloedwolkCheck <= 0) gloedwolkCheck = 0.25;
+  if(!uitbarst){ gloedwolkRichting.length = 0; }
+}
 let _luchtKracht = 0;
 function updateUitbarsting(dt){
+  updateExplosieChaos(dt);
   updateBrokken(dt);
   updateBommen(dt);
   updateLavaStromen(dt);
@@ -4195,36 +4443,21 @@ function updateUitbarsting(dt){
   if(boemTimer <= 0 && kracht > 0.3){ boemTimer = 1.5 + Math.random() * 3; geluidBoem(); schok = Math.max(schok, 1.1 * kracht); }
   const top = kraterTop + 3;
   // lavabommen: grote gloeiende brokken die uit de krater schieten
-  bomTeller += dt * (IS_TOUCH ? 6 : 10) * kracht;
+  bomTeller += dt * (IS_TOUCH ? 9 : 16) * kracht;
   while(bomTeller >= 1){ bomTeller -= 1; schietBom(kracht); }
   // gloeiende rotsblokken (3D) met rookstaart, ongeveer één per seconde
   brokTeller += dt * (IS_TOUCH ? 0.5 : 0.9) * kracht;
   while(brokTeller >= 1 && brokken.length < 14){ brokTeller -= 1; schietBrok(kracht); }
-  // de vuurzuil: felle lava die recht omhoog schiet, honderden meters de lucht in
-  zuilTeller += dt * (IS_TOUCH ? 24 : 44) * kracht;
-  while(zuilTeller >= 1 && lavaDeeltjes.length < UITB_MAX){
-    zuilTeller -= 1;
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.95, color: Math.random() < 0.5 ? 0xffd24a : 0xff7a1a}));
-    const hoek = Math.random() * 6.283, vaart = Math.random() * 9;
-    sp.position.set(VULKAAN.x + (Math.random() - 0.5) * 14, top, VULKAAN.z + (Math.random() - 0.5) * 14);
-    sp.userData = {vx: Math.cos(hoek) * vaart, vy: 100 + Math.random() * 75, vz: Math.sin(hoek) * vaart, leeftijd: 0, maat: 14 + Math.random() * 14};
-    sp.scale.set(sp.userData.maat, sp.userData.maat, 1);
-    scene.add(sp); lavaDeeltjes.push(sp);
-  }
+  // 💥 v3: de vuurfontein (GPU-deeltjes) + vonkenregen + as-pluim, en vanaf 5 s de gloedwolken
+  spuitVuur(dt, kracht);
+  spuitGloedwolken(dt, kracht, uitbarst.t);
   // de gloed boven de krater wordt groot en fel (dat zie je tot op het strand)
   if(gloedSprite){
     const gm = VULKAAN.kraterR * (1.7 + 6.5 * kracht) * (1 + 0.08 * Math.sin(uitbarst.t * 9));
     gloedSprite.scale.set(gm, gm, 1);
     gloedSprite.position.y = kraterTop + 6 + 60 * kracht;
   }
-  // de kern van de zuil: een lichtende kegel van 300 m (optellend licht, flikkert)
-  if(!zuilMesh){
-    zuilMesh = new THREE.Mesh(new THREE.CylinderGeometry(9, 22, 1, 14, 1, true), new THREE.MeshBasicMaterial({color: 0xffa040, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false}));
-    zuilMesh.geometry.translate(0, 0.5, 0); zuilMesh.position.set(VULKAAN.x, kraterTop, VULKAAN.z); scene.add(zuilMesh);
-  }
-  zuilMesh.visible = true;
-  zuilMesh.scale.set(1 + 0.15 * Math.sin(uitbarst.t * 13), 300 * kracht * (0.9 + 0.1 * Math.sin(uitbarst.t * 7)), 1 + 0.15 * Math.cos(uitbarst.t * 11));
-  zuilMesh.material.opacity = 0.28 * kracht;
+  // (de oude dunne lichtkegel is weg — Brian 7 sep: "een domme lijn"; de fontein hierboven is het vuur)
   // dikke zwarte aswolken
   asTeller += dt * (IS_TOUCH ? 3 : 5.5) * kracht;
   while(asTeller >= 1 && asWolken.length < (IS_TOUCH ? 140 : 260)){
@@ -4237,7 +4470,7 @@ function updateUitbarsting(dt){
     scene.add(sp); asWolken.push(sp);
   }
   if(uitbarst.t >= UITBARST_DUUR){
-    uitbarst = null; stopRommel(); zeg('🌋 de uitbarsting is voorbij… voor nu (de lava blijft nog even heet!)');
+    uitbarst = null; brulSterker(false); stopRommel(); zeg('🌋 de uitbarsting is voorbij… voor nu (de lava blijft nog even heet!)');
     if(gloedSprite){ gloedSprite.scale.set(VULKAAN.kraterR * 1.7, VULKAAN.kraterR * 1.7, 1); gloedSprite.position.y = kraterTop + 6; }
     if(zuilMesh) zuilMesh.visible = false;
   }
