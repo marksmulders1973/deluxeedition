@@ -135,7 +135,7 @@
 </div>
 <button id="craftKnop" class="touch-ui">🛠️</button>
 <button id="apKnop" title="Admin paneel (NovaX)"><span>AP</span></button>
-<div id="recBadge"><b>●</b> REC <span id="recTijd">0:00</span> · V = stop</div>
+<div id="recBadge"><span id="recStatus"><b>●</b> REC</span> <span id="recTijd">0:00</span> · <span id="recHint">P = pauze · V = stop</span></div>
 <div id="apPaneel"><div id="apInhoud"></div></div>
 <div id="zwemBalk">🏊 je zwemt!</div>
 <div id="doodScherm"><div class="kop">🔥 Je bent in de lava gevallen!</div><div class="sub">je begint zo weer op het strand…</div></div>
@@ -5475,7 +5475,8 @@ function apTeken(){
   knop('🛡️', 'Onsterfelijk ' + (adminGod ? 'AAN' : 'UIT'), 'lava, Kraken en tentakels kunnen je niets doen', () => { adminGod = !adminGod; zeg(adminGod ? '🛡️ onsterfelijk AAN' : '🛡️ onsterfelijk UIT'); apTeken(); }, adminGod);
   knop('🕊️', 'Vliegen ' + (adminVlieg ? 'AAN' : 'UIT'), 'W = vooruit waar je kijkt · spatie = omhoog · C = omlaag · Shift = turbo', () => { adminVlieg = !adminVlieg; if(!adminVlieg){ velY = 0; } zeg(adminVlieg ? '🕊️ vliegen AAN — kijk waar je heen wilt en druk W' : '🕊️ vliegen UIT'); apTeken(); }, adminVlieg);
   knop('⚡', 'Supersnel ' + (adminSnel ? 'AAN' : 'UIT'), '2,5× zo snel lopen, rennen en zwemmen', () => { adminSnel = !adminSnel; zeg(adminSnel ? '⚡ supersnel AAN' : '⚡ supersnel UIT'); apTeken(); }, adminSnel);
-  knop('🎥', filmBezig() ? 'Filmen STOPPEN' : 'Filmen starten', 'neemt op wat jij ziet, met geluid · V = stoppen · de film komt in je Downloads', () => { if(filmBezig()) filmStopNu(); else filmStartNu(); apSluit(); }, filmBezig());
+  knop('🎥', filmLoopt() ? 'Filmen STOPPEN' : 'Filmen starten', 'neemt op wat jij ziet, met geluid · P = pauze · V = stoppen · de film komt in je Downloads', () => { if(filmLoopt()) filmStopNu(); else filmStartNu(); apSluit(); }, filmLoopt());
+  if(filmLoopt()) knop('⏸', filmGepauzeerd() ? 'Opname VERDER' : 'Opname PAUZEREN', 'de klok staat stil tijdens de pauze · ook met P', () => { filmPauzeNu(); apSluit(); }, filmGepauzeerd());
   knop('🙈', 'Armen ' + (armenZichtbaar ? 'ZICHTBAAR' : 'VERBORGEN'), 'je eigen armen niet meer in beeld · de pickaxe blijft te zien', () => { zetArmen(!armenZichtbaar); zeg(armenZichtbaar ? '👐 armen weer zichtbaar' : '🙈 armen verborgen'); apTeken(); }, !armenZichtbaar);
   knop('⛈️', 'Onweer NU', 'donkere lucht, regen, bliksem en donder, ~60 sec', () => { startOnweer(60); apSluit(); });
   knop('🐙', 'Kraken NU', 'de zee gaat meteen borrelen, 12 sec later komt hij', () => apRamp('kraken'));
@@ -5491,7 +5492,19 @@ function apTeken(){
 // met V. De film komt als .webm in je Downloads. Geluid: alles wat in het spel
 // naar audioCtx.destination gaat, gaat óók naar opnameDest (zie
 // installeerOpnameAudio — wordt aangezet zodra het geluid start).
-let opnameDest = null, filmRec = null, filmStukken = [], filmStart = 0, filmTimer = null;
+let opnameDest = null, filmRec = null, filmStukken = [], filmStart = 0, filmTimer = null, filmPauzeStart = 0;
+function filmGepauzeerd(){ return !!(filmRec && filmRec.state === 'paused'); }
+function filmLoopt(){ return filmBezig() || filmGepauzeerd(); }        // opname bestaat (ook als hij op pauze staat)
+function filmBadge(){
+  const st = document.getElementById('recStatus'), hint = document.getElementById('recHint');
+  if(filmGepauzeerd()){ st.innerHTML = '⏸ PAUZE'; hint.textContent = 'P = verder · V = stop'; }
+  else { st.innerHTML = '<b>●</b> REC'; hint.textContent = 'P = pauze · V = stop'; }
+}
+// P = pauze / verder. De klok telt de pauze niet mee.
+function filmPauzeNu(){
+  if(filmBezig()){ filmRec.pause(); filmPauzeStart = performance.now(); filmBadge(); zeg('⏸ opname op pauze — druk P om verder te gaan'); }
+  else if(filmGepauzeerd()){ filmStart += performance.now() - filmPauzeStart; filmRec.resume(); filmBadge(); zeg('▶️ opname gaat verder'); }
+}
 function installeerOpnameAudio(){
   if(!audioCtx || opnameDest) return;
   try {
@@ -5523,16 +5536,22 @@ function filmStartNu(){
     filmRec.onstop = filmOpslaan;
     filmRec.start(1000);
     filmStart = performance.now();
-    document.getElementById('recBadge').style.display = 'block';
+    document.getElementById('recBadge').style.display = 'block'; filmBadge();
     clearInterval(filmTimer);
     filmTimer = setInterval(() => {
+      if(filmGepauzeerd()) return;                            // klok staat stil tijdens pauze
       const s = Math.floor((performance.now() - filmStart) / 1000);
       document.getElementById('recTijd').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
     }, 500);
-    zeg('🎥 opname gestart — druk V om te stoppen');
+    zeg('🎥 opname gestart — P = pauze, V = stoppen');
   } catch(e) { zeg('😕 filmen lukt niet: ' + e.message); filmRec = null; }
 }
-function filmStopNu(){ if(filmBezig()) filmRec.stop(); }
+function filmStopNu(){
+  if(!filmLoopt()) return;
+  // stoppen vanuit pauze: eerst even hervatten, anders raakt het laatste stuk soms kwijt
+  if(filmGepauzeerd()){ try { filmRec.resume(); } catch(e) {} setTimeout(() => { try { filmRec && filmRec.stop(); } catch(e) {} }, 60); return; }
+  filmRec.stop();
+}
 function filmOpslaan(){
   clearInterval(filmTimer); document.getElementById('recBadge').style.display = 'none';
   const rec = filmRec; filmRec = null;
@@ -5548,8 +5567,12 @@ function filmOpslaan(){
   window.laatsteFilm = {naam, bytes: blob.size, type};            // handig voor testen
   zeg('🎬 film opgeslagen in je Downloads: ' + naam + ' (' + (blob.size / 1048576).toFixed(1) + ' MB)');
 }
-addEventListener('keydown', e => { if(e.code === 'KeyV' && gestart && !e.repeat){ if(filmBezig()) filmStopNu(); else if(IS_NOVAX) filmStartNu(); } });
-addEventListener('beforeunload', () => { if(filmBezig()) filmStopNu(); });
+addEventListener('keydown', e => {
+  if(!gestart || e.repeat) return;
+  if(e.code === 'KeyV'){ if(filmLoopt()) filmStopNu(); else if(IS_NOVAX) filmStartNu(); }
+  if(e.code === 'KeyP' && filmLoopt()) filmPauzeNu();
+});
+addEventListener('beforeunload', () => { if(filmLoopt()) filmStopNu(); });
 
 document.getElementById('apKnop').addEventListener('click', apOpen);
 document.getElementById('apPaneel').addEventListener('click', e => { if(e.target.id === 'apPaneel') apSluit(); });
