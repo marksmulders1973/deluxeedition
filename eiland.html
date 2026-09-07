@@ -424,7 +424,7 @@ function luchtTextuur(){
     for(let x = 0; x < W; x++){
       const x01 = x / W;
       const nC = fbm(x01, vc, 8, 6, 1.15, 0.0);           // bolle stapelwolken, met fijn detail
-      let d = stap(grensC, grensC + 0.11, nC) * fadeC;
+      let d = stap(grensC, grensC + 0.11, nC) * fadeC * stap(0.34, 0.08, elev);   // v2: alleen laag bij de horizon
       fijn[y * W + x] = nC;
       if(band > 0.001){
         const nS = fbm(x01, vc, 8, 4, 5.0, 11.0);
@@ -432,7 +432,7 @@ function luchtTextuur(){
       }
       if(hoog > 0.001){
         const nK = fbm(x01, vc, 4, 3, 10.0, 23.0);
-        d = Math.max(d, stap(0.56, 0.74, nK) * hoog * 0.35);
+        d = Math.max(d, stap(0.56, 0.74, nK) * hoog * 0.0);   // v2: uit (ringen boven je hoofd)
       }
       dikte[y * W + x] = d;
     }
@@ -6274,6 +6274,131 @@ function updateOnweer(dt){
   }
 }
 
+// ══════════════════════════════════════════════════════════════════
+// ☁️☁️ WOLKEN v2 (Brian 7 sep 2026: "nu zijn het maar een paar vlekken in de lucht")
+// Twee lagen echte, bewegende wolken bóven op het geschilderde panorama:
+//   • STAPELWOLKEN: 3D-clusters van pluizige bollen (sprites met een ruis-textuur die van
+//     boven wit en van onderen grijsblauw is), brede platte onderkant, hogere toppen, die
+//     langzaam met de wind over het eiland drijven en bij onweer donker worden;
+//   • WOLKENLAAG: een hoge, oneindige laag in een shader (fractale ruis die verschuift):
+//     rafelige gaten, zon door de randen, dichter en donkerder bij onweer, flitst mee met
+//     de bliksem. Beide lagen reizen met de camera mee (net als de hemelbol).
+// ══════════════════════════════════════════════════════════════════
+function wolkPluisTextuur(){
+  const N = 256, c = document.createElement('canvas'); c.width = c.height = N;
+  const g = c.getContext('2d'), img = g.createImageData(N, N);
+  let zaad = 9191; const rnd = () => { zaad = (zaad * 1664525 + 1013904223) >>> 0; return zaad / 4294967296; };
+  const LAT = 32, rooster = new Float32Array(LAT * LAT); for(let i = 0; i < rooster.length; i++) rooster[i] = rnd();
+  const lat = (i, j) => rooster[(((i % LAT) + LAT) % LAT) * LAT + (((j % LAT) + LAT) % LAT)];
+  const glad = (t) => t * t * (3 - 2 * t);
+  const ruis = (x, y) => { const i = Math.floor(x), j = Math.floor(y), fu = glad(x - i), fv = glad(y - j); return (lat(i, j) * (1 - fu) + lat(i + 1, j) * fu) * (1 - fv) + (lat(i, j + 1) * (1 - fu) + lat(i + 1, j + 1) * fu) * fv; };
+  const fbm = (x, y) => { let s = 0, a = 1, t = 0, f = 1; for(let o = 0; o < 5; o++){ s += ruis(x * f, y * f) * a; t += a; a *= 0.5; f *= 2; } return s / t; };
+  for(let y = 0; y < N; y++) for(let x = 0; x < N; x++){
+    const u = x / N - 0.5, v = y / N - 0.5, d = Math.hypot(u, v * 1.15) * 2;      // 0 midden, 1 rand
+    const n = fbm(x / N * 6 + 3, y / N * 6 + 5);
+    let a = (n * 1.35 - 0.35) - Math.pow(d, 2.2) * 1.15;                       // ruis min rand = pluizig
+    a = Math.max(0, Math.min(1, a * 3.0));
+    // licht van boven: bovenkant wit, onderkant grijsblauw; de ruis geeft bulten hun eigen schaduw
+    const nb = fbm(x / N * 6 + 3, (y - 6) / N * 6 + 5);                          // ruis iets hoger = dikker daar?
+    const zonKant = Math.max(0, Math.min(1, 0.72 - v * 0.9 + (n - nb) * 4.0));
+    const r = 0.74 + 0.26 * zonKant, gg = 0.77 + 0.23 * zonKant, b = 0.84 + 0.16 * zonKant;
+    const i = (y * N + x) * 4;
+    img.data[i] = r * 255; img.data[i + 1] = gg * 255; img.data[i + 2] = b * 255; img.data[i + 3] = a * 255;
+  }
+  g.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(c);
+}
+const stapelWolken = []; let wolkTex = null, wolkLaag = null, wolkTijd = 0;
+const WOLK_VELD = 3800, WOLK_N = IS_TOUCH ? 10 : 22;
+function maakStapelWolken(){
+  if(stapelWolken.length) return;
+  wolkTex = wolkPluisTextuur();
+  for(let w = 0; w < WOLK_N; w++){
+    const groep = new THREE.Group();
+    const cx = (Math.random() - 0.5) * WOLK_VELD, cz = (Math.random() - 0.5) * WOLK_VELD, cy = 240 + Math.random() * 110;
+    const breed = 260 + Math.random() * 420, hoog = 90 + Math.random() * 130;
+    const puffs = [];
+    const n = 12 + Math.floor(Math.random() * 10);
+    for(let i = 0; i < n; i++){
+      // brede platte onderkant + kleinere bollen bovenop
+      const boven = i >= n * 0.55;
+      const px = (Math.random() - 0.5) * breed * (boven ? 0.6 : 1), pz = (Math.random() - 0.5) * breed * 0.35;
+      const py = boven ? hoog * (0.35 + Math.random() * 0.65) : Math.random() * hoog * 0.35;
+      const maat = boven ? 120 + Math.random() * 140 : 170 + Math.random() * 220;
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: wolkTex, transparent: true, depthWrite: false, opacity: 0.96, color: 0xffffff, fog: false}));
+      sp.position.set(px, py, pz); sp.scale.set(maat, maat * (0.72 + Math.random() * 0.2), 1);
+      sp.userData = {hoogte: py / hoog}; groep.add(sp); puffs.push(sp);
+    }
+    groep.position.set(cx, cy, cz);
+    groep.userData = {v: 4 + Math.random() * 5, puffs, fase: Math.random() * 6.283};
+    scene.add(groep); stapelWolken.push(groep);
+  }
+}
+function maakWolkLaag(){
+  if(wolkLaag) return;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {tijd: {value: 0}, dekking: {value: 0.42}, donker: {value: 0}, flits: {value: 0}, cam: {value: new THREE.Vector3()}, zon: {value: new THREE.Vector2(0.6, 0.4)}},
+    vertexShader: `varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: `uniform float tijd, dekking, donker, flits; uniform vec3 cam; uniform vec2 zon; varying vec2 vUv; varying vec3 vW;
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float ruis(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
+      float fbm(vec2 p){ float s = 0.0, a = 0.5; for(int o = 0; o < ${IS_TOUCH ? 4 : 6}; o++){ s += a * ruis(p); p = p * 2.03 + vec2(17.3, 9.1); a *= 0.5; } return s; }
+      void main(){
+        vec2 p = vW.xz * 0.0011 + vec2(tijd * 0.006, tijd * 0.0025);
+        float n = fbm(p) + 0.35 * fbm(p * 3.1 - tijd * 0.004);
+        n /= 1.35;
+        float a = smoothstep(1.0 - dekking - 0.18, 1.0 - dekking + 0.22, n);
+        // licht: waar de wolk richting de zon dunner wordt, vangt de rand zon
+        // belichting uit de helling van de ruis (schermafgeleiden = goedkoop, geen 2e ruis-berekening)
+        float licht = clamp(0.55 + (dFdx(n) * zon.x + dFdy(n) * zon.y) * 60.0, 0.0, 1.0);
+        vec3 wit = mix(vec3(0.58, 0.64, 0.74), vec3(1.0, 0.99, 0.97), licht);
+        vec3 grauw = mix(vec3(0.16, 0.17, 0.20), vec3(0.42, 0.44, 0.48), licht);
+        vec3 kleur = mix(wit, grauw, donker) * (1.0 + 1.4 * flits);
+        // vervagen naar de horizon toe (ver weg = de geschilderde hemel neemt het over)
+        float d = length(vW.xz - cam.xz);
+        a *= (1.0 - smoothstep(2200.0, 3600.0, d)) * (0.92 + 0.08 * donker);
+        gl_FragColor = vec4(kleur, a);
+      }`,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, extensions: {derivatives: true},
+  });
+  wolkLaag = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000, 1, 1), mat);
+  wolkLaag.rotation.x = -Math.PI / 2; wolkLaag.position.y = 520; wolkLaag.frustumCulled = false; wolkLaag.renderOrder = -1;
+  scene.add(wolkLaag);
+}
+function updateWolkenV2(dt, t){
+  maakStapelWolken(); maakWolkLaag();
+  const storm = (typeof onweerKracht !== 'undefined') ? onweerKracht : 0;
+  const flits = (typeof hemelFlits !== 'undefined') ? hemelFlits : 0;
+  const uitb = (typeof _luchtKracht !== 'undefined') ? _luchtKracht : 0;
+  wolkTijd += dt * (1 + 2.5 * storm);
+  // stapelwolken drijven met de wind en blijven altijd rond de camera
+  for(const gr of stapelWolken){
+    gr.position.x += gr.userData.v * (1 + 3 * storm) * dt; gr.position.z += gr.userData.v * 0.25 * dt;
+    if(gr.position.x - camera.position.x > WOLK_VELD / 2) gr.position.x -= WOLK_VELD;
+    if(gr.position.x - camera.position.x < -WOLK_VELD / 2) gr.position.x += WOLK_VELD;
+    if(gr.position.z - camera.position.z > WOLK_VELD / 2) gr.position.z -= WOLK_VELD;
+    if(gr.position.z - camera.position.z < -WOLK_VELD / 2) gr.position.z += WOLK_VELD;
+    const adem = 1 + 0.02 * Math.sin(t * 0.15 + gr.userData.fase);
+    gr.scale.set(adem, adem, 1);
+    for(const sp of gr.userData.puffs){
+      // onderkant grijzer; bij onweer alles donker; oranje gloed bij een uitbarsting; flits van de bliksem
+      const h = sp.userData.hoogte, grijs = 1 - 0.22 * (1 - h);
+      let r = grijs, g = grijs, b = Math.min(1, grijs + 0.04);
+      r = r * (1 - 0.72 * storm) + 0.28 * storm * 0.9; g = g * (1 - 0.72 * storm) + 0.28 * storm * 0.92; b = b * (1 - 0.7 * storm) + 0.3 * storm;
+      r += 0.25 * uitb; g -= 0.05 * uitb; b -= 0.15 * uitb;
+      const f = 1 + 1.6 * flits;
+      sp.material.color.setRGB(Math.min(1, r * f), Math.min(1, g * f), Math.min(1, b * f));
+      sp.material.opacity = 0.96;
+    }
+  }
+  if(wolkLaag){
+    wolkLaag.position.x = camera.position.x; wolkLaag.position.z = camera.position.z;
+    const u = wolkLaag.material.uniforms;
+    u.tijd.value = wolkTijd; u.cam.value.copy(camera.position);
+    u.dekking.value = 0.5 + 0.42 * storm; u.donker.value = Math.min(1, storm * 1.1 + uitb * 0.5); u.flits.value = flits;
+  }
+}
 function loop(nu){
   requestAnimationFrame(loop);
   const t = nu / 1000;
@@ -6300,6 +6425,7 @@ function loop(nu){
     updateCrafterSpook();
   }
   golfZee(t);
+  updateWolkenV2(dt, t);   // ☁️ v2: stapelwolken + wolkenlaag reizen mee en drijven
   updateWind(t);      _m.wind     += performance.now() - _t; _t = performance.now();
   { const u = window.__verBladTijd && window.__verBladTijd(); if(u) u.value = t; }
   updateGrasVeld();   _m.grasveld += performance.now() - _t; _t = performance.now();
