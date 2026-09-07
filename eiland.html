@@ -4987,10 +4987,77 @@ const krakenBallen = [], krakenSpetters = [];
 //     knipperen, en een zwarte papegaaien-snavel tussen de voorste armen;
 //   • water: schuimring op het wateroppervlak, druppels van de armen, en een
 //     inktwolk als hij weer onderduikt.
-const KRAKEN_KLEUR = 0x7a3a2c, KRAKEN_DONKER = 0x4a2119, KRAKEN_BLEEK = 0xd9b39c, KRAKEN_ZUIGNAP = 0xe9d6c4;
-let _krakenHuid = null, _krakenHuidVast = null, _krakenTex = null;
-// huid-textuur: vlekken, sproeten en bobbeltjes (bump) — 256×256, herhaalbaar
-function krakenHuidTextuur(){
+// v3 (Brian 7 sep, naar zijn plaatje): geen roodbruin meer maar donker blauwgrijs met bleke onderkant
+const KRAKEN_KLEUR = 0x6b7c86, KRAKEN_DONKER = 0x35424a, KRAKEN_BLEEK = 0xb5c0c3, KRAKEN_ZUIGNAP = 0xd0d8d9;
+let _krakenHuid = null, _krakenHuidVast = null, _krakenTex = null, _krakenNormaal = null, _krakenRuw = null;
+// ── ruis voor huid en mantel (tegelbaar op een raster met periode P) ──
+function kHash(x, y){ const h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return h - Math.floor(h); }
+function kNoiseP(x, y, P){
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const w = (a, b) => kHash(((a % P) + P) % P, ((b % P) + P) % P);
+  return (w(xi, yi) * (1 - u) + w(xi + 1, yi) * u) * (1 - v) + (w(xi, yi + 1) * (1 - u) + w(xi + 1, yi + 1) * u) * v;
+}
+function kFbmP(x, y, P, oct){ let a = 0.5, fr = 1, r = 0; for(let i = 0; i < oct; i++){ r += a * kNoiseP(x * fr, y * fr, P * fr); a *= 0.5; fr *= 2; } return r; }
+function kFbm3(x, y, z){ let a = 0.5, fr = 1, r = 0; for(let i = 0; i < 4; i++){ r += a * kNoiseP(x * fr + z * 0.7 * fr, y * fr - z * 0.4 * fr, 4096); a *= 0.5; fr *= 2.03; } return r; }
+// HUID v3: een echte hoogtekaart van diepe rimpels (ridged fbm), plooien en wratten →
+// daaruit een kleurkaart (groeven donker, ruggen lichter, blauwgrijze vlekken), een
+// NORMAALKAART (Sobel) zodat elke rimpel echt licht en schaduw vangt, en een RUWHEIDS-
+// kaart (groeven mat, ruggen nat-glanzend). 512×512, naadloos herhaalbaar.
+function krakenHuidKaarten(){
+  if(_krakenTex) return;
+  const N = 512, P = 6;
+  const H = new Float32Array(N * N);
+  let zaad = 4242; const rnd = () => { zaad = (zaad * 1664525 + 1013904223) >>> 0; return zaad / 4294967296; };
+  for(let y = 0; y < N; y++) for(let x = 0; x < N; x++){
+    const u = x / N * P, v = y / N * P;
+    const rug = 1 - Math.abs(2 * kFbmP(u * 1.7, v * 1.7, P, 4) - 1);         // ridged: scherpe groeven
+    const plooi = kFbmP(u * 0.6 + 3, v * 0.6 + 7, P, 3);                      // grote zachte plooien
+    const fijn = kFbmP(u * 6 + 11, v * 6 + 5, P, 3);                           // fijne korrel
+    H[y * N + x] = 0.68 * Math.pow(rug, 1.25) + 0.24 * plooi + 0.08 * fijn;
+  }
+  // wratten / papillen: bolletjes op de hoogtekaart (tegelbaar)
+  for(let i = 0; i < 260; i++){
+    const cx = rnd() * N, cy = rnd() * N, r = 3 + rnd() * 11, h = 0.18 + rnd() * 0.32;
+    for(let dy = -r; dy <= r; dy++) for(let dx = -r; dx <= r; dx++){
+      const d = Math.hypot(dx, dy) / r; if(d > 1) continue;
+      const x = ((Math.round(cx + dx) % N) + N) % N, y = ((Math.round(cy + dy) % N) + N) % N;
+      H[y * N + x] += h * Math.sqrt(Math.max(0, 1 - d * d));
+    }
+  }
+  let mn = 1e9, mx = -1e9; for(let i = 0; i < N * N; i++){ if(H[i] < mn) mn = H[i]; if(H[i] > mx) mx = H[i]; }
+  for(let i = 0; i < N * N; i++) H[i] = (H[i] - mn) / (mx - mn);
+  const cK = document.createElement('canvas'), cN = document.createElement('canvas'), cR = document.createElement('canvas');
+  cK.width = cK.height = cN.width = cN.height = cR.width = cR.height = N;
+  const gK = cK.getContext('2d'), gN = cN.getContext('2d'), gR = cR.getContext('2d');
+  const iK = gK.createImageData(N, N), iN = gN.createImageData(N, N), iR = gR.createImageData(N, N);
+  for(let y = 0; y < N; y++) for(let x = 0; x < N; x++){
+    const i = y * N + x, h = H[i];
+    // kleur: groeven donker, ruggen lichter; grote vlekken schuiven tussen blauwgrijs en bruingrijs
+    const vlek = kFbmP(x / N * P * 0.8 + 21, y / N * P * 0.8 + 9, P, 3);
+    const basis = [0.80, 0.84, 0.86], warm = [0.86, 0.80, 0.74], licht = [1.0, 1.0, 1.0], donker = [0.30, 0.33, 0.36];   // licht: de hoekpuntkleur geeft de tint
+    const t = Math.min(1, Math.max(0, (h - 0.25) / 0.6));
+    let r = basis[0] + (warm[0] - basis[0]) * vlek, g = basis[1] + (warm[1] - basis[1]) * vlek, b = basis[2] + (warm[2] - basis[2]) * vlek;
+    r = donker[0] + (r - donker[0]) * Math.min(1, t * 1.5); g = donker[1] + (g - donker[1]) * Math.min(1, t * 1.5); b = donker[2] + (b - donker[2]) * Math.min(1, t * 1.5);
+    const top = Math.max(0, (h - 0.72) / 0.28); r += (licht[0] - r) * top * 0.7; g += (licht[1] - g) * top * 0.7; b += (licht[2] - b) * top * 0.7;
+    iK.data[i * 4] = r * 255; iK.data[i * 4 + 1] = g * 255; iK.data[i * 4 + 2] = b * 255; iK.data[i * 4 + 3] = 255;
+    // normaalkaart (Sobel over de hoogtekaart, tegelbaar)
+    const L = H[y * N + ((x - 1 + N) % N)], Rr = H[y * N + ((x + 1) % N)], U = H[((y - 1 + N) % N) * N + x], D = H[((y + 1) % N) * N + x];
+    const k = 6.0; let nx = -(Rr - L) * k, ny = -(D - U) * k, nz = 1; const len = Math.hypot(nx, ny, nz); nx /= len; ny /= len; nz /= len;
+    iN.data[i * 4] = (nx * 0.5 + 0.5) * 255; iN.data[i * 4 + 1] = (ny * 0.5 + 0.5) * 255; iN.data[i * 4 + 2] = (nz * 0.5 + 0.5) * 255; iN.data[i * 4 + 3] = 255;
+    // ruwheid: groeven mat (0.85), ruggen nat en glad (0.28)
+    const ruw = 0.85 - 0.57 * Math.pow(h, 1.3);
+    iR.data[i * 4] = iR.data[i * 4 + 1] = iR.data[i * 4 + 2] = ruw * 255; iR.data[i * 4 + 3] = 255;
+  }
+  gK.putImageData(iK, 0, 0); gN.putImageData(iN, 0, 0); gR.putImageData(iR, 0, 0);
+  _krakenTex = new THREE.CanvasTexture(cK); _krakenNormaal = new THREE.CanvasTexture(cN); _krakenRuw = new THREE.CanvasTexture(cR);
+  for(const tx of [_krakenTex, _krakenNormaal, _krakenRuw]){ tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.anisotropy = 4; }
+}
+function krakenNormaalTex(){ krakenHuidKaarten(); return _krakenNormaal; }
+function krakenRuwTex(){ krakenHuidKaarten(); return _krakenRuw; }
+function krakenHuidTextuur(){ krakenHuidKaarten(); return _krakenTex; }
+// (oude v2-textuur hieronder wordt niet meer gebruikt — bewaard voor de geschiedenis)
+function krakenHuidTextuurV2(){
   if(_krakenTex) return _krakenTex;
   const N = 512, c = document.createElement('canvas'); c.width = c.height = N;
   const g = c.getContext('2d');
@@ -5036,7 +5103,9 @@ function krakenEnvMap(){
 const krakenShaders = [];
 function krakenHuidMat(skinning){
   const t = krakenHuidTextuur();
-  const m = new THREE.MeshStandardMaterial({color: 0xffffff, map: t, bumpMap: t, bumpScale: 0.42, roughness: 0.38, metalness: 0.0, envMap: krakenEnvMap(), envMapIntensity: 0.3, vertexColors: true, skinning: !!skinning});
+  // v3: MeshPhysical met normaalkaart (elke rimpel vangt licht), ruwheidskaart (groeven mat,
+  // ruggen glanzend) en een dun 'clearcoat'-laagje = nat, slijmerig glimmen zoals op het plaatje
+  const m = new THREE.MeshPhysicalMaterial({color: 0xffffff, map: t, normalMap: krakenNormaalTex(), normalScale: new THREE.Vector2(2.6, 2.6), roughnessMap: krakenRuwTex(), roughness: 1.0, metalness: 0.0, clearcoat: 0.55, clearcoatRoughness: 0.3, envMap: krakenEnvMap(), envMapIntensity: 0.55, vertexColors: true, skinning: !!skinning});
   m.onBeforeCompile = (sh) => {
     sh.uniforms.tijd = {value: 0}; sh.uniforms.schrik = {value: 0};
     sh.vertexShader = 'varying vec3 vWP;' + String.fromCharCode(10) + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>' + String.fromCharCode(10) + ' vWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
@@ -5044,9 +5113,9 @@ function krakenHuidMat(skinning){
       float g1 = sin(vWP.x * 0.045 + vWP.y * 0.03 + tijd * 1.3) * sin(vWP.z * 0.05 - tijd * 0.9 + vWP.y * 0.02);
       float golfK = smoothstep(0.15, 0.75, g1);
       float flik = 0.5 + 0.5 * sin(vWP.x * 1.7 + tijd * 6.0) * sin(vWP.z * 1.9 - tijd * 5.0) * sin(vWP.y * 1.3 + tijd * 4.0);
-      vec3 donker = diffuseColor.rgb * vec3(0.62, 0.42, 0.40);
-      diffuseColor.rgb = mix(diffuseColor.rgb, donker, golfK * 0.6 + flik * 0.1);
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.80, 0.72), schrik * 0.42);`);
+      vec3 donker = diffuseColor.rgb * vec3(0.48, 0.52, 0.58);
+      diffuseColor.rgb = mix(diffuseColor.rgb, donker, golfK * 0.55 + flik * 0.08);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.80, 0.84, 0.86), schrik * 0.45);`);
     krakenShaders.push(sh);
   };
   return m;
@@ -5072,7 +5141,7 @@ function maakTentakel(aantal, lenBegin, lenEind, dikBegin, dikEind, mat){
     if(ouder) ouder.add(b); botten.push(b); stukken.push(b); ouder = b;
   }
   // de huid: taps toelopende cilinder, veel ringen zodat hij mooi buigt
-  const radiaal = IS_TOUCH ? 10 : 16, ringen = aantal * 5;
+  const radiaal = IS_TOUCH ? 12 : 22, ringen = aantal * 6;
   const geo = new THREE.CylinderGeometry(Math.max(0.08, dikEind * 0.25), dikBegin, L, radiaal, ringen, false);
   geo.translate(0, L / 2, 0);
   // profiel: iets dikker vlak boven de basis, dan mooi taps; de punt krult
@@ -5110,22 +5179,26 @@ function maakTentakel(aantal, lenBegin, lenEind, dikBegin, dikEind, mat){
     for(let k = 0; k < perStuk; k++){
       const y = yy + lens[j] * ((k + 0.5) / perStuk);
       const f = y / L, dik = (dikBegin + (dikEind - dikBegin) * f) * (1 + 0.12 * Math.sin(Math.PI * Math.min(1, f / 0.3)));
-      const rn = Math.max(0.06, dik * 0.42 * (1 - f * 0.35));
+      const rn = Math.max(0.06, dik * 0.55 * (1 - f * 0.4));      // v3: grote zuignappen zoals op het plaatje
       for(const zijde of [-1, 1]){
         const hoek = zijde * 0.55;     // twee rijen, links en rechts van het midden van de onderkant
         const cx = Math.sin(hoek) * dik * 0.92, cz = -Math.cos(hoek) * dik * 0.92;
-        const nap = new THREE.TorusGeometry(rn, rn * 0.42, 5, napRadiaal);
+        const nap = new THREE.TorusGeometry(rn, rn * 0.36, 6, napRadiaal);
+        // v3: een donkere kom ín de zuignap (iets verzonken) — zo zie je dat het echt nappen zijn
+        const kom = new THREE.CircleGeometry(rn * 0.78, napRadiaal); kom.translate(0, 0, -rn * 0.12);
         // naar buiten laten wijzen (weg van de as van de arm)
         const m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(0, -hoek, 0));
-        nap.applyMatrix4(m);
-        nap.translate(cx, y, cz);
-        const cnt = nap.attributes.position.count;
-        const kl = new Float32Array(cnt * 3), si = new Uint16Array(cnt * 4), sw = new Float32Array(cnt * 4);
-        for(let i = 0; i < cnt; i++){ zetKleur(kl, i, _kZ); si[i * 4] = j; sw[i * 4] = 1; }
-        nap.setAttribute('color', new THREE.BufferAttribute(kl, 3));
-        nap.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
-        nap.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
-        napGeos.push(nap);
+        for(const [geo2, kleurNap] of [[nap, _kZ], [kom, _kD]]){
+          geo2.applyMatrix4(m);
+          geo2.translate(cx, y, cz);
+          const cnt = geo2.attributes.position.count;
+          const kl = new Float32Array(cnt * 3), si = new Uint16Array(cnt * 4), sw = new Float32Array(cnt * 4);
+          for(let i = 0; i < cnt; i++){ zetKleur(kl, i, kleurNap); si[i * 4] = j; sw[i * 4] = 1; }
+          geo2.setAttribute('color', new THREE.BufferAttribute(kl, 3));
+          geo2.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
+          geo2.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+          napGeos.push(geo2);
+        }
       }
     }
     yy += lens[j];
@@ -5188,16 +5261,20 @@ function startKraken(){
   const huid = krakenDonkerMat();
   // ── de mantel (kop): een gedraaid profiel — breed onderin, bol, spits naar achteren ──
   const profiel = [];
-  const prof = [[0, 0], [6.5, 0.4], [8.6, 3], [9.6, 7], [9.3, 11], [8.2, 15], [6.4, 18.5], [4.2, 21.5], [2.0, 23.6], [0.001, 24.6]];
+  // v3: bredere, bollere kop (zoals het plaatje), fijner verdeeld zodat de plooien echt uitkomen
+  const prof = [[0, 0], [7.2, 0.4], [9.6, 3], [10.9, 7.5], [10.8, 12], [9.7, 16], [7.8, 19.5], [5.2, 22.6], [2.4, 24.8], [0.001, 25.8]];
   for(const [r, y] of prof) profiel.push(new THREE.Vector2(r, y));
-  const kopGeo = new THREE.LatheGeometry(profiel, IS_TOUCH ? 28 : 44);
+  const kopGeo = new THREE.LatheGeometry(profiel, IS_TOUCH ? 36 : 72);
   {
     // huidplooien + kleur: bovenkant roodbruin, de voorkant onderaan (bij de ogen/mond) bleker
     const pos = kopGeo.attributes.position, n = pos.count, kl = new Float32Array(n * 3);
     for(let i = 0; i < n; i++){
       const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
       const r = Math.hypot(x, z) || 1, hoek = Math.atan2(x, z);
-      const plooi = 1 + 0.035 * Math.sin(hoek * 9 + y * 0.6) + 0.02 * Math.sin(hoek * 17 - y * 1.3);
+      // v3: grote zachte bulten + scherpe plooien (ridged ruis) die van boven naar beneden lopen
+      const bult = kFbm3(Math.cos(hoek) * 1.1 + 5, y * 0.14, Math.sin(hoek) * 1.1) - 0.5;
+      const groef = 1 - Math.abs(2 * kFbm3(hoek * 1.9, y * 0.35 + 3, 0) - 1);
+      const plooi = 1 + 0.09 * bult + 0.05 * Math.pow(groef, 2.0) * Math.min(1, y / 4) + 0.012 * Math.sin(hoek * 21 + y * 0.9);
       pos.setX(i, x * plooi); pos.setZ(i, z * plooi);
       const voor = Math.max(0, z / r), laag = Math.max(0, 1 - y / 12);
       const c = _kA.clone().lerp(_kB, voor * laag * 0.55).lerp(_kD, Math.max(0, (y - 14) / 12) * 0.5);
@@ -5211,7 +5288,8 @@ function startKraken(){
   // het vlies (de 'rok') tussen de armen: verbergt de aanhechting en maakt hem massief
   const rokGeo = new THREE.LatheGeometry([new THREE.Vector2(3, 0.9), new THREE.Vector2(8.5, 0.5), new THREE.Vector2(11.5, -0.8), new THREE.Vector2(13.5, -3.5)], IS_TOUCH ? 24 : 40);
   { const pos = rokGeo.attributes.position, n = pos.count, kl = new Float32Array(n * 3); for(let i = 0; i < n; i++){ const y = pos.getY(i); zetKleur(kl, i, _kD.clone().lerp(_kA, 0.5).lerp(_kB, Math.max(0, -y / 4) * 0.6)); } rokGeo.computeVertexNormals(); rokGeo.setAttribute('color', new THREE.BufferAttribute(kl, 3)); }
-  const rok = new THREE.Mesh(rokGeo, new THREE.MeshStandardMaterial({color: 0xffffff, map: krakenHuidTextuur(), bumpMap: krakenHuidTextuur(), bumpScale: 0.3, roughness: 0.4, vertexColors: true, side: THREE.DoubleSide}));
+  const rokMat = krakenHuidMat(false); rokMat.side = THREE.DoubleSide;
+  const rok = new THREE.Mesh(rokGeo, rokMat);
   g.add(rok);
   // papillen: een paar bobbels/hoorntjes op de kop (echte octopussen hebben ze boven de ogen)
   for(let i = 0; i < 10; i++){
@@ -5225,17 +5303,17 @@ function startKraken(){
   }
   // ── ogen: oogbult, oogbol met gouden iris + horizontale spleet-pupil, glanzend hoornvlies, oogleden ──
   const ogen = [], oogleden = [], pupillen = [], oogGroepen = [];
-  const irisMat = new THREE.MeshStandardMaterial({color: 0xd9a63a, emissive: 0x6a4a08, emissiveIntensity: 0.55, roughness: 0.35});
-  const witMat = new THREE.MeshStandardMaterial({color: 0xe8e0d0, roughness: 0.3});
+  const irisMat = new THREE.MeshStandardMaterial({color: 0x5a4a2a, emissive: 0x2a1e08, emissiveIntensity: 0.45, roughness: 0.2});
+  const witMat = new THREE.MeshStandardMaterial({color: 0x262e32, roughness: 0.15});   // v3: donker, nat oog zoals een echte octopus
   const glansMat = new THREE.MeshStandardMaterial({color: 0xffffff, transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.0, depthWrite: false});
   for(const sx of [-1, 1]){
     const bult = new THREE.Mesh(new THREE.SphereGeometry(3.2, 16, 12), huid);
     { const cnt = bult.geometry.attributes.position.count, kl = new Float32Array(cnt * 3); for(let q = 0; q < cnt; q++) zetKleur(kl, q, _kA); bult.geometry.setAttribute('color', new THREE.BufferAttribute(kl, 3)); }
-    bult.scale.set(1.15, 1, 1); bult.position.set(sx * 6.2, 9.6, 6.2); g.add(bult);
+    bult.scale.set(1.35, 1.05, 1.1); bult.position.set(sx * 6.4, 9.9, 6.0); g.add(bult);   // v3: zware wenkbrauw-bult
     const oog = new THREE.Group(); oog.position.set(sx * 6.6, 9.7, 8.3); oog.rotation.y = sx * 0.45; oog.userData.sx = sx; g.add(oog); oogGroepen.push(oog);
     const bol = new THREE.Mesh(new THREE.SphereGeometry(1.9, 18, 14), witMat); oog.add(bol);
-    const iris = new THREE.Mesh(new THREE.SphereGeometry(1.35, 18, 14), irisMat); iris.scale.set(1, 1, 0.55); iris.position.z = 1.25; oog.add(iris);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({color: 0x050403})); pupil.scale.set(0.85, 0.21, 0.16); pupil.position.z = 1.95; oog.add(pupil); pupillen.push(pupil);
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(1.62, 18, 14), irisMat); iris.scale.set(1, 1, 0.5); iris.position.z = 1.15; oog.add(iris);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({color: 0x050403})); pupil.scale.set(0.95, 0.3, 0.18); pupil.position.z = 1.95; oog.add(pupil); pupillen.push(pupil);
     const glans = new THREE.Mesh(new THREE.SphereGeometry(2.05, 18, 14), glansMat); oog.add(glans);
     const lichtje = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), new THREE.MeshBasicMaterial({color: 0xffffff})); lichtje.position.set(-0.55 * sx, 0.7, 1.85); oog.add(lichtje);
     // oogleden: twee huid-kapjes die dichtklappen bij het knipperen
@@ -5276,6 +5354,7 @@ function startKraken(){
   const schuim = new THREE.Mesh(new THREE.RingGeometry(9 * KRAKEN_SCHAAL, 19 * KRAKEN_SCHAAL, 64), new THREE.MeshBasicMaterial({map: rookTex, color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide}));
   schuim.rotation.x = -Math.PI / 2; schuim.position.set(plek.x, 0.3, plek.z); scene.add(schuim);
   scene.add(g);
+  krakenExtraMaak(g, plek);                       // v3: tegenlicht, spot van boven, nevel over het water
   // de sifon: het ademgat aan de zijkant van de mantel, gaat open en dicht met het ademen
   const sifon = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.55, 8, 14, Math.PI * 1.6), huid);
   { const cnt = sifon.geometry.attributes.position.count, kl = new Float32Array(cnt * 3); for(let q = 0; q < cnt; q++) zetKleur(kl, q, _kB); sifon.geometry.setAttribute('color', new THREE.BufferAttribute(kl, 3)); }
@@ -5291,6 +5370,77 @@ function startKraken(){
   kraken.golfTimer = 1.2;
 }
 
+// ── KRAKEN v3 EXTRA'S (Brian 7 sep, "1000x realistischer", naar zijn plaatje) ──
+//  • tegenlicht: een koud blauwwit licht ACHTER hem (aan de kant van de storm) dat zijn
+//    natte silhouet en de zuignappen laat oplichten, en meeflitst met de bliksem;
+//  • een spot van boven (maanlicht door de wolken) recht op zijn kop;
+//  • nevel/opspattend schuim: lage witte wolken die rond zijn lijf over het water kruipen;
+//  • elke arm die het water in of uit gaat: spetters + golfring precies op die plek.
+function krakenExtraMaak(g, plek){
+  const k = kraken;
+  k.tegen = new THREE.PointLight(0xa9c8ff, 0, 260 * KRAKEN_SCHAAL, 1.2); scene.add(k.tegen);
+  k.spot = new THREE.SpotLight(0xdfe9ff, 0, 0, 0.42, 0.7, 1); k.spot.position.set(plek.x, 70 * KRAKEN_SCHAAL, plek.z); k.spot.target = g; scene.add(k.spot);
+  k.nevel = [];
+  const N = IS_TOUCH ? 12 : 26;
+  for(let i = 0; i < N; i++){
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0, color: 0xd9e4ea}));
+    const a = Math.random() * 6.283, r = (9 + Math.random() * 14) * KRAKEN_SCHAAL;
+    sp.userData = {a, r, y: (0.5 + Math.random() * 3) * KRAKEN_SCHAAL * 0.5, maat: (8 + Math.random() * 12) * KRAKEN_SCHAAL * 0.6, snel: (Math.random() - 0.5) * 0.12, fase: Math.random() * 6.283};
+    sp.scale.set(sp.userData.maat, sp.userData.maat * 0.55, 1); sp.material.rotation = Math.random() * 6.283;
+    scene.add(sp); k.nevel.push(sp);
+  }
+  k.armWater = k.armen.map(a => a.stukken.map(() => 1));   // per bot: was hij boven (1) of onder (0) water?
+  k.spatCooldown = 0;
+}
+function krakenExtraWeg(k){
+  if(k.tegen){ scene.remove(k.tegen); k.tegen = null; }
+  if(k.spot){ scene.remove(k.spot); k.spot = null; }
+  if(k.nevel){ for(const sp of k.nevel){ scene.remove(sp); sp.material.dispose(); } k.nevel = null; }
+}
+const _botW = new THREE.Vector3();
+function krakenExtraUpdate(k, dt, t, opk){
+  const g = k.groep; if(!g) return;
+  const flits = (typeof hemelFlits !== 'undefined' ? hemelFlits : 0);
+  const zicht = k.fase === 'zakken' ? Math.max(0, opk) : Math.min(1, k.t / 3 + (k.fase === 'vecht' ? 1 : 0));
+  // tegenlicht: achter hem, gezien vanaf jou, hoog boven het water
+  if(k.tegen){
+    const dx = g.position.x - camera.position.x, dz = g.position.z - camera.position.z, d = Math.hypot(dx, dz) || 1;
+    k.tegen.position.set(g.position.x + dx / d * 26 * KRAKEN_SCHAAL, 30 * KRAKEN_SCHAAL, g.position.z + dz / d * 26 * KRAKEN_SCHAAL);
+    k.tegen.intensity = zicht * (2.2 + 0.5 * Math.sin(t * 0.7) + 9 * flits);
+  }
+  if(k.spot){ k.spot.position.set(g.position.x + Math.sin(t * 0.2) * 20, 70 * KRAKEN_SCHAAL, g.position.z + Math.cos(t * 0.2) * 20); k.spot.intensity = zicht * (1.1 + 3 * flits); }
+  // nevel kruipt rond het lijf
+  if(k.nevel) for(const sp of k.nevel){
+    const u = sp.userData; u.a += u.snel * dt;
+    sp.position.set(g.position.x + Math.cos(u.a) * u.r, u.y + Math.sin(t * 0.8 + u.fase) * 1.5, g.position.z + Math.sin(u.a) * u.r);
+    sp.material.opacity = zicht * (0.22 + 0.12 * Math.sin(t * 0.9 + u.fase)) * (k.fase === 'zakken' ? opk : 1);
+    sp.material.rotation += dt * 0.05;
+  }
+  // armen door het wateroppervlak: spetters + golfring waar een bot het water in of uit gaat
+  k.spatCooldown -= dt;
+  // (de armen bestaan pas ná krakenExtraMaak — daarom hier pas de water-stand per bot aanmaken)
+  if(!k.armWater || k.armWater.length !== k.armen.length) k.armWater = k.armen.map(a => a.stukken.map(() => 1));
+  if(k.armWater && k.spatCooldown <= 0){
+    let gedaan = 0;
+    for(let i = 0; i < k.armen.length && gedaan < 3; i++){
+      const arm = k.armen[i], st = k.armWater[i];
+      for(let j = 1; j < arm.stukken.length; j += 2){
+        _botW.setFromMatrixPosition(arm.stukken[j].matrixWorld);
+        const boven = _botW.y > 0.6 ? 1 : 0;
+        if(boven !== st[j]){
+          st[j] = boven;
+          if(hoogteOp(_botW.x, _botW.z) < -1){
+            spetter(_botW.x, _botW.z, IS_TOUCH ? 8 : 16, 1.2 + KRAKEN_SCHAAL * 0.12);
+            if(Math.random() < 0.5) maakGolf(_botW.x, _botW.z, 3 + Math.random() * 3, 30, 18);
+            if(Math.random() < 0.35) geluidPlons(0.25);
+            gedaan++;
+          }
+        }
+      }
+    }
+    if(gedaan) k.spatCooldown = 0.12;
+  }
+}
 // inktwolk: donkere wolken die zich over het water verspreiden als hij onderduikt
 function inktwolk(x, z, aantal){
   for(let i = 0; i < aantal; i++){
@@ -5512,10 +5662,11 @@ function updateKraken(dt, t){
     opk = 1 - u;
     if(Math.random() < dt * 8) spetter(k.plek.x, k.plek.z, 3, 0.8);
     if(k.schuim) k.schuim.material.opacity = 0.55 * (1 - u);
-    if(u >= 1){ scene.remove(g); if(k.schuim){ scene.remove(k.schuim); k.schuim.material.dispose(); } for(const a of k.armen) if(a.mep && a.mep.schaduw){ scene.remove(a.mep.schaduw); } kraken = null; return; }
+    if(u >= 1){ scene.remove(g); if(k.schuim){ scene.remove(k.schuim); k.schuim.material.dispose(); } for(const a of k.armen) if(a.mep && a.mep.schaduw){ scene.remove(a.mep.schaduw); } krakenExtraWeg(k); kraken = null; return; }
   }
   // schuim op het water: draait en ademt mee
   if(k.schuim){ k.schuim.rotation.z += dt * 0.15; const s = 1 + 0.06 * Math.sin(t * 1.7); k.schuim.scale.set(s, s, 1); if(k.fase !== 'zakken') k.schuim.material.opacity = 0.35 + 0.2 * Math.sin(t * 2.3) + (k.fase === 'opkomen' ? 0.25 : 0); }
+  krakenExtraUpdate(k, dt, t, opk);                 // v3: licht volgt, nevel drijft, armen spatten bij het water
   // hij draait langzaam met je mee en deint; de mantel ademt
   const doelHoek = Math.atan2(camera.position.x - g.position.x, camera.position.z - g.position.z);
   let dh = doelHoek - g.rotation.y; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
