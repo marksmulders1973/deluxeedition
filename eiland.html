@@ -60,6 +60,9 @@
   /* ── telefoon-knoppen: alleen op aanraakschermen ── */
   /* 🔒 ADMIN PANEEL op het eiland — alleen voor NovaX (Brian 6 sep), zelfde regenboog-AP als in de lobby */
   #apKnop{position:fixed;top:12px;left:236px;z-index:16;display:none;background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.25);border-radius:10px;padding:7px 12px;cursor:pointer;font-size:14px;font-weight:900;letter-spacing:3px;}
+  #recBadge{position:fixed;top:12px;right:12px;z-index:16;display:none;background:rgba(0,0,0,0.55);border:1px solid rgba(255,60,60,0.7);border-radius:10px;padding:7px 12px;font-size:13px;font-weight:900;color:#fff;letter-spacing:1px;pointer-events:none}
+  #recBadge b{color:#ff3b3b;animation:recKnip 1s infinite}
+  @keyframes recKnip{50%{opacity:0.15}}
   #apKnop span{background:linear-gradient(90deg,#ff3b3b,#ff9f3b,#ffd93b,#3bff6e,#3b82ff,#a855f7);-webkit-background-clip:text;background-clip:text;color:transparent;}
   #apPaneel{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);}
   #apInhoud{width:min(92vw,420px);max-height:88vh;overflow:auto;background:#0f1320;color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:18px;padding:6px 22px 22px;font-family:inherit;box-shadow:0 20px 60px rgba(0,0,0,0.6);}
@@ -132,6 +135,7 @@
 </div>
 <button id="craftKnop" class="touch-ui">🛠️</button>
 <button id="apKnop" title="Admin paneel (NovaX)"><span>AP</span></button>
+<div id="recBadge"><b>●</b> REC <span id="recTijd">0:00</span> · V = stop</div>
 <div id="apPaneel"><div id="apInhoud"></div></div>
 <div id="zwemBalk">🏊 je zwemt!</div>
 <div id="doodScherm"><div class="kop">🔥 Je bent in de lava gevallen!</div><div class="sub">je begint zo weer op het strand…</div></div>
@@ -4668,6 +4672,7 @@ function startGeluid(){
   if(audioCtx) return;
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    installeerOpnameAudio();                               // 🎥 zodat de film ook geluid heeft
     const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 4, audioCtx.sampleRate);
     const data = buf.getChannelData(0);
     let vorig = 0;
@@ -5470,6 +5475,7 @@ function apTeken(){
   knop('🛡️', 'Onsterfelijk ' + (adminGod ? 'AAN' : 'UIT'), 'lava, Kraken en tentakels kunnen je niets doen', () => { adminGod = !adminGod; zeg(adminGod ? '🛡️ onsterfelijk AAN' : '🛡️ onsterfelijk UIT'); apTeken(); }, adminGod);
   knop('🕊️', 'Vliegen ' + (adminVlieg ? 'AAN' : 'UIT'), 'W = vooruit waar je kijkt · spatie = omhoog · C = omlaag · Shift = turbo', () => { adminVlieg = !adminVlieg; if(!adminVlieg){ velY = 0; } zeg(adminVlieg ? '🕊️ vliegen AAN — kijk waar je heen wilt en druk W' : '🕊️ vliegen UIT'); apTeken(); }, adminVlieg);
   knop('⚡', 'Supersnel ' + (adminSnel ? 'AAN' : 'UIT'), '2,5× zo snel lopen, rennen en zwemmen', () => { adminSnel = !adminSnel; zeg(adminSnel ? '⚡ supersnel AAN' : '⚡ supersnel UIT'); apTeken(); }, adminSnel);
+  knop('🎥', filmBezig() ? 'Filmen STOPPEN' : 'Filmen starten', 'neemt op wat jij ziet, met geluid · V = stoppen · de film komt in je Downloads', () => { if(filmBezig()) filmStopNu(); else filmStartNu(); apSluit(); }, filmBezig());
   knop('🙈', 'Armen ' + (armenZichtbaar ? 'ZICHTBAAR' : 'VERBORGEN'), 'je eigen armen niet meer in beeld · de pickaxe blijft te zien', () => { zetArmen(!armenZichtbaar); zeg(armenZichtbaar ? '👐 armen weer zichtbaar' : '🙈 armen verborgen'); apTeken(); }, !armenZichtbaar);
   knop('⛈️', 'Onweer NU', 'donkere lucht, regen, bliksem en donder, ~60 sec', () => { startOnweer(60); apSluit(); });
   knop('🐙', 'Kraken NU', 'de zee gaat meteen borrelen, 12 sec later komt hij', () => apRamp('kraken'));
@@ -5480,6 +5486,71 @@ function apTeken(){
   knop('🧹', 'Eiland resetten', 'muren, daken, gaten, hout en steen weg — begint opnieuw', () => { if(!confirm('Alles van het eiland wissen en opnieuw beginnen?')) return; try { Object.keys(localStorage).filter(k => k.startsWith('deluxe-eiland')).forEach(k => localStorage.removeItem(k)); } catch(e) {} location.reload(); });
   knop('🏠', 'Naar het lobby-paneel', 'de AP van deluxeedition.nl (verbannen, mods, vibes)', () => { location.href = 'index.html'; });
 }
+// 🎥 FILMEN (Brian 7 sep 2026): neem op wat jij ziet — het spel-canvas op 30 fps
+// mét het spelgeluid. Start via het admin-paneel of de V-toets (NovaX), stop
+// met V. De film komt als .webm in je Downloads. Geluid: alles wat in het spel
+// naar audioCtx.destination gaat, gaat óók naar opnameDest (zie
+// installeerOpnameAudio — wordt aangezet zodra het geluid start).
+let opnameDest = null, filmRec = null, filmStukken = [], filmStart = 0, filmTimer = null;
+function installeerOpnameAudio(){
+  if(!audioCtx || opnameDest) return;
+  try {
+    opnameDest = audioCtx.createMediaStreamDestination();
+    const echt = AudioNode.prototype.connect;
+    const dest = audioCtx.destination;
+    AudioNode.prototype.connect = function(naar, ...rest){
+      const r = echt.call(this, naar, ...rest);
+      if(naar === dest){ try { echt.call(this, opnameDest); } catch(e) {} }
+      return r;
+    };
+  } catch(e) { opnameDest = null; }
+}
+function filmBezig(){ return !!(filmRec && filmRec.state === 'recording'); }
+function filmStartNu(){
+  if(filmBezig()) return;
+  if(typeof MediaRecorder === 'undefined' || !renderer.domElement.captureStream){ zeg('😕 filmen lukt niet in deze browser — probeer Chrome op de pc'); return; }
+  try {
+    startGeluid(); installeerOpnameAudio();
+    if(audioCtx && audioCtx.state === 'suspended'){ try { audioCtx.resume(); } catch(e) {} }   // anders komt er geen geluid (en soms geen film) uit
+    const stream = renderer.domElement.captureStream(30);
+    // geluid alleen meenemen als de audio echt draait — een slapende AudioContext geeft een lege film
+    if(opnameDest && audioCtx && audioCtx.state === 'running') for(const t of opnameDest.stream.getAudioTracks()) stream.addTrack(t);
+    const soorten = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+    const mime = soorten.find(s => MediaRecorder.isTypeSupported(s)) || '';
+    filmStukken = [];
+    filmRec = new MediaRecorder(stream, mime ? {mimeType: mime, videoBitsPerSecond: 8000000} : undefined);
+    filmRec.ondataavailable = e => { if(e.data && e.data.size) filmStukken.push(e.data); };
+    filmRec.onstop = filmOpslaan;
+    filmRec.start(1000);
+    filmStart = performance.now();
+    document.getElementById('recBadge').style.display = 'block';
+    clearInterval(filmTimer);
+    filmTimer = setInterval(() => {
+      const s = Math.floor((performance.now() - filmStart) / 1000);
+      document.getElementById('recTijd').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    }, 500);
+    zeg('🎥 opname gestart — druk V om te stoppen');
+  } catch(e) { zeg('😕 filmen lukt niet: ' + e.message); filmRec = null; }
+}
+function filmStopNu(){ if(filmBezig()) filmRec.stop(); }
+function filmOpslaan(){
+  clearInterval(filmTimer); document.getElementById('recBadge').style.display = 'none';
+  const rec = filmRec; filmRec = null;
+  if(!filmStukken.length){ zeg('😕 er is niets opgenomen'); return; }
+  const type = (rec && rec.mimeType) || 'video/webm';
+  const blob = new Blob(filmStukken, {type}); filmStukken = [];
+  const ext = type.includes('mp4') ? 'mp4' : 'webm';
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const naam = 'eiland-film-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + '.' + ext;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = naam; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  window.laatsteFilm = {naam, bytes: blob.size, type};            // handig voor testen
+  zeg('🎬 film opgeslagen in je Downloads: ' + naam + ' (' + (blob.size / 1048576).toFixed(1) + ' MB)');
+}
+addEventListener('keydown', e => { if(e.code === 'KeyV' && gestart && !e.repeat){ if(filmBezig()) filmStopNu(); else if(IS_NOVAX) filmStartNu(); } });
+addEventListener('beforeunload', () => { if(filmBezig()) filmStopNu(); });
+
 document.getElementById('apKnop').addEventListener('click', apOpen);
 document.getElementById('apPaneel').addEventListener('click', e => { if(e.target.id === 'apPaneel') apSluit(); });
 addEventListener('keydown', e => { if(e.code === 'Escape' && apOpenStaat) apSluit(); });
