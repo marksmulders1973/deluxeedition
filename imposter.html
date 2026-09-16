@@ -846,12 +846,14 @@ function probeerKill(){
   killCooldown = 1.5;
   if(beste.bot){ beste.bot.af = true; ligNeer(beste.bot.mesh); }
   else { beste.ander.af = true; ligNeer(beste.ander.mesh); mijnEvents.push({id: mijnSessie + '-' + Date.now(), doel: beste.sessie, soort: 'schade', schade: 60}); }
+  checkCrewmatesWeg();
   const h = document.getElementById('killHint'); if(!IS_TOUCH){ h.textContent = '☠️ AF!'; setTimeout(() => { h.textContent = '☠️ IMPOSTER: klik op iemand dichtbij om hem af te maken'; }, 1200); }
 }
 function afTonen(){
   if(ikBenAf) return; ikBenAf = true;
   const el = document.getElementById('af'); el.classList.add('open'); setTimeout(() => el.classList.remove('open'), 3000);
   if(somOpen) somSluit();
+  checkCrewmatesWeg();
 }
 renderer.domElement.addEventListener('mousedown', e => { if(e.button === 0 && pointerLocked) probeerKill(); });
 document.getElementById('killKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); probeerKill(); }, {passive: false});
@@ -926,13 +928,20 @@ function meetingUitslag(){
     else if(k && k.ander){ k.ander.af = true; ligNeer(k.ander.mesh); mijnEvents.push({id: mijnSessie + '-' + Date.now(), doel: k.sessie, soort: 'schade', schade: 60}); uit.textContent = k.naam + ' is eruit gestemd.'; }
   }
   setTimeout(meetingSluit, 4000);
-  checkImpostersWeg();
+  if(!checkImpostersWeg()) checkCrewmatesWeg();
 }
 // Brian: als alle imposters eruit zijn, winnen de crewmates
 function checkImpostersWeg(){
   const nog = bots.filter(b => b.imposter && !b.af).length + ((mijnRol === 'imposter' && !ikBenAf) ? 1 : 0);
   const totaal = bots.filter(b => b.imposter).length + (mijnRol === 'imposter' ? 1 : 0);
   if(totaal > 0 && nog === 0){ setTimeout(() => gewonnen('🎉 CREWMATES WINNEN!', 'Alle imposters zijn eruit gestemd!' + (mijnRol === 'imposter' ? ' (jij was de imposter… volgende keer beter 😈)' : '')), 4200); return true; }
+  return false;
+}
+// Brian: als alle crewmates af zijn, winnen de imposters
+function checkCrewmatesWeg(){
+  const nog = bots.filter(b => !b.imposter && !b.af).length + ((mijnRol === 'crewmate' && !ikBenAf) ? 1 : 0);
+  const totaal = bots.filter(b => !b.imposter).length + (mijnRol === 'crewmate' ? 1 : 0);
+  if(totaal > 0 && nog === 0){ setTimeout(() => gewonnen('😈 IMPOSTERS WINNEN!', 'Alle crewmates zijn af…' + (mijnRol === 'imposter' ? ' Goed gedaan, imposter! 🔪' : ' De crewmates hebben verloren.')), 1800); return true; }
   return false;
 }
 function meetingSluit(){
