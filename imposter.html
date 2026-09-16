@@ -32,6 +32,16 @@
   /* START GAME-knop onderaan in de lobby (Brian: "daar kan je nog niks mee") */
   #startGame{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);padding:16px 44px;font-size:22px;font-weight:900;letter-spacing:2px;color:#fff;border:none;border-radius:14px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);box-shadow:0 0 26px rgba(59,130,255,0.45);cursor:pointer;z-index:16;display:none}
 
+  /* 🧮 rekensom bij de tv (Brian) */
+  #som{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:25;background:rgba(0,0,0,0.55)}
+  #som.open{display:flex}
+  #som .paneel{background:#14141c;border:3px solid #3b82ff;border-radius:18px;padding:26px 34px;text-align:center;box-shadow:0 0 34px rgba(59,130,255,0.5);min-width:300px}
+  #som .kop{color:#8892a6;font-size:13px;font-weight:bold;letter-spacing:2px;margin-bottom:8px}
+  #somTekst{color:#fff;font-size:44px;font-weight:900;margin:6px 0 14px}
+  #somInvoer{width:150px;padding:12px;font-size:30px;font-weight:bold;text-align:center;background:#0d0d14;color:#fff;border:2px solid #3b82ff;border-radius:12px;outline:none}
+  #somKnop{display:block;margin:14px auto 0;padding:12px 30px;font-size:18px;font-weight:bold;color:#fff;border:none;border-radius:12px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);cursor:pointer}
+  #somUitslag{min-height:26px;margin-top:10px;font-size:18px;font-weight:bold;color:#ffd700}
+
   /* zwart beeld na klik op het tandwiel (Brian) */
   #zwart{position:fixed;inset:0;background:#000;z-index:30;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center}
   #zwart.open{display:flex}
@@ -61,6 +71,15 @@
 
 <!-- ⚙️ tandwiel-knop (Brian: "alleen deze knop", rechts in beeld — doet nog niks) -->
 <button id="startGame">▶ START GAME</button>
+
+<!-- 🧮 rekensom: verschijnt als je dicht bij een tv komt -->
+<div id="som"><div class="paneel">
+  <div class="kop">📺 DE TV VRAAGT:</div>
+  <div id="somTekst">7 + 5 = ?</div>
+  <input id="somInvoer" type="number" inputmode="numeric" placeholder="?">
+  <button id="somKnop">✅ ANTWOORD</button>
+  <div id="somUitslag"></div>
+</div></div>
 
 <div id="zwart">
   <button id="terug">← terug</button>
@@ -182,7 +201,7 @@ document.addEventListener('mousemove', e => {
 // telefoon: 1 vinger vegen (rechterhelft) = kijken
 const kijkVingers = new Map();
 addEventListener('touchstart', e => {
-  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart,#startGame')) return;   // knoppen zijn geen kijk-vingers!
+  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart,#startGame,#som')) return;   // knoppen zijn geen kijk-vingers!
   for(const t of e.changedTouches){ if(t.clientX > innerWidth / 2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY}); }
 }, {passive: false});
 addEventListener('touchmove', e => {
@@ -198,8 +217,8 @@ addEventListener('touchend', e => { for(const t of e.changedTouches) kijkVingers
 
 // ── besturing: lopen ──
 const toets = {};
-addEventListener('keydown', e => { toets[e.code] = true; });
-addEventListener('keyup',   e => { toets[e.code] = false; });
+addEventListener('keydown', e => { if(e.target && e.target.tagName === 'INPUT') return; toets[e.code] = true; });
+addEventListener('keyup',   e => { if(e.target && e.target.tagName === 'INPUT') return; toets[e.code] = false; });
 
 // telefoon-joystick (linksonder) + spring-knop (rechtsonder)
 const joy = document.getElementById('joy'), joyStick = document.getElementById('joyStick');
@@ -272,7 +291,7 @@ function updateLopen(dt){
 // rand, geen naampjes op de zijkant. Gewoon een grote donkere map met platte vierkante platen.
 const TEL_B = 120, TEL_L = 200;       // zo ver mag je lopen (onzichtbare grens, geen muur)
 const TEGEL = 9, GAT = 4.5, TEGEL_H = 3.0;   // de platen: 9×9 m, 3 m hoog (Brian: 'langer in de hoogte') — van opzij een plaat, van boven een tegel
-let mapGroep = null, blokken = [];    // blokken = waar je niet doorheen kunt
+let mapGroep = null, blokken = [], tvs = [];    // blokken = waar je niet doorheen kunt; tvs = waar de rekensommen zitten
 let grensX = KAMER / 2, grensZ = KAMER / 2;
 // een speltegel zoals op de homepage, getekend op een canvas (donker kaartje, rood/blauwe rand, emoji, naam, status)
 function posterTex(emoji, naam, status, kleurA, kleurB, breed = 512, hoog = 512){
@@ -371,6 +390,9 @@ function bouwMap(){
       kamer.add(tafel);
       // tegen de tafel botsen: als een klein 'muurtje' (lokaal in de kamer; de tafel staat gedraaid → grofweg een vierkant)
       const tx = tafel.position.x, tz = tafel.position.z; muren.push({x0: tx - 1.25, x1: tx + 1.25, z0: tz - 1.25, z1: tz + 1.25});
+      // de tv in wereld-coördinaten onthouden (voor de rekensom als je dichtbij komt)
+      const c = Math.cos(draai), sn = Math.sin(draai);
+      tvs.push({x: x + (tx * c + tz * sn), z: z + (-tx * sn + tz * c), naam: t[1], klaar: false});
     }
     blokken.push({x, z, h, draai, muren});
   });
@@ -399,6 +421,55 @@ function botstBlok(x, z){
   }
   return false;
 }
+// ── 🧮 REKENSOM BIJ DE TV (Brian: "als je dichtbij die tv komt krijg je een rekensom") ──
+// Kom je binnen 3 m van een tv, dan verschijnt een som. Goed = ✅ en het paneel gaat dicht;
+// fout = nog een keer proberen. Loop je weg (>5 m), dan kan die tv later weer een som geven.
+let somOpen = false, somAntwoord = 0, somTv = null;
+function nieuweSom(){
+  const soort = Math.random();
+  let a, b, tekst;
+  if(soort < 0.4){ a = 2 + Math.floor(Math.random() * 48); b = 2 + Math.floor(Math.random() * 48); tekst = a + ' + ' + b; somAntwoord = a + b; }
+  else if(soort < 0.7){ a = 10 + Math.floor(Math.random() * 60); b = 1 + Math.floor(Math.random() * (a - 1)); tekst = a + ' − ' + b; somAntwoord = a - b; }
+  else { a = 2 + Math.floor(Math.random() * 9); b = 2 + Math.floor(Math.random() * 9); tekst = a + ' × ' + b; somAntwoord = a * b; }
+  document.getElementById('somTekst').textContent = tekst + ' = ?';
+}
+function somToon(tv){
+  somOpen = true; somTv = tv; nieuweSom();
+  document.getElementById('somUitslag').textContent = '';
+  const inv = document.getElementById('somInvoer'); inv.value = '';
+  document.getElementById('som').classList.add('open');
+  if(document.pointerLockElement) document.exitPointerLock();
+  for(const k in toets) toets[k] = false;   // niet doorlopen terwijl het paneel open is
+  setTimeout(() => inv.focus(), 50);
+}
+function somSluit(){
+  somOpen = false;
+  document.getElementById('som').classList.remove('open');
+  if(!IS_TOUCH && gestart) renderer.domElement.requestPointerLock();
+}
+function somCheck(){
+  const inv = document.getElementById('somInvoer'), uit = document.getElementById('somUitslag');
+  if(inv.value === '') return;
+  if(parseInt(inv.value, 10) === somAntwoord){
+    uit.style.color = '#2ecc71'; uit.textContent = '✅ GOED!';
+    if(somTv) somTv.klaar = true;
+    setTimeout(somSluit, 900);
+  } else {
+    uit.style.color = '#ff6b6b'; uit.textContent = '❌ Nee, probeer nog eens';
+    inv.value = ''; inv.focus();
+  }
+}
+document.getElementById('somKnop').addEventListener('click', somCheck);
+document.getElementById('somInvoer').addEventListener('keydown', e => { if(e.key === 'Enter') somCheck(); e.stopPropagation(); });
+function updateSom(){
+  if(!mapGroep) return;
+  const px = camera.position.x, pz = camera.position.z;
+  for(const tv of tvs){
+    const d = Math.hypot(px - tv.x, pz - tv.z);
+    if(tv.klaar && d > 5) tv.klaar = false;                 // weggelopen → later weer een som
+    if(!somOpen && !tv.klaar && d < 3){ somToon(tv); break; }
+  }
+}
 function startGame(){
   if(mapGroep) return;
   mapGroep = bouwMap(); scene.add(mapGroep);
@@ -417,7 +488,8 @@ let gestart = false;
 function loop(t){
   requestAnimationFrame(loop);
   const dt = Math.min((t - vorigeTijd) / 1000, 0.05); vorigeTijd = t;
-  if(gestart) updateLopen(dt);
+  if(gestart && !somOpen) updateLopen(dt);
+  if(gestart) updateSom();
   camera.rotation.set(0, 0, 0); camera.rotateY(yaw); camera.rotateX(pitch);
   renderer.render(scene, camera);
 }
