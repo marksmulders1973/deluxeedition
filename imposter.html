@@ -53,6 +53,23 @@
   #killKnop{display:none;position:fixed;right:22px;bottom:130px;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,255,255,0.4);background:rgba(255,59,59,0.6);font-size:36px;z-index:15}
   #killHint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:12;color:#ff6b6b;font-weight:bold;font-size:14px;background:rgba(0,0,0,0.55);padding:6px 14px;border-radius:10px;display:none}
 
+  /* 📢 CALL MEETING bij de tafel op het logo + de stemming (Brian) */
+  #meetKnop{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);padding:16px 40px;font-size:22px;font-weight:900;letter-spacing:2px;color:#fff;border:none;border-radius:14px;background:linear-gradient(135deg,#8b0000,#ff3b3b);box-shadow:0 0 26px rgba(255,59,59,0.5);cursor:pointer;z-index:16;display:none;animation:meetPuls 0.9s infinite alternate}
+  @keyframes meetPuls{from{transform:translateX(-50%) scale(1)}to{transform:translateX(-50%) scale(1.06)}}
+  #meeting{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:26;background:rgba(0,0,0,0.78)}
+  #meeting.open{display:flex}
+  #meeting .paneel{background:#14141c;border:3px solid #ff3b3b;border-radius:18px;padding:22px 28px;max-width:680px;width:92vw;max-height:88vh;overflow:auto;text-align:center;box-shadow:0 0 40px rgba(255,59,59,0.45)}
+  #meeting h2{color:#fff;margin:0 0 4px;font-size:26px;letter-spacing:2px}
+  #meetTimer{color:#ffd700;font-weight:900;font-size:18px;margin-bottom:12px}
+  #meetLijst{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  .stem{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#1e1e2a;border:2px solid #333;border-radius:12px;color:#fff;font-weight:bold;font-size:15px;cursor:pointer;min-width:150px}
+  .stem .bol{width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,0.4);flex:none}
+  .stem.gekozen{border-color:#ffd700;box-shadow:0 0 14px rgba(255,215,0,0.6)}
+  .stem .tel{margin-left:auto;color:#ffd700}
+  #meetSkip{margin-top:12px;padding:10px 22px;font-size:15px;font-weight:bold;color:#fff;border:2px solid #555;border-radius:12px;background:#2a2a3a;cursor:pointer}
+  #meetSkip.gekozen{border-color:#ffd700}
+  #meetUitslag{color:#fff;font-size:22px;font-weight:900;margin-top:14px;min-height:30px}
+
   /* 🏆 gewonnen: alle opdrachten gedaan (Brian) */
   #win{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:28;background:rgba(0,0,0,0.8);text-align:center}
   #win.open{display:flex}
@@ -122,6 +139,16 @@
 <div id="af"><h1>💀 JE BENT AF</h1><p>De imposter heeft je te pakken… je kunt nog rondlopen als geest.</p></div>
 <button id="killKnop">☠️</button>
 <div id="killHint">☠️ IMPOSTER: klik op iemand dichtbij om hem af te maken</div>
+
+<!-- 📢 meeting -->
+<button id="meetKnop">📢 CALL MEETING</button>
+<div id="meeting"><div class="paneel">
+  <h2>📢 MEETING — wie is de imposter?</h2>
+  <div id="meetTimer"></div>
+  <div id="meetLijst"></div>
+  <button id="meetSkip">⏭️ OVERSLAAN (niemand)</button>
+  <div id="meetUitslag"></div>
+</div></div>
 
 <!-- 🏆 winscherm: als de opdrachten-balk vol is -->
 <div id="win">
@@ -291,7 +318,7 @@ document.addEventListener('mousemove', e => {
 // telefoon: 1 vinger vegen (rechterhelft) = kijken
 const kijkVingers = new Map();
 addEventListener('touchstart', e => {
-  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart,#startGame,#som,#taken,#win,#killKnop')) return;   // knoppen zijn geen kijk-vingers!
+  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart,#startGame,#som,#taken,#win,#killKnop,#meetKnop,#meeting')) return;   // knoppen zijn geen kijk-vingers!
   for(const t of e.changedTouches){ if(t.clientX > innerWidth / 2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY}); }
 }, {passive: false});
 addEventListener('touchmove', e => {
@@ -665,7 +692,7 @@ function verwerkAnderen(lijst){
     a.doel = p; a.wereld = p.wereld;
     a.mesh.visible = (p.wereld === (mapGroep ? 'arena' : 'lobby'));   // alleen zien als je in dezelfde wereld bent
     // heeft deze speler mij afgemaakt? (event met mijn sessie als doel)
-    if(Array.isArray(p.events)) for(const e of p.events){ if(e.doel === mijnSessie && !gezienEvents.has(e.id)){ gezienEvents.add(e.id); afTonen(); } }
+    if(Array.isArray(p.events)) for(const e of p.events){ if(e.doel === mijnSessie && !gezienEvents.has(e.id)){ gezienEvents.add(e.id); if(e.soort === 'flits') meetingStart(false); else afTonen(); } }
     if(p.schild && !a.af){ a.af = true; ligNeer(a.mesh); }       // die is af: ligt neer waar hij lag
     // de baas van de kamer is al in de map? → dan ga jij ook (met zijn instellingen)
     if(!mapGroep && p.wereld === 'arena' && gestart && !winOpen){
@@ -705,6 +732,7 @@ document.getElementById('codeInvoer').addEventListener('keydown', e => { if(e.ke
 // (echt samen spelen komt later — nu zijn alle medespelers bots)
 const bots = [];
 const BOT_KLEUREN = [0xff3b3b, 0x3b82ff, 0x2ecc71, 0xffd700, 0xff9f1c, 0x9b59b6, 0x1abc9c, 0xff5fa2, 0xffffff, 0x8e44ad, 0xe67e22, 0x00bcd4];
+const BOT_NAMEN = ['Rood', 'Blauw', 'Groen', 'Geel', 'Oranje', 'Paars', 'Turquoise', 'Roze', 'Wit', 'Lila', 'Bruin', 'Cyaan'];
 function maakBot(i){
   const g = new THREE.Group();
   const kleur = BOT_KLEUREN[i % BOT_KLEUREN.length];
@@ -728,7 +756,7 @@ function startBots(n){
   bots.length = 0;
   for(let i = 0; i < n; i++){
     const p = vrijePlek(), mesh = maakBot(i); mesh.position.set(p.x, 0, p.z); mapGroep.add(mesh);
-    bots.push({mesh, x: p.x, z: p.z, doel: vrijePlek(), snel: 2.2 + Math.random() * 1.4, wacht: Math.random() * 2, stil: 0, stap: Math.random() * 6, taak: null, taakT: 0});
+    bots.push({mesh, x: p.x, z: p.z, doel: vrijePlek(), snel: 2.2 + Math.random() * 1.4, wacht: Math.random() * 2, stil: 0, stap: Math.random() * 6, taak: null, taakT: 0, naam: BOT_NAMEN[i % BOT_NAMEN.length] + (i >= BOT_NAMEN.length ? ' ' + (Math.floor(i / BOT_NAMEN.length) + 1) : ''), kleur: BOT_KLEUREN[i % BOT_KLEUREN.length]});
   }
 }
 // een bot kiest een tv waar nog een taak te doen is (en waar geen andere bot al mee bezig is)
@@ -822,6 +850,96 @@ function afTonen(){
 }
 renderer.domElement.addEventListener('mousedown', e => { if(e.button === 0 && pointerLocked) probeerKill(); });
 document.getElementById('killKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); probeerKill(); }, {passive: false});
+// ── 📢 CALL MEETING (Brian: "als je dichtbij de tafel staat: CALL MEETING; klik = iedereen naar de tafel
+//    geteleporteerd en je kunt iemand eruit stemmen") ──
+const TAFEL = {x: 0, z: -78};
+let meetingOpen = false, meetTijd = 0, mijnStem = null, meetStemmen = null, meetKlaar = false;
+const gezienEventsMeet = new Set();
+function teleporteerNaarTafel(){
+  // iedereen in een kring om de tafel: jij, de echte spelers, de bots (die af zijn blijven liggen)
+  const levend = bots.filter(b => !b.af);
+  const n = 1 + levend.length + [...anderen.values()].filter(a => !a.af).length;
+  let i = 0;
+  const plek = (k) => { const a = (k / n) * Math.PI * 2; return {x: TAFEL.x + Math.sin(a) * 5.2, z: TAFEL.z + Math.cos(a) * 5.2, a}; };
+  const mij = plek(i++); camera.position.set(mij.x, OOG, mij.z); voetY = 0; velY = 0; yaw = Math.atan2(-(TAFEL.x - mij.x), -(TAFEL.z - mij.z)); pitch = 0;
+  for(const b of levend){ const q = plek(i++); b.x = q.x; b.z = q.z; b.mesh.position.set(q.x, 0, q.z); b.mesh.rotation.y = Math.atan2(TAFEL.x - q.x, TAFEL.z - q.z); b.wacht = 99; if(b.taak){ b.taak.botBezig = null; b.taak = null; } b.taakT = 0; }
+}
+function meetingStart(vanMij){
+  if(meetingOpen || !mapGroep || winOpen) return;
+  meetingOpen = true; mijnStem = null; meetKlaar = false; meetTijd = 20;
+  if(somOpen) somSluit();
+  teleporteerNaarTafel();
+  if(vanMij) for(const sessie of anderen.keys()) mijnEvents.push({id: mijnSessie + '-m' + Date.now(), doel: sessie, soort: 'flits', schade: 0});   // iedereen: meeting!
+  // de lijst: bots + echte spelers (die nog leven) — en jij zelf niet
+  const lijst = document.getElementById('meetLijst'); lijst.innerHTML = '';
+  meetStemmen = new Map();
+  const kandidaten = [...bots.filter(b => !b.af).map(b => ({id: 'bot' + bots.indexOf(b), naam: b.naam, kleur: b.kleur, bot: b})), ...[...anderen.entries()].filter(([, a]) => !a.af).map(([sessie, a]) => ({id: sessie, naam: (a.doel && a.doel.naam) || 'speler', kleur: 0x7db4ff, ander: a, sessie}))];
+  for(const k of kandidaten){
+    meetStemmen.set(k.id, 0);
+    const el = document.createElement('button'); el.className = 'stem'; el.dataset.id = k.id;
+    el.innerHTML = '<span class="bol" style="background:#' + k.kleur.toString(16).padStart(6, '0') + '"></span><span>' + k.naam.replace(/</g, '&lt;') + '</span><span class="tel"></span>';
+    el.addEventListener('click', () => stemOp(k.id));
+    lijst.appendChild(el);
+  }
+  meetStemmen.set('skip', 0);
+  document.getElementById('meetSkip').className = ''; document.getElementById('meetUitslag').textContent = '';
+  document.getElementById('meeting').classList.add('open'); document.getElementById('meetKnop').style.display = 'none';
+  if(document.pointerLockElement) document.exitPointerLock();
+  for(const k in toets) toets[k] = false;
+  window.__meetKandidaten = kandidaten;
+  // de bots stemmen ook (na een paar seconden): imposter-bots stemmen op een crewmate, de rest gokt
+  for(const b of bots.filter(b => !b.af)){
+    setTimeout(() => {
+      if(!meetingOpen || meetKlaar) return;
+      const doelen = kandidaten.filter(k => k.bot !== b && !(b.imposter && k.bot && k.bot.imposter));
+      const keuze = Math.random() < 0.25 ? 'skip' : (doelen.length ? doelen[Math.floor(Math.random() * doelen.length)].id : 'skip');
+      meetStemmen.set(keuze, (meetStemmen.get(keuze) || 0) + 1); meetTellingTonen();
+    }, 2000 + Math.random() * 9000);
+  }
+}
+function stemOp(id){
+  if(!meetingOpen || meetKlaar || mijnStem || ikBenAf) return;
+  mijnStem = id; meetStemmen.set(id, (meetStemmen.get(id) || 0) + 1);
+  for(const el of document.querySelectorAll('#meetLijst .stem')) el.classList.toggle('gekozen', el.dataset.id === id);
+  document.getElementById('meetSkip').className = id === 'skip' ? 'gekozen' : '';
+  meetTellingTonen();
+}
+function meetTellingTonen(){
+  for(const el of document.querySelectorAll('#meetLijst .stem')){ const n = meetStemmen.get(el.dataset.id) || 0; el.querySelector('.tel').textContent = n ? '🗳️' + n : ''; }
+  document.getElementById('meetSkip').textContent = '⏭️ OVERSLAAN (niemand)' + ((meetStemmen.get('skip') || 0) ? ' 🗳️' + meetStemmen.get('skip') : '');
+}
+function meetingUitslag(){
+  if(meetKlaar) return; meetKlaar = true;
+  let beste = 'skip', max = -1, gelijk = false;
+  for(const [id, n] of meetStemmen){ if(n > max){ max = n; beste = id; gelijk = false; } else if(n === max) gelijk = true; }
+  const uit = document.getElementById('meetUitslag');
+  const kandidaten = window.__meetKandidaten || [];
+  if(beste === 'skip' || gelijk || max <= 0){ uit.textContent = '🤷 Niemand eruit gestemd.'; }
+  else {
+    const k = kandidaten.find(k => k.id === beste);
+    if(k && k.bot){ k.bot.af = true; ligNeer(k.bot.mesh); uit.textContent = k.naam + ' is eruit gestemd… ' + (k.bot.imposter ? '👿 DAT WAS DE IMPOSTER!' : '😢 dat was GEEN imposter.'); }
+    else if(k && k.ander){ k.ander.af = true; ligNeer(k.ander.mesh); mijnEvents.push({id: mijnSessie + '-' + Date.now(), doel: k.sessie, soort: 'schade', schade: 60}); uit.textContent = k.naam + ' is eruit gestemd.'; }
+  }
+  setTimeout(meetingSluit, 4000);
+}
+function meetingSluit(){
+  meetingOpen = false;
+  document.getElementById('meeting').classList.remove('open');
+  for(const b of bots) if(!b.af){ b.wacht = 0.5 + Math.random() * 2; b.doel = vrijePlek(); }
+  if(!IS_TOUCH && gestart) renderer.domElement.requestPointerLock();
+}
+function updateMeeting(dt){
+  if(!mapGroep || winOpen) return;
+  if(meetingOpen){
+    if(!meetKlaar){ meetTijd -= dt; document.getElementById('meetTimer').textContent = '⏳ ' + Math.max(0, Math.ceil(meetTijd)) + ' s om te stemmen'; if(meetTijd <= 0) meetingUitslag(); }
+    return;
+  }
+  const dichtbij = Math.hypot(camera.position.x - TAFEL.x, camera.position.z - TAFEL.z) < 7 && !ikBenAf && !somOpen;
+  document.getElementById('meetKnop').style.display = dichtbij ? 'block' : 'none';
+}
+document.getElementById('meetKnop').addEventListener('click', () => meetingStart(true));
+document.getElementById('meetKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); meetingStart(true); }, {passive: false});
+document.getElementById('meetSkip').addEventListener('click', () => stemOp('skip'));
 function startGame(){
   if(mapGroep) return;
   mapGroep = bouwMap(); scene.add(mapGroep);
@@ -845,10 +963,11 @@ let gestart = false;
 function loop(t){
   requestAnimationFrame(loop);
   const dt = Math.min((t - vorigeTijd) / 1000, 0.05); vorigeTijd = t;
-  if(gestart && !somOpen && !winOpen) updateLopen(dt);
+  if(gestart && !somOpen && !winOpen && !meetingOpen) updateLopen(dt);
+  if(gestart) updateMeeting(dt);
   if(gestart && !winOpen && !ikBenAf) updateSom();
   if(killCooldown > 0) killCooldown -= dt;
-  if(gestart && mapGroep && !winOpen) updateBots(dt);
+  if(gestart && mapGroep && !winOpen && !meetingOpen) updateBots(dt);
   if(gestart) updateAnderen(dt);
   camera.rotation.set(0, 0, 0); camera.rotateY(yaw); camera.rotateX(pitch);
   renderer.render(scene, camera);
