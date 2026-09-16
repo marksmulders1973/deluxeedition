@@ -355,6 +355,23 @@ function bouwMap(){
     }
     // een lampje binnen, zodat het kamertje niet pikdonker is
     const lampje = new THREE.PointLight(new THREE.Color(t[4]), 0.6, 14, 1.5); lampje.position.set(0, TEGEL_H - 0.6, 0); kamer.add(lampje);
+    // Brian: "in elk vak een tafel met een tv" — de tafel staat achterin tegenover de deur, de tv kijkt naar de deur
+    {
+      const naarDeur = [[0, 1], [0, -1], [1, 0], [-1, 0]][deurKant];              // richting van de deur (lokaal)
+      const tafel = new THREE.Group(); tafel.position.set(-naarDeur[0] * 2.2, 0, -naarDeur[1] * 2.2);   // achterin het kamertje
+      tafel.rotation.y = Math.atan2(naarDeur[0], naarDeur[1]);                     // de voorkant (+z lokaal) wijst naar de deur
+      const houtMat = new THREE.MeshStandardMaterial({color: 0x6b4a2b, roughness: 0.7});
+      const blad = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.1, 1.1), houtMat); blad.position.y = 0.85; tafel.add(blad);
+      for(const [px, pz] of [[-1.05, -0.4], [1.05, -0.4], [-1.05, 0.4], [1.05, 0.4]]){ const poot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 0.1), houtMat); poot.position.set(px, 0.4, pz); tafel.add(poot); }
+      // de tv: zwarte kast met een scherm waarop het spel van deze tegel te zien is
+      const kast = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.0, 0.12), new THREE.MeshStandardMaterial({color: 0x0a0a0c, roughness: 0.4, metalness: 0.5})); kast.position.set(0, 1.45, -0.2); tafel.add(kast);
+      const scherm = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 0.87), new THREE.MeshStandardMaterial({map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.9, roughness: 0.3})); scherm.position.set(0, 1.45, -0.135); tafel.add(scherm);
+      const voet = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.3), new THREE.MeshStandardMaterial({color: 0x0a0a0c, roughness: 0.4, metalness: 0.5})); voet.position.set(0, 0.93, -0.2); tafel.add(voet);
+      const tvLicht = new THREE.PointLight(new THREE.Color(t[4]), 0.5, 6, 1.6); tvLicht.position.set(0, 1.5, 0.4); tafel.add(tvLicht);   // het scherm geeft licht
+      kamer.add(tafel);
+      // tegen de tafel botsen: als een klein 'muurtje' (lokaal in de kamer; de tafel staat gedraaid → grofweg een vierkant)
+      const tx = tafel.position.x, tz = tafel.position.z; muren.push({x0: tx - 1.25, x1: tx + 1.25, z0: tz - 1.25, z1: tz + 1.25});
+    }
     blokken.push({x, z, h, draai, muren});
   });
   // ── de muur om alles heen (Brian): donker, 7 m hoog, precies op de grens van de map ──
