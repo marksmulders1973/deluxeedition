@@ -267,8 +267,11 @@ function updateLopen(dt){
 // die plat ligt. De vloer is het scherm van deluxeedition.nl (donker met het rood/blauwe raster, het
 // logo bovenaan), en de speltegels van de homepage liggen als grote blokken om je heen — hoger dan jij,
 // dus je kunt ertussendoor lopen en je erachter verstoppen. De rand van de telefoon is de muur.
-const TEL_B = 64, TEL_L = 140;        // het scherm: 64 m breed, 140 m lang (zo'n telefoon-vorm)
-const TEGEL = 9, GAT = 4.5, TEGEL_H = 3.6;   // tegel-blokken: 9×9 m, 3,6 m hoog (je kijkt er niet overheen)
+// Brian (2e ronde): "je ziet de telefoon NIET — je zit op een map, je kijkt rechts en ziet een vierkante
+// plaat, en pas van boven zie je dat het eigenlijk het OBLITERATOR-logo is." Dus: geen behuizing, geen
+// rand, geen naampjes op de zijkant. Gewoon een grote donkere map met platte vierkante platen.
+const TEL_B = 120, TEL_L = 200;       // zo ver mag je lopen (onzichtbare grens, geen muur)
+const TEGEL = 9, GAT = 4.5, TEGEL_H = 1.0;   // de platen: 9×9 m, 1 m dik — van opzij een plaat, van boven een tegel
 let mapGroep = null, blokken = [];    // blokken = waar je niet doorheen kunt
 let grensX = KAMER / 2, grensZ = KAMER / 2;
 // een speltegel zoals op de homepage, getekend op een canvas (donker kaartje, rood/blauwe rand, emoji, naam, status)
@@ -297,7 +300,7 @@ function rasterTex(){
   g.fillStyle = '#0d0d16'; g.fillRect(0, 0, 512, 512);
   g.lineWidth = 3;
   for(let i = 0; i <= 512; i += 64){ g.strokeStyle = 'rgba(59,130,255,0.35)'; g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 512); g.stroke(); g.strokeStyle = 'rgba(255,59,59,0.30)'; g.beginPath(); g.moveTo(0, i); g.lineTo(512, i); g.stroke(); }
-  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(TEL_B / 4, TEL_L / 4); t.anisotropy = 8; return t;
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(TEL_B, TEL_L); t.anisotropy = 8; return t;
 }
 const ROOD = 'rgb(255,59,59)', BLAUW = 'rgb(59,130,255)', GROEN = 'rgb(46,204,113)', PAARS = 'rgb(155,89,182)', GEEL = 'rgb(255,215,0)', ORANJE = 'rgb(255,159,28)';
 // alle tegels van de homepage (in dezelfde volgorde)
@@ -309,50 +312,33 @@ const TEGELS = [['1', 'OBLITERATOR', '▶ SPEELBAAR', ROOD, BLAUW], ['2', 'MOFFE
   ['⚽', 'PENALTY', '▶ VAN CLAUDE 🤖', 'rgb(16,90,40)', 'rgb(46,170,90)'], ['🍬', 'SNOEPVANGER', '▶ VAN CLAUDE 🤖', 'rgb(140,40,120)', 'rgb(230,90,200)'], ['🗼', 'STAPELTOREN', '▶ ✏️ ARTHUR', 'rgb(90,60,20)', 'rgb(200,140,60)'], ['🥷', 'SNIJ-NINJA', '▶ ✏️ ARTHUR', 'rgb(40,40,60)', 'rgb(120,120,160)']];
 function bouwMap(){
   const g = new THREE.Group(); blokken = [];
-  // ── de telefoon: zwarte behuizing (iets groter dan het scherm) met een opstaande rand als muur ──
-  const behuizing = new THREE.Mesh(new THREE.BoxGeometry(TEL_B + 6, 1.2, TEL_L + 6), new THREE.MeshStandardMaterial({color: 0x0a0a0c, roughness: 0.35, metalness: 0.6}));
-  behuizing.position.y = -0.6; g.add(behuizing);
-  const randMat = new THREE.MeshStandardMaterial({color: 0x15151a, roughness: 0.3, metalness: 0.7});
-  for(const [x, z, b, l] of [[0, -TEL_L / 2 - 1.5, TEL_B + 6, 3], [0, TEL_L / 2 + 1.5, TEL_B + 6, 3], [-TEL_B / 2 - 1.5, 0, 3, TEL_L + 6], [TEL_B / 2 + 1.5, 0, 3, TEL_L + 6]]){
-    const r = new THREE.Mesh(new THREE.BoxGeometry(b, 5, l), randMat); r.position.set(x, 2.5, z); g.add(r);
-  }
-  // camera-gaatje en luidspreker bovenaan de telefoon
-  const cam = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.3, 24), new THREE.MeshStandardMaterial({color: 0x05070c, roughness: 0.1, metalness: 0.8})); cam.position.set(-6, 0.15, -TEL_L / 2 + 3); g.add(cam);
-  const spk = new THREE.Mesh(new THREE.BoxGeometry(10, 0.3, 1.2), new THREE.MeshStandardMaterial({color: 0x222228, roughness: 0.6})); spk.position.set(3, 0.15, -TEL_L / 2 + 3); g.add(spk);
-  // ── het scherm = de vloer: deluxeedition.nl met het raster, licht van zichzelf ──
+  // ── de vloer: een grote donkere map met het raster van de site (loopt door tot voorbij de horizon, geen rand te zien) ──
   const schermTex = rasterTex();
-  const scherm = new THREE.Mesh(new THREE.PlaneGeometry(TEL_B, TEL_L), new THREE.MeshStandardMaterial({map: schermTex, emissive: 0xffffff, emissiveMap: schermTex, emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.1}));
+  const scherm = new THREE.Mesh(new THREE.PlaneGeometry(TEL_B * 4, TEL_L * 4), new THREE.MeshStandardMaterial({map: schermTex, emissive: 0xffffff, emissiveMap: schermTex, emissiveIntensity: 0.45, roughness: 0.35, metalness: 0.1}));
   scherm.rotation.x = -Math.PI / 2; scherm.position.y = 0.01; g.add(scherm);
   // het logo bovenaan het scherm (plat op de vloer, zoals op de homepage) — je spawnt ernaast
   const logoMat = new THREE.MeshStandardMaterial({color: 0x14141c, roughness: 0.5, emissive: 0x000000});
   new THREE.TextureLoader().load('images/logo.jpg', t => { t.anisotropy = 8; logoMat.map = t; logoMat.emissiveMap = t; logoMat.emissive.set(0xffffff); logoMat.emissiveIntensity = 0.6; logoMat.color.set(0xffffff); logoMat.needsUpdate = true; });
-  const logo = new THREE.Mesh(new THREE.PlaneGeometry(22, 22), logoMat); logo.rotation.x = -Math.PI / 2; logo.position.set(0, 0.03, -TEL_L / 2 + 18); g.add(logo);
+  const logo = new THREE.Mesh(new THREE.PlaneGeometry(22, 22), logoMat); logo.rotation.x = -Math.PI / 2; logo.position.set(0, 0.03, -78); g.add(logo);
   // ── de speltegels: grote blokken in een raster van 4 breed, met paadjes ertussen ──
   const kolommen = 4, rijen = Math.ceil(TEGELS.length / kolommen);
   const rasterB = kolommen * TEGEL + (kolommen - 1) * GAT, startX = -rasterB / 2 + TEGEL / 2;
-  const startZ = -TEL_L / 2 + 36;   // onder het logo beginnen
+  const startZ = -60;   // onder het logo beginnen
   TEGELS.forEach((t, i) => {
     const k = i % kolommen, r = Math.floor(i / kolommen);
     const x = startX + k * (TEGEL + GAT), z = startZ + r * (TEGEL + GAT);
     const tex = posterTex(t[0], t[1], t[2], t[3], t[4]);
     const mat = new THREE.MeshStandardMaterial({map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.45, roughness: 0.5});
     const zijMat = new THREE.MeshStandardMaterial({color: 0x101018, roughness: 0.5, metalness: 0.3});
-    // bovenkant = de tegel (zo zie je hem van boven zoals op je telefoon), zijkanten donker met een gekleurde rand
+    // een platte plaat: van opzij alleen een donkere vierkante plaat, van boven de tegel (het logo!)
     const blok = new THREE.Mesh(new THREE.BoxGeometry(TEGEL, TEGEL_H, TEGEL), [zijMat, zijMat, mat, zijMat, zijMat, zijMat]);
     blok.position.set(x, TEGEL_H / 2, z); g.add(blok);
-    const kleur = new THREE.Color(t[4]);
-    const randje = new THREE.Mesh(new THREE.BoxGeometry(TEGEL + 0.16, 0.18, TEGEL + 0.16), new THREE.MeshBasicMaterial({color: kleur})); randje.position.set(x, TEGEL_H - 0.22, z); g.add(randje);   // net onder de bovenkant (anders vecht het met de tegel-tekening)
-    // de naam ook op de zijkanten, klein (anders weet je niet waar je bent)
-    for(const [dx, dz, ry] of [[0, 1, 0], [0, -1, Math.PI], [1, 0, Math.PI / 2], [-1, 0, -Math.PI / 2]]){
-      const f = new THREE.Mesh(new THREE.PlaneGeometry(TEGEL * 0.7, TEGEL * 0.7 * 0.5), new THREE.MeshStandardMaterial({map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.4, roughness: 0.5, transparent: false}));
-      f.position.set(x + dx * (TEGEL / 2 + 0.03), TEGEL_H * 0.55, z + dz * (TEGEL / 2 + 0.03)); f.rotation.y = ry; g.add(f);
-    }
     blokken.push({x, z, h: TEGEL / 2});
   });
   // ── licht: het scherm en de tegels gloeien zelf; verder zacht koel licht + een paar witte spots ──
   g.add(new THREE.AmbientLight(0x7f86a8, 0.55));
   g.add(new THREE.HemisphereLight(0x8899cc, 0x101018, 0.45));
-  for(const [x, z] of [[-18, -40], [18, -10], [-18, 20], [18, 50]]){ const l = new THREE.PointLight(0xffffff, 0.5, 60, 1.6); l.position.set(x, 12, z); g.add(l); }
+  for(const [x, z] of [[-18, -50], [18, -20], [-18, 10], [18, 40]]){ const l = new THREE.PointLight(0xffffff, 0.5, 60, 1.6); l.position.set(x, 12, z); g.add(l); }
   return g;
 }
 // botsen met de tegel-blokken: mag je op (x, z) staan?
@@ -365,9 +351,9 @@ function startGame(){
   mapGroep = bouwMap(); scene.add(mapGroep);
   lobby.visible = false; scene.background = new THREE.Color(0x05060c);
   grensX = TEL_B / 2; grensZ = TEL_L / 2;
-  camera.position.set(0, OOG, -TEL_L / 2 + 30); voetY = 0; velY = 0; yaw = Math.PI; pitch = 0;   // bovenaan de telefoon, kijkend over de tegels
+  camera.position.set(0, OOG, -66); voetY = 0; velY = 0; yaw = Math.PI; pitch = 0;   // bovenaan de map, kijkend over de platen
   document.getElementById('startGame').style.display = 'none';
-  document.getElementById('stap').textContent = '🕵️ IMPOSTER — de map: op de telefoon';
+  document.getElementById('stap').textContent = '🕵️ IMPOSTER — de map';
   if(!IS_TOUCH) renderer.domElement.requestPointerLock();
 }
 document.getElementById('startGame').addEventListener('click', startGame);
