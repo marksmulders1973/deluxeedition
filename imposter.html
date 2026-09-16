@@ -29,6 +29,9 @@
   /* ⚙️ tandwiel-knop rechts in beeld (Brian, 16 sep: precies zíjn plaatje — een zwart tandwiel, verder niks) */
   #instelKnop{position:fixed;right:18px;top:50%;transform:translateY(-50%);width:64px;height:64px;padding:0;border:none;background:none;z-index:16;cursor:pointer;display:none}
   #instelKnop svg{width:64px;height:64px;display:block;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.25))}
+  /* START GAME-knop onderaan in de lobby (Brian: "daar kan je nog niks mee") */
+  #startGame{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);padding:16px 44px;font-size:22px;font-weight:900;letter-spacing:2px;color:#fff;border:none;border-radius:14px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);box-shadow:0 0 26px rgba(59,130,255,0.45);cursor:pointer;z-index:16;display:none}
+
   /* zwart beeld na klik op het tandwiel (Brian) */
   #zwart{position:fixed;inset:0;background:#000;z-index:30;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center}
   #zwart.open{display:flex}
@@ -57,6 +60,8 @@
 <button id="springKnop" class="touch-ui">⬆</button>
 
 <!-- ⚙️ tandwiel-knop (Brian: "alleen deze knop", rechts in beeld — doet nog niks) -->
+<button id="startGame">▶ START GAME</button>
+
 <div id="zwart">
   <button id="terug">← terug</button>
   <h2>HOEVEEL IMPOSTERS?</h2>
@@ -176,7 +181,7 @@ document.addEventListener('mousemove', e => {
 // telefoon: 1 vinger vegen (rechterhelft) = kijken
 const kijkVingers = new Map();
 addEventListener('touchstart', e => {
-  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart')) return;   // knoppen zijn geen kijk-vingers!
+  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart,#startGame')) return;   // knoppen zijn geen kijk-vingers!
   for(const t of e.changedTouches){ if(t.clientX > innerWidth / 2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY}); }
 }, {passive: false});
 addEventListener('touchmove', e => {
@@ -271,6 +276,7 @@ document.getElementById('start').addEventListener('click', () => {
   document.getElementById('hud').style.display = 'block';
   document.getElementById('stap').style.display = 'block';
   document.getElementById('instelKnop').style.display = 'block';
+  document.getElementById('startGame').style.display = 'block';   // (doet nog niks — Brian bepaalt de volgende stap)
   gestart = true;
   if(!IS_TOUCH) renderer.domElement.requestPointerLock();
 });
