@@ -30,7 +30,15 @@
   #instelKnop{position:fixed;right:18px;top:50%;transform:translateY(-50%);width:64px;height:64px;padding:0;border:none;background:none;z-index:16;cursor:pointer;display:none}
   #instelKnop svg{width:64px;height:64px;display:block;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.25))}
   /* zwart beeld na klik op het tandwiel (Brian) */
-  #zwart{position:fixed;inset:0;background:#000;z-index:30;display:none}
+  #zwart{position:fixed;inset:0;background:#000;z-index:30;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+  #zwart.open{display:flex}
+  #zwart h2{color:#fff;font-size:30px;margin:0 0 22px;letter-spacing:2px}
+  #zwart .keuzes{display:flex;gap:16px}
+  #zwart .keuze{width:110px;height:110px;border-radius:18px;border:3px solid #333;background:#14141c;color:#fff;font-size:44px;font-weight:900;cursor:pointer}
+  #zwart .keuze small{display:block;font-size:12px;font-weight:normal;color:#8892a6;margin-top:2px}
+  #zwart .keuze.gekozen{border-color:#ff3b3b;background:linear-gradient(135deg,#8b0000,#ff3b3b);box-shadow:0 0 22px rgba(255,59,59,0.6)}
+  #zwart .keuze.gekozen small{color:#ffd0d0}
+  #terug{position:absolute;top:14px;left:14px;padding:10px 18px;font-size:16px;font-weight:bold;color:#fff;border:2px solid rgba(255,255,255,0.35);border-radius:12px;background:rgba(255,255,255,0.08);cursor:pointer}
 </style>
 </head>
 <body>
@@ -49,7 +57,15 @@
 <button id="springKnop" class="touch-ui">⬆</button>
 
 <!-- ⚙️ tandwiel-knop (Brian: "alleen deze knop", rechts in beeld — doet nog niks) -->
-<div id="zwart"></div>
+<div id="zwart">
+  <button id="terug">← terug</button>
+  <h2>HOEVEEL IMPOSTERS?</h2>
+  <div class="keuzes">
+    <button class="keuze gekozen" data-n="1">1<small>imposter</small></button>
+    <button class="keuze" data-n="2">2<small>imposters</small></button>
+    <button class="keuze" data-n="3">3<small>imposters</small></button>
+  </div>
+</div>
 <button id="instelKnop" title="Instellingen"><svg viewBox="-52 -52 104 104" xmlns="http://www.w3.org/2000/svg"><g fill="#000"><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(0)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(45)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(90)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(135)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(180)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(225)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(270)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(315)"/><circle r="36"/></g><circle r="17" fill="#fff"/></svg></button>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -130,10 +146,19 @@ for(const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]){
   bak.position.set(x, HOOG - 0.03, z); scene.add(bak);
 }
 
-// ── tandwiel: klik = zwart beeld (Brian, 16 sep) ──
-function zwartBeeld(){ document.getElementById('zwart').style.display = 'block'; if(document.pointerLockElement) document.exitPointerLock(); }
+// ── tandwiel: klik = zwart scherm met de keuze "hoeveel imposters? 1, 2 of 3" + terug-knop (Brian, 16 sep) ──
+let aantalImposters = 1;
+function zwartBeeld(){ document.getElementById('zwart').classList.add('open'); if(document.pointerLockElement) document.exitPointerLock(); }
+function zwartDicht(){ document.getElementById('zwart').classList.remove('open'); if(!IS_TOUCH && gestart) renderer.domElement.requestPointerLock(); }
 document.getElementById('instelKnop').addEventListener('click', zwartBeeld);
 document.getElementById('instelKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); zwartBeeld(); }, {passive: false});
+document.getElementById('terug').addEventListener('click', zwartDicht);
+for(const k of document.querySelectorAll('#zwart .keuze')){
+  k.addEventListener('click', () => {
+    aantalImposters = parseInt(k.dataset.n, 10);
+    for(const a of document.querySelectorAll('#zwart .keuze')) a.classList.toggle('gekozen', a === k);
+  });
+}
 
 // ── besturing: kijken ──
 let yaw = 0, pitch = 0, pointerLocked = false;
@@ -151,7 +176,7 @@ document.addEventListener('mousemove', e => {
 // telefoon: 1 vinger vegen (rechterhelft) = kijken
 const kijkVingers = new Map();
 addEventListener('touchstart', e => {
-  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop')) return;   // knoppen zijn geen kijk-vingers!
+  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart')) return;   // knoppen zijn geen kijk-vingers!
   for(const t of e.changedTouches){ if(t.clientX > innerWidth / 2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY}); }
 }, {passive: false});
 addEventListener('touchmove', e => {
