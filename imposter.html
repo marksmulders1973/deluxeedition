@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>IMPOSTER — DELUXE EDITION</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#fff;font-family:'Segoe UI',Arial,sans-serif;-webkit-user-select:none;user-select:none;touch-action:none}
+  canvas{display:block}
+
+  /* startscherm */
+  #start{position:fixed;inset:0;background:rgba(0,0,0,0.84);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;cursor:pointer;text-align:center;padding:20px}
+  #start h1{color:#fff;font-size:40px;margin:0 0 8px;letter-spacing:4px;background:linear-gradient(90deg,#ff3b3b,#3b82ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  #start p{color:#bbb;font-size:16px;margin:6px 0;max-width:440px;line-height:1.5}
+  #start .knop{margin-top:18px;padding:14px 34px;font-size:20px;font-weight:bold;color:#fff;border:none;border-radius:12px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);cursor:pointer;box-shadow:0 0 24px rgba(59,130,255,0.4)}
+
+  /* hud */
+  #hud{position:fixed;top:10px;left:10px;z-index:10;color:#fff;font-size:13px;background:rgba(0,0,0,0.55);padding:8px 12px;border-radius:10px;display:none}
+  #hud a{color:#7db4ff;text-decoration:none}
+  #stap{position:fixed;top:10px;right:10px;z-index:10;color:#ffd700;font-size:13px;font-weight:bold;background:rgba(0,0,0,0.55);padding:8px 12px;border-radius:10px;display:none}
+
+  /* telefoon-knoppen: alleen op touch-schermen */
+  .touch-ui{display:none}
+  @media (pointer:coarse){ .touch-ui{display:block} }
+  #joy{position:fixed;left:18px;bottom:22px;width:110px;height:110px;border-radius:50%;background:rgba(0,0,0,0.12);border:2px solid rgba(0,0,0,0.3);z-index:15}
+  #joyStick{position:absolute;left:35px;top:35px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.35)}
+  #springKnop{position:fixed;right:22px;bottom:40px;width:78px;height:78px;border-radius:50%;border:2px solid rgba(0,0,0,0.3);background:rgba(46,204,113,0.55);font-size:30px;z-index:15;color:#fff}
+</style>
+</head>
+<body>
+
+<div id="start">
+  <h1>🕵️ IMPOSTER</h1>
+  <p>Je komt terecht in een lege witte kamer...<br>Wat er gaat gebeuren? Dat bepaalt Brian in de volgende stap!</p>
+  <p style="font-size:13px">💻 WASD = lopen · Shift = rennen · spatie = springen · C = bukken · muis = kijken<br>📱 rondje links = lopen · vegen rechts = kijken · groene knop = springen</p>
+  <button class="knop">▶ GA DE KAMER IN</button>
+</div>
+
+<div id="hud"><a href="index.html">← deluxeedition.nl</a></div>
+<div id="stap">🕵️ IMPOSTER — stap 1: de witte kamer</div>
+
+<div id="joy" class="touch-ui"><div id="joyStick"></div></div>
+<button id="springKnop" class="touch-ui">⬆</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══════════════ IMPOSTER — stap 1: de witte kamer (Brian, 16 sep 2026) ═══════════════
+// "maak nog een spel dat heet imposter en als je het klikt spawn je in een witte kamer"
+// Dit is stap 1: een helemaal witte kamer waar je in rondloopt, door je eigen ogen.
+// Alle spelregels komen in de volgende stappen — Brian vertelt wat er gaat gebeuren.
+const IS_TOUCH = matchMedia('(pointer:coarse)').matches;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xffffff);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 120);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = !IS_TOUCH;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// ── de kamer: vloer, 4 muren, plafond — alles wit ──
+const KAMER = 20;      // breedte/diepte in meters
+const HOOG  = 5;       // plafond-hoogte
+const OOG   = 1.6;     // ooghoogte van je personage
+
+// witte tegels met een héél lichte naad, zodat je ziet dat je beweegt (anders is wit = niks)
+function tegelTexture(perMeter, naadKleur){
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, 512, 512);
+  const N = 4, T = 512 / N;
+  for(let i = 0; i < N; i++) for(let j = 0; j < N; j++){
+    // elke tegel een tikkeltje anders wit
+    const w = 246 + ((i * 7 + j * 13) % 5);
+    g.fillStyle = `rgb(${w},${w},${w + 2})`; g.fillRect(i * T + 1.5, j * T + 1.5, T - 3, T - 3);
+  }
+  g.strokeStyle = naadKleur; g.lineWidth = 3;
+  for(let i = 0; i <= N; i++){ g.beginPath(); g.moveTo(i * T, 0); g.lineTo(i * T, 512); g.stroke(); g.beginPath(); g.moveTo(0, i * T); g.lineTo(512, i * T); g.stroke(); }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(perMeter, perMeter); t.anisotropy = 8;
+  return t;
+}
+// (alles net níet puur wit, anders loopt het beeld vol en zie je geen hoeken meer)
+const vloerMat   = new THREE.MeshStandardMaterial({map: tegelTexture(KAMER / 2, 'rgba(0,0,0,0.30)'), color: 0xf4f4f6, roughness: 0.35, metalness: 0.0});
+const muurMat    = new THREE.MeshStandardMaterial({map: tegelTexture(KAMER / 2, 'rgba(0,0,0,0.16)'), color: 0xeeeef2, roughness: 0.6});
+const plafondMat = new THREE.MeshStandardMaterial({color: 0xeeeef4, emissive: 0x3a3a42, roughness: 0.9});   // plafond krijgt weinig licht → een beetje eigen gloed
+
+const vloer = new THREE.Mesh(new THREE.PlaneGeometry(KAMER, KAMER), vloerMat);
+vloer.rotation.x = -Math.PI / 2; vloer.receiveShadow = true; scene.add(vloer);
+const plafond = new THREE.Mesh(new THREE.PlaneGeometry(KAMER, KAMER), plafondMat);
+plafond.rotation.x = Math.PI / 2; plafond.position.y = HOOG; scene.add(plafond);
+{
+  const mm = muurMat.clone(); mm.map = tegelTexture(KAMER / 2, 'rgba(0,0,0,0.16)'); mm.map.repeat.set(KAMER / 2, HOOG / 2);
+  const geo = new THREE.PlaneGeometry(KAMER, HOOG);
+  const plekken = [[0, HOOG / 2, -KAMER / 2, 0], [0, HOOG / 2, KAMER / 2, Math.PI], [-KAMER / 2, HOOG / 2, 0, Math.PI / 2], [KAMER / 2, HOOG / 2, 0, -Math.PI / 2]];
+  for(const [x, y, z, ry] of plekken){ const m = new THREE.Mesh(geo, mm); m.position.set(x, y, z); m.rotation.y = ry; m.receiveShadow = true; scene.add(m); }
+}
+// een dunne witte plint onderaan de muren (geeft de hoeken een randje)
+{
+  const plintMat = new THREE.MeshStandardMaterial({color: 0xd9d9e0, roughness: 0.5});
+  for(let i = 0; i < 4; i++){
+    const p = new THREE.Mesh(new THREE.BoxGeometry(KAMER, 0.12, 0.06), plintMat);
+    const a = i * Math.PI / 2; p.position.set(Math.sin(a) * (KAMER / 2 - 0.03), 0.06, Math.cos(a) * (KAMER / 2 - 0.03)); p.rotation.y = a; scene.add(p);
+  }
+}
+
+// ── licht: zacht, egaal en fel — een witte kamer is overal verlicht ──
+scene.add(new THREE.AmbientLight(0xffffff, 0.30));
+scene.add(new THREE.HemisphereLight(0xffffff, 0xb8b8c4, 0.40));
+// vier lichtbakken in het plafond
+const lampen = [];
+for(const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]){
+  const l = new THREE.PointLight(0xffffff, 0.42, 30, 1.6); l.position.set(x, HOOG - 0.25, z);
+  if(!IS_TOUCH && lampen.length === 0){ l.castShadow = true; l.shadow.mapSize.set(1024, 1024); l.shadow.bias = -0.002; }
+  scene.add(l); lampen.push(l);
+  const bak = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.06, 1.2), new THREE.MeshBasicMaterial({color: 0xffffff}));
+  bak.position.set(x, HOOG - 0.03, z); scene.add(bak);
+}
+
+// ── besturing: kijken ──
+let yaw = 0, pitch = 0, pointerLocked = false;
+camera.position.set(0, OOG, KAMER / 2 - 3);   // je start aan één kant en kijkt de kamer in
+
+renderer.domElement.addEventListener('click', () => { if(!IS_TOUCH && !pointerLocked && gestart) renderer.domElement.requestPointerLock(); });
+document.addEventListener('pointerlockchange', () => { pointerLocked = document.pointerLockElement === renderer.domElement; });
+document.addEventListener('mousemove', e => {
+  if(!pointerLocked) return;
+  yaw   -= e.movementX * 0.0022;
+  pitch -= e.movementY * 0.0022;
+  pitch = Math.max(-1.45, Math.min(1.45, pitch));
+});
+
+// telefoon: 1 vinger vegen (rechterhelft) = kijken
+const kijkVingers = new Map();
+addEventListener('touchstart', e => {
+  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start')) return;
+  for(const t of e.changedTouches){ if(t.clientX > innerWidth / 2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY}); }
+}, {passive: false});
+addEventListener('touchmove', e => {
+  for(const t of e.changedTouches){
+    const v = kijkVingers.get(t.identifier); if(!v) continue;
+    yaw -= (t.clientX - v.x) * 0.005; pitch -= (t.clientY - v.y) * 0.005;
+    pitch = Math.max(-1.45, Math.min(1.45, pitch));
+    v.x = t.clientX; v.y = t.clientY;
+  }
+  e.preventDefault();
+}, {passive: false});
+addEventListener('touchend', e => { for(const t of e.changedTouches) kijkVingers.delete(t.identifier); });
+
+// ── besturing: lopen ──
+const toets = {};
+addEventListener('keydown', e => { toets[e.code] = true; });
+addEventListener('keyup',   e => { toets[e.code] = false; });
+
+// telefoon-joystick (linksonder) + spring-knop (rechtsonder)
+const joy = document.getElementById('joy'), joyStick = document.getElementById('joyStick');
+let joyVec = {x: 0, y: 0}, joyTouch = null;
+joy.addEventListener('touchstart', e => { joyTouch = e.changedTouches[0].identifier; e.stopPropagation(); }, {passive: false});
+addEventListener('touchmove', e => {
+  for(const t of e.changedTouches){
+    if(joyTouch !== null && t.identifier === joyTouch){
+      const r = joy.getBoundingClientRect();
+      let dx = (t.clientX - (r.left + 55)) / 55, dy = (t.clientY - (r.top + 55)) / 55;
+      const len = Math.hypot(dx, dy); if(len > 1){ dx /= len; dy /= len; }
+      joyVec = {x: dx, y: dy};
+      joyStick.style.left = (35 + dx * 32) + 'px'; joyStick.style.top = (35 + dy * 32) + 'px';
+    }
+  }
+}, {passive: false});
+addEventListener('touchend', e => {
+  for(const t of e.changedTouches){ if(joyTouch !== null && t.identifier === joyTouch){ joyTouch = null; joyVec = {x: 0, y: 0}; joyStick.style.left = '35px'; joyStick.style.top = '35px'; } }
+});
+let springTik = false;
+document.getElementById('springKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); springTik = true; }, {passive: false});
+
+const LOOP_SNELHEID = 3.2, SPRINT_SNELHEID = 5.8, BUK_SNELHEID = 1.5, MARGE = 0.4;
+let velY = 0, voetY = 0, opGrond = true, oogNu = OOG, springWas = false, vorigeTijd = 0;
+
+function updateLopen(dt){
+  let vx = 0, vz = 0;
+  if(toets['KeyW'] || toets['ArrowUp'])    vz -= 1;
+  if(toets['KeyS'] || toets['ArrowDown'])  vz += 1;
+  if(toets['KeyA'] || toets['ArrowLeft'])  vx -= 1;
+  if(toets['KeyD'] || toets['ArrowRight']) vx += 1;
+  vx += joyVec.x; vz += joyVec.y;
+  const len = Math.hypot(vx, vz), beweegt = len > 0.01;
+  const sprint = toets['ShiftLeft'] || toets['ShiftRight'] || len > 0.95 && joyTouch !== null;
+  const bukt = !!toets['KeyC'];
+  const sin = Math.sin(yaw), cos = Math.cos(yaw);
+  if(beweegt){
+    const nvx = vx / Math.max(1, len), nvz = vz / Math.max(1, len);
+    const snelheid = bukt ? BUK_SNELHEID : (sprint ? SPRINT_SNELHEID : LOOP_SNELHEID);
+    // W = altijd vooruit waar je kijkt (zelfde formule als in DUELS)
+    camera.position.x += (nvx * cos + nvz * sin) * snelheid * dt;
+    camera.position.z += (-nvx * sin + nvz * cos) * snelheid * dt;
+  }
+  // niet door de muren heen
+  camera.position.x = Math.max(-KAMER / 2 + MARGE, Math.min(KAMER / 2 - MARGE, camera.position.x));
+  camera.position.z = Math.max(-KAMER / 2 + MARGE, Math.min(KAMER / 2 - MARGE, camera.position.z));
+  // springen (spatie of groene knop) + zwaartekracht
+  const springNu = !!toets['Space'] || springTik; springTik = false;
+  if(springNu && !springWas && opGrond){ velY = 5.2; opGrond = false; }
+  springWas = springNu;
+  velY -= 14 * dt; voetY += velY * dt;
+  if(voetY <= 0){ voetY = 0; velY = 0; opGrond = true; }
+  // ooghoogte: staan 1.6 / bukken 0.95 — glijdt er soepel heen
+  const doelOog = bukt ? 0.95 : OOG;
+  oogNu += (doelOog - oogNu) * Math.min(1, 12 * dt);
+  camera.position.y = voetY + oogNu;
+}
+
+// ── game-loop ──
+let gestart = false;
+function loop(t){
+  requestAnimationFrame(loop);
+  const dt = Math.min((t - vorigeTijd) / 1000, 0.05); vorigeTijd = t;
+  if(gestart) updateLopen(dt);
+  camera.rotation.set(0, 0, 0); camera.rotateY(yaw); camera.rotateX(pitch);
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(loop);
+
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+// ── startscherm ──
+document.getElementById('start').addEventListener('click', () => {
+  document.getElementById('start').style.display = 'none';
+  document.getElementById('hud').style.display = 'block';
+  document.getElementById('stap').style.display = 'block';
+  gestart = true;
+  if(!IS_TOUCH) renderer.domElement.requestPointerLock();
+});
+</script>
+<script src="smiles-widget.js"></script>
+</body>
+</html>
