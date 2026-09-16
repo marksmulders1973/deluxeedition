@@ -429,6 +429,15 @@ function bouwMap(){
   const logoMat = new THREE.MeshStandardMaterial({color: 0x14141c, roughness: 0.5, emissive: 0x000000});
   new THREE.TextureLoader().load('images/logo.jpg', t => { t.anisotropy = 8; logoMat.map = t; logoMat.emissiveMap = t; logoMat.emissive.set(0xffffff); logoMat.emissiveIntensity = 0.6; logoMat.color.set(0xffffff); logoMat.needsUpdate = true; });
   const logo = new THREE.Mesh(new THREE.PlaneGeometry(22, 22), logoMat); logo.rotation.x = -Math.PI / 2; logo.position.set(0, 0.03, -78); g.add(logo);
+  // ── de tafel op het logo (Brian): een grote ronde tafel midden op het DELUXE EDITION-logo ──
+  {
+    const houtMat = new THREE.MeshStandardMaterial({color: 0x6b4a2b, roughness: 0.7});
+    const blad = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 0.14, 32), houtMat); blad.position.set(0, 0.9, -78); g.add(blad);
+    const voet = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.6, 0.85, 16), houtMat); voet.position.set(0, 0.42, -78); g.add(voet);
+    const rand = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.08, 10, 48), new THREE.MeshBasicMaterial({color: 0x3b82ff})); rand.rotation.x = Math.PI / 2; rand.position.set(0, 0.98, -78); g.add(rand);
+    // botsen: als een vierkant 'muurtje' zonder draai
+    blokken.push({x: 0, z: -78, h: 3.2, draai: 0, muren: [{x0: -3.2, x1: 3.2, z0: -3.2, z1: 3.2}]});
+  }
   // ── de speltegels: grote blokken in een raster van 4 breed, met paadjes ertussen ──
   const kolommen = 4, rijen = Math.ceil(TEGELS.length / kolommen);
   const rasterB = kolommen * TEGEL + (kolommen - 1) * GAT, startX = -rasterB / 2 + TEGEL / 2;
@@ -482,7 +491,8 @@ function bouwMap(){
       const tx = tafel.position.x, tz = tafel.position.z; muren.push({x0: tx - 1.25, x1: tx + 1.25, z0: tz - 1.25, z1: tz + 1.25});
       // de tv in wereld-coördinaten onthouden (voor de rekensom als je dichtbij komt)
       const c = Math.cos(draai), sn = Math.sin(draai);
-      tvs.push({x: x + (tx * c + tz * sn), z: z + (-tx * sn + tz * c), naam: t[1], klaar: false, kamer, blok: blokken.length, recht: false});
+      const dw = {x: naarDeur[0] * c + naarDeur[1] * sn, z: -naarDeur[0] * sn + naarDeur[1] * c};   // richting van de deur, in de wereld
+      tvs.push({x: x + (tx * c + tz * sn), z: z + (-tx * sn + tz * c), naam: t[1], klaar: false, kamer, blok: blokken.length, recht: false, deur: dw, botBezig: null});
     }
     blokken.push({x, z, h, draai, muren});
   });
@@ -718,21 +728,55 @@ function startBots(n){
   bots.length = 0;
   for(let i = 0; i < n; i++){
     const p = vrijePlek(), mesh = maakBot(i); mesh.position.set(p.x, 0, p.z); mapGroep.add(mesh);
-    bots.push({mesh, x: p.x, z: p.z, doel: vrijePlek(), snel: 2.2 + Math.random() * 1.4, wacht: Math.random() * 2, stil: 0, stap: Math.random() * 6});
+    bots.push({mesh, x: p.x, z: p.z, doel: vrijePlek(), snel: 2.2 + Math.random() * 1.4, wacht: Math.random() * 2, stil: 0, stap: Math.random() * 6, taak: null, taakT: 0});
   }
 }
+// een bot kiest een tv waar nog een taak te doen is (en waar geen andere bot al mee bezig is)
+function botTaakKiezen(b){
+  const vrij = tvs.filter(tv => !tv.recht && !tv.botBezig);
+  if(!vrij.length) return null;
+  const tv = vrij[Math.floor(Math.random() * vrij.length)];
+  tv.botBezig = b; b.taak = tv; b.taakFase = 0; b.vast = 0;
+  return {x: tv.x + tv.deur.x * 8.5, z: tv.z + tv.deur.z * 8.5};   // stap 1: buiten, recht voor de opening
+}
+// stap 2 (binnen, vóór de tv) — de lijn van stap 1 naar stap 2 loopt precies door de opening
+function taakBinnenPunt(tv){ return {x: tv.x + tv.deur.x * 3.0, z: tv.z + tv.deur.z * 3.0}; }
 function updateBots(dt){
   for(const b of bots){
-    if(b.af) continue;                                         // af = blijft liggen
+    if(b.af){ if(b.taak){ b.taak.botBezig = null; b.taak = null; } continue; }   // af = blijft liggen
+    // bezig met een taak: 3 s bij de tv staan, dan is hij klaar (tegel recht + balk omhoog)
+    if(b.taakT > 0){
+      b.taakT -= dt;
+      if(b.taakT <= 0 && b.taak){ const tv = b.taak; if(!tv.recht){ tv.recht = true; tv.klaar = true; taakGedaan(); } tv.botBezig = null; b.taak = null; b.doel = vrijePlek(); b.wacht = 1 + Math.random() * 2; }
+      continue;
+    }
     if(b.wacht > 0){ b.wacht -= dt; continue; }
     const dx = b.doel.x - b.x, dz = b.doel.z - b.z, d = Math.hypot(dx, dz);
-    if(d < 0.6){ b.doel = vrijePlek(); b.wacht = 0.5 + Math.random() * 3; continue; }   // aangekomen: even kijken, dan nieuw doel
+    if(d < 0.6){
+      if(b.taak && b.omweg){ b.omweg = false; b.doel = b.taakFase === 0 ? {x: b.taak.x + b.taak.deur.x * 8.5, z: b.taak.z + b.taak.deur.z * 8.5} : taakBinnenPunt(b.taak); continue; }
+      if(b.taak){
+        if(b.taakFase === 0){ b.taakFase = 1; b.doel = taakBinnenPunt(b.taak); b.vast = 0; continue; }   // bij de opening → naar binnen
+        b.taakT = 3; b.vast = 0; b.mesh.rotation.y = Math.atan2(b.taak.x - b.x, b.taak.z - b.z); continue;   // bij de tv: taak doen
+      }
+      // aangekomen: crewmate-bots gaan meestal een taak doen, imposter-bots zwerven alleen
+      const t = (!b.imposter && Math.random() < 0.9) ? botTaakKiezen(b) : null;
+      b.doel = t || vrijePlek(); b.wacht = 0.5 + Math.random() * 3; continue;
+    }
     const oudX = b.x, oudZ = b.z, st = b.snel * dt;
     b.x += dx / d * st; if(botstBlok(b.x, oudZ)) b.x = oudX;
     b.z += dz / d * st; if(botstBlok(b.x, b.z)) b.z = oudZ;
     b.x = Math.max(-grensX + MARGE, Math.min(grensX - MARGE, b.x)); b.z = Math.max(-grensZ + MARGE, Math.min(grensZ - MARGE, b.z));
     // vast tegen een muur? → nieuw doel
-    if(Math.hypot(b.x - oudX, b.z - oudZ) < st * 0.2){ b.stil += dt; if(b.stil > 0.7){ b.doel = vrijePlek(); b.stil = 0; } } else b.stil = 0;
+    if(Math.hypot(b.x - oudX, b.z - oudZ) < st * 0.2){ b.stil += dt; if(b.stil > 0.7){
+        b.stil = 0; b.vast = (b.vast || 0) + 1;
+        if(b.taak && b.vast < 6){
+          // omweggetje: een vrije plek vlakbij het punt waar hij heen wilde; daarna gaat hij weer naar dat punt
+          const w = b.taakFase === 0 ? {x: b.taak.x + b.taak.deur.x * 8.5, z: b.taak.z + b.taak.deur.z * 8.5} : taakBinnenPunt(b.taak);
+          let om = null; for(let i = 0; i < 12 && !om; i++){ const x = w.x + (Math.random() - 0.5) * 14, z = w.z + (Math.random() - 0.5) * 14; if(!botstBlok(x, z)) om = {x, z}; }
+          b.doel = om || w; b.omweg = true;
+        }
+        else { if(b.taak){ b.taak.botBezig = null; b.taak = null; } b.doel = vrijePlek(); b.vast = 0; }
+      } } else b.stil = 0;
     b.mesh.position.set(b.x, 0, b.z); b.mesh.rotation.y = Math.atan2(dx, dz);
     b.stap += dt * 10; b.mesh.position.y = Math.abs(Math.sin(b.stap)) * 0.06;   // een beetje huppelen
   }
