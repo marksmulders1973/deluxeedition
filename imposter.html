@@ -32,6 +32,13 @@
   /* START GAME-knop onderaan in de lobby (Brian: "daar kan je nog niks mee") */
   #startGame{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);padding:16px 44px;font-size:22px;font-weight:900;letter-spacing:2px;color:#fff;border:none;border-radius:14px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);box-shadow:0 0 26px rgba(59,130,255,0.45);cursor:pointer;z-index:16;display:none}
 
+  /* 📋 opdrachten-balk linksboven (Brian): loopt vol als er een taak gedaan is */
+  #taken{position:fixed;top:52px;left:10px;z-index:10;width:260px;background:rgba(0,0,0,0.6);border:2px solid rgba(255,255,255,0.25);border-radius:12px;padding:8px 10px;display:none}
+  #taken .kop{display:flex;justify-content:space-between;color:#fff;font-size:12px;font-weight:bold;letter-spacing:1px;margin-bottom:6px}
+  #taken .kop b{color:#ffd700}
+  #takenBalk{height:14px;background:rgba(255,255,255,0.12);border-radius:8px;overflow:hidden}
+  #takenVul{height:100%;width:0%;background:linear-gradient(90deg,#2ecc71,#a3e635);border-radius:8px;transition:width .5s}
+
   /* 🧮 rekensom bij de tv (Brian) */
   #som{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:25;background:rgba(0,0,0,0.55)}
   #som.open{display:flex}
@@ -69,6 +76,7 @@
 
 <div id="hud"><a href="index.html">← deluxeedition.nl</a></div>
 <div id="stap">🕵️ IMPOSTER — stap 1: de witte kamer</div>
+<div id="taken"><div class="kop"><span>📋 OPDRACHTEN</span><b id="takenTekst">0 / 24</b></div><div id="takenBalk"><div id="takenVul"></div></div></div>
 
 <div id="joy" class="touch-ui"><div id="joyStick"></div></div>
 <button id="springKnop" class="touch-ui">⬆</button>
@@ -222,7 +230,7 @@ document.addEventListener('mousemove', e => {
 // telefoon: 1 vinger vegen (rechterhelft) = kijken
 const kijkVingers = new Map();
 addEventListener('touchstart', e => {
-  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart,#startGame,#som')) return;   // knoppen zijn geen kijk-vingers!
+  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart,#startGame,#som,#taken')) return;   // knoppen zijn geen kijk-vingers!
   for(const t of e.changedTouches){ if(t.clientX > innerWidth / 2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY}); }
 }, {passive: false});
 addEventListener('touchmove', e => {
@@ -494,7 +502,7 @@ function somCheck(){
   if(inv.value === '') return;
   if(parseInt(inv.value, 10) === somAntwoord){
     uit.style.color = '#2ecc71'; uit.textContent = '✅ GOED!';
-    if(somTv){ somTv.klaar = true; somTv.recht = true; }   // Brian: goed = de tegel wordt recht gezet
+    if(somTv){ somTv.klaar = true; if(!somTv.recht){ somTv.recht = true; taakGedaan(); } }   // Brian: goed = de tegel wordt recht gezet = een taak gedaan
     setTimeout(somSluit, 900);
   } else {
     uit.style.color = '#ff6b6b'; uit.textContent = '❌ Nee, probeer nog eens';
@@ -503,6 +511,14 @@ function somCheck(){
 }
 document.getElementById('somKnop').addEventListener('click', somCheck);
 document.getElementById('somInvoer').addEventListener('keydown', e => { if(e.key === 'Enter') somCheck(); e.stopPropagation(); });
+// 📋 de opdrachten-balk: elke tegel die recht staat = 1 taak; de balk loopt vol
+let takenGedaan = 0;
+function taakGedaan(){
+  takenGedaan++;
+  const totaal = tvs.length || TEGELS.length;
+  document.getElementById('takenTekst').textContent = takenGedaan + ' / ' + totaal;
+  document.getElementById('takenVul').style.width = Math.round(100 * takenGedaan / totaal) + '%';
+}
 function updateSom(){
   if(!mapGroep) return;
   // tegels die recht gezet worden: langzaam naar draai 0 draaien (het botsen draait mee)
@@ -527,6 +543,7 @@ function startGame(){
   camera.position.set(0, OOG, -66); voetY = 0; velY = 0; yaw = Math.PI; pitch = 0;   // bovenaan de map, kijkend over de platen
   document.getElementById('startGame').style.display = 'none';
   document.getElementById('stap').textContent = '🕵️ IMPOSTER — de map';
+  document.getElementById('taken').style.display = 'block'; takenGedaan = 0; document.getElementById('takenTekst').textContent = '0 / ' + tvs.length; document.getElementById('takenVul').style.width = '0%';
   if(!IS_TOUCH) renderer.domElement.requestPointerLock();
 }
 document.getElementById('startGame').addEventListener('click', startGame);
