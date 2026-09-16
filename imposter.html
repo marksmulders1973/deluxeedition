@@ -452,7 +452,7 @@ function bouwMap(){
   const g = new THREE.Group(); blokken = [];
   // ── de vloer: een grote donkere map met het raster van de site (loopt door tot voorbij de horizon, geen rand te zien) ──
   const schermTex = rasterTex();
-  const scherm = new THREE.Mesh(new THREE.PlaneGeometry(TEL_B * 4, TEL_L * 4), new THREE.MeshStandardMaterial({map: schermTex, emissive: 0xffffff, emissiveMap: schermTex, emissiveIntensity: 0.45, roughness: 0.35, metalness: 0.1}));
+  const scherm = new THREE.Mesh(new THREE.PlaneGeometry(TEL_B * 4, TEL_L * 4), new THREE.MeshStandardMaterial({map: schermTex, emissive: 0xffffff, emissiveMap: schermTex, emissiveIntensity: 0.7, roughness: 0.35, metalness: 0.1}));
   scherm.rotation.x = -Math.PI / 2; scherm.position.y = 0.01; g.add(scherm);
   // het logo bovenaan het scherm (plat op de vloer, zoals op de homepage) — je spawnt ernaast
   const logoMat = new THREE.MeshStandardMaterial({color: 0x14141c, roughness: 0.5, emissive: 0x000000});
@@ -471,12 +471,17 @@ function bouwMap(){
   const kolommen = 4, rijen = Math.ceil(TEGELS.length / kolommen);
   const rasterB = kolommen * TEGEL + (kolommen - 1) * GAT, startX = -rasterB / 2 + TEGEL / 2;
   const startZ = -60;   // onder het logo beginnen
-  TEGELS.forEach((t, i) => {
-    const k = i % kolommen, r = Math.floor(i / kolommen);
-    const x = startX + k * (TEGEL + GAT), z = startZ + r * (TEGEL + GAT);
+  // Brian: "meer kamers, langs de tegels" → links en rechts van het raster een rij gewone kamers (met ook een tv → meer sommen)
+  const KAMER_KLEUREN = [[ROOD, BLAUW], [BLAUW, ROOD], [GROEN, 'rgb(31,157,85)'], [GEEL, ORANJE], [PAARS, 'rgb(74,35,90)'], ['rgb(22,160,133)', 'rgb(11,83,69)']];
+  const alles = TEGELS.map((t, i) => ({t, x: startX + (i % kolommen) * (TEGEL + GAT), z: startZ + Math.floor(i / kolommen) * (TEGEL + GAT)}));
+  for(let r = 0; r < rijen; r++) for(const kant of [-1, 1]){
+    const n = alles.length - TEGELS.length + 1, kl = KAMER_KLEUREN[r % KAMER_KLEUREN.length];
+    alles.push({t: ['📺', 'KAMER ' + n, '▶ TAAK', kl[1], kl[0]], x: (kant < 0 ? startX - (TEGEL + GAT) : startX + kolommen * (TEGEL + GAT)), z: startZ + r * (TEGEL + GAT)});
+  }
+  alles.forEach(({t, x, z}, i) => {
     const tex = posterTex(t[0], t[1], t[2], t[3], t[4]);
-    const mat = new THREE.MeshStandardMaterial({map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.45, roughness: 0.5});
-    const zijMat = new THREE.MeshStandardMaterial({color: 0x101018, roughness: 0.5, metalness: 0.3});
+    const mat = new THREE.MeshStandardMaterial({map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.65, roughness: 0.5});
+    const zijMat = new THREE.MeshStandardMaterial({color: 0x1c1c2c, roughness: 0.5, metalness: 0.3});   // (Brian: iets feller)
     // een plaat: van opzij alleen een donkere vierkante plaat, van boven de tegel (het logo!)
     // Brian: "maak dat ze allemaal scheef liggen" → elke plaat een eigen draai (−35° … +35°)
     // Brian: "maak dat je in alle vakjes in kan" → elke plaat is HOL: vier muren + een dak, met in één
@@ -501,7 +506,7 @@ function bouwMap(){
       for(const [s0, s1] of stukken){ if(langs) voeg(s0, s1, b0, b1); else voeg(b0, b1, s0, s1); }
     }
     // een lampje binnen, zodat het kamertje niet pikdonker is
-    const lampje = new THREE.PointLight(new THREE.Color(t[4]), 0.6, 14, 1.5); lampje.position.set(0, TEGEL_H - 0.6, 0); kamer.add(lampje);
+    const lampje = new THREE.PointLight(new THREE.Color(t[4]), 1.1, 16, 1.4); lampje.position.set(0, TEGEL_H - 0.6, 0); kamer.add(lampje);
     // Brian: "in elk vak een tafel met een tv" — de tafel staat achterin tegenover de deur, de tv kijkt naar de deur
     {
       const naarDeur = [[0, 1], [0, -1], [1, 0], [-1, 0]][deurKant];              // richting van de deur (lokaal)
@@ -534,9 +539,9 @@ function bouwMap(){
     const streep = new THREE.Mesh(new THREE.BoxGeometry(b + 0.1, 0.12, l + 0.1), new THREE.MeshBasicMaterial({color: z !== 0 ? 0xff3b3b : 0x3b82ff})); streep.position.set(x, MUUR_H + 0.06, z); g.add(streep);
   }
   // ── licht: het scherm en de tegels gloeien zelf; verder zacht koel licht + een paar witte spots ──
-  g.add(new THREE.AmbientLight(0x7f86a8, 0.55));
-  g.add(new THREE.HemisphereLight(0x8899cc, 0x101018, 0.45));
-  for(const [x, z] of [[-18, -50], [18, -20], [-18, 10], [18, 40]]){ const l = new THREE.PointLight(0xffffff, 0.5, 60, 1.6); l.position.set(x, 12, z); g.add(l); }
+  g.add(new THREE.AmbientLight(0x9aa0c4, 0.9));                       // Brian: de map iets feller
+  g.add(new THREE.HemisphereLight(0xaab4e0, 0x202030, 0.7));
+  for(const [x, z] of [[-24, -50], [24, -20], [-24, 10], [24, 40], [0, -5], [0, 30]]){ const l = new THREE.PointLight(0xffffff, 0.8, 70, 1.5); l.position.set(x, 12, z); g.add(l); }
   return g;
 }
 // botsen met de tegel-blokken: mag je op (x, z) staan?
@@ -618,7 +623,7 @@ function taakGedaan(){
   const totaal = tvs.length || TEGELS.length;
   document.getElementById('takenTekst').textContent = takenGedaan + ' / ' + totaal;
   document.getElementById('takenVul').style.width = Math.round(100 * takenGedaan / totaal) + '%';
-  if(takenGedaan >= totaal) setTimeout(gewonnen, 1200);   // Brian: balk vol = je wint!
+  if(takenGedaan >= totaal) setTimeout(() => gewonnen('🏆 JE HEBT GEWONNEN!', 'Alle ' + totaal + ' opdrachten gedaan — alle tegels staan recht!'), 1200);   // Brian: balk vol = je wint!
 }
 let winOpen = false;
 function gewonnen(kop, tekst){
@@ -965,7 +970,7 @@ document.getElementById('meetSkip').addEventListener('click', () => stemOp('skip
 function startGame(){
   if(mapGroep) return;
   mapGroep = bouwMap(); scene.add(mapGroep);
-  lobby.visible = false; scene.background = new THREE.Color(0x05060c);
+  lobby.visible = false; scene.background = new THREE.Color(0x0b0c1a);
   grensX = TEL_B / 2; grensZ = TEL_L / 2;
   camera.position.set(0, OOG, -66); voetY = 0; velY = 0; yaw = Math.PI; pitch = 0;   // bovenaan de map, kijkend over de platen
   document.getElementById('startGame').style.display = 'none';
