@@ -142,7 +142,7 @@
 <div id="killHint">☠️ IMPOSTER: klik op iemand dichtbij om hem af te maken</div>
 
 <!-- 📢 meeting -->
-<button id="meetKnop">📢 CALL MEETING</button>
+<button id="meetKnop">🚨 EMERGENCY MEETING</button>
 <div id="meeting"><div class="paneel">
   <h2>📢 MEETING — wie is de imposter?</h2>
   <div id="meetTimer"></div>
@@ -464,6 +464,12 @@ function bouwMap(){
     const blad = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 0.14, 32), houtMat); blad.position.set(0, 0.9, -78); g.add(blad);
     const voet = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.6, 0.85, 16), houtMat); voet.position.set(0, 0.42, -78); g.add(voet);
     const rand = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.08, 10, 48), new THREE.MeshBasicMaterial({color: 0x3b82ff})); rand.rotation.x = Math.PI / 2; rand.position.set(0, 0.98, -78); g.add(rand);
+    // Brian: een EMERGENCY-knop op de tafel — grijze voet, rode bolle knop, gele waarschuwingsring, gloeit
+    const voetK = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.85, 0.22, 24), new THREE.MeshStandardMaterial({color: 0x555a66, roughness: 0.4, metalness: 0.6})); voetK.position.set(0, 1.08, -78); g.add(voetK);
+    const ringK = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.06, 10, 32), new THREE.MeshBasicMaterial({color: 0xffd700})); ringK.rotation.x = Math.PI / 2; ringK.position.set(0, 1.2, -78); g.add(ringK);
+    const knopK = new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({color: 0xff2020, emissive: 0xff0000, emissiveIntensity: 0.5, roughness: 0.25}));
+    knopK.position.set(0, 1.19, -78); g.add(knopK); emergencyKnop = knopK;
+    const lichtK = new THREE.PointLight(0xff3b3b, 0.9, 10, 1.5); lichtK.position.set(0, 1.8, -78); g.add(lichtK); emergencyLicht = lichtK;
     // botsen: als een vierkant 'muurtje' zonder draai
     blokken.push({x: 0, z: -78, h: 3.2, draai: 0, muren: [{x0: -3.2, x1: 3.2, z0: -3.2, z1: 3.2}]});
   }
@@ -860,11 +866,19 @@ function afTonen(){
   if(somOpen) somSluit();
   checkCrewmatesWeg();
 }
-renderer.domElement.addEventListener('mousedown', e => { if(e.button === 0 && pointerLocked) probeerKill(); });
+renderer.domElement.addEventListener('mousedown', e => { if(e.button !== 0 || !pointerLocked) return; if(kijktNaarKnop()){ meetingStart(true); return; } probeerKill(); });
 document.getElementById('killKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); probeerKill(); }, {passive: false});
 // ── 📢 CALL MEETING (Brian: "als je dichtbij de tafel staat: CALL MEETING; klik = iedereen naar de tafel
 //    geteleporteerd en je kunt iemand eruit stemmen") ──
 const TAFEL = {x: 0, z: -78};
+let emergencyKnop = null, emergencyLicht = null;
+const _ray = new THREE.Raycaster();
+// kijk je naar de rode knop op de tafel (binnen 6 m)? → klik = meeting
+function kijktNaarKnop(){
+  if(!emergencyKnop || Math.hypot(camera.position.x - TAFEL.x, camera.position.z - TAFEL.z) > 6.5) return false;
+  _ray.setFromCamera({x: 0, y: 0}, camera);
+  return _ray.intersectObject(emergencyKnop, false).length > 0;
+}
 let meetingOpen = false, meetTijd = 0, mijnStem = null, meetStemmen = null, meetKlaar = false;
 const gezienEventsMeet = new Set();
 function teleporteerNaarTafel(){
@@ -963,6 +977,7 @@ function updateMeeting(dt){
   }
   const dichtbij = Math.hypot(camera.position.x - TAFEL.x, camera.position.z - TAFEL.z) < 7 && !ikBenAf && !somOpen;
   document.getElementById('meetKnop').style.display = dichtbij ? 'block' : 'none';
+  if(emergencyKnop){ const t = performance.now() / 1000; emergencyKnop.material.emissiveIntensity = 0.35 + 0.35 * Math.sin(t * 4); if(emergencyLicht) emergencyLicht.intensity = 0.6 + 0.5 * Math.sin(t * 4); }
 }
 document.getElementById('meetKnop').addEventListener('click', () => meetingStart(true));
 document.getElementById('meetKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); meetingStart(true); }, {passive: false});
