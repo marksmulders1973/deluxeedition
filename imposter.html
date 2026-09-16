@@ -25,6 +25,25 @@
   #joy{position:fixed;left:18px;bottom:22px;width:110px;height:110px;border-radius:50%;background:rgba(0,0,0,0.12);border:2px solid rgba(0,0,0,0.3);z-index:15}
   #joyStick{position:absolute;left:35px;top:35px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.35)}
   #springKnop{position:fixed;right:22px;bottom:40px;width:78px;height:78px;border-radius:50%;border:2px solid rgba(0,0,0,0.3);background:rgba(46,204,113,0.55);font-size:30px;z-index:15;color:#fff}
+
+  /* ⚙️ instellingen-knop rechts in beeld (Brian, 16 sep) + het paneel dat eruit schuift */
+  #instelKnop{position:fixed;right:14px;top:50%;transform:translateY(-50%);width:56px;height:56px;border-radius:50%;border:2px solid rgba(255,255,255,0.35);background:rgba(20,20,30,0.75);color:#fff;font-size:28px;z-index:16;cursor:pointer;display:none;box-shadow:0 0 18px rgba(59,130,255,0.35);transition:transform .2s}
+  #instelKnop:hover{transform:translateY(-50%) rotate(40deg)}
+  #instellingen{position:fixed;top:0;right:0;height:100%;width:290px;max-width:85vw;background:#14141c;border-left:2px solid #3b82ff;z-index:22;padding:18px 18px 24px;box-sizing:border-box;color:#fff;transform:translateX(105%);transition:transform .25s;overflow:auto;box-shadow:-8px 0 30px rgba(0,0,0,0.5)}
+  #instellingen.open{transform:translateX(0)}
+  #instellingen h2{margin:0 0 14px;font-size:22px;background:linear-gradient(90deg,#ff3b3b,#3b82ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .instel{margin:14px 0}
+  .instel label{display:flex;justify-content:space-between;font-size:14px;color:#cfd6e6;margin-bottom:6px}
+  .instel label b{color:#ffd700}
+  .instel input[type=range]{width:100%;accent-color:#3b82ff}
+  .instel.alleen-touch{display:none}
+  @media (pointer:coarse){ .instel.alleen-touch{display:block} }
+  #instellingen .knopjes{display:flex;flex-direction:column;gap:8px;margin-top:18px}
+  #instellingen button{padding:12px;font-size:15px;font-weight:bold;color:#fff;border:none;border-radius:10px;cursor:pointer}
+  #instelKlaar{background:linear-gradient(135deg,#1f9d55,#2ecc71)}
+  #instelReset{background:#2a2a3a}
+  #instelHome{background:linear-gradient(135deg,#ff3b3b,#3b82ff)}
+  #instellingen .tip{color:#8892a6;font-size:12px;margin-top:12px;line-height:1.5}
 </style>
 </head>
 <body>
@@ -32,7 +51,7 @@
 <div id="start">
   <h1>🕵️ IMPOSTER</h1>
   <p>Je komt terecht in een lege witte kamer...<br>Wat er gaat gebeuren? Dat bepaalt Brian in de volgende stap!</p>
-  <p style="font-size:13px">💻 WASD = lopen · Shift = rennen · spatie = springen · C = bukken · muis = kijken<br>📱 rondje links = lopen · vegen rechts = kijken · groene knop = springen</p>
+  <p style="font-size:13px">💻 WASD = lopen · Shift = rennen · spatie = springen · C = bukken · muis = kijken<br>📱 rondje links = lopen · vegen rechts = kijken · groene knop = springen<br>⚙️ rechts in beeld = instellingen (druk eerst op Esc om je muis vrij te maken)</p>
   <button class="knop">▶ GA DE KAMER IN</button>
 </div>
 
@@ -41,6 +60,23 @@
 
 <div id="joy" class="touch-ui"><div id="joyStick"></div></div>
 <button id="springKnop" class="touch-ui">⬆</button>
+
+<!-- ⚙️ instellingen (Brian: "rechts van je scherm een instelling knop") -->
+<button id="instelKnop" title="Instellingen">⚙️</button>
+<div id="instellingen">
+  <h2>⚙️ INSTELLINGEN</h2>
+  <div class="instel"><label>👀 Kijk-snelheid <b id="wGevoel">1.0×</b></label><input type="range" id="iGevoel" min="0.3" max="2.5" step="0.1"></div>
+  <div class="instel"><label>🔭 Blikveld <b id="wFov">75°</b></label><input type="range" id="iFov" min="55" max="110" step="1"></div>
+  <div class="instel"><label>💡 Licht in de kamer <b id="wLicht">100%</b></label><input type="range" id="iLicht" min="0.3" max="1.6" step="0.05"></div>
+  <div class="instel"><label>🏃 Loopsnelheid <b id="wSnel">1.0×</b></label><input type="range" id="iSnel" min="0.5" max="2" step="0.1"></div>
+  <div class="instel alleen-touch"><label>🕹️ Grootte joystick <b id="wJoy">110</b></label><input type="range" id="iJoy" min="80" max="180" step="5"></div>
+  <div class="knopjes">
+    <button id="instelKlaar">✅ KLAAR</button>
+    <button id="instelReset">↺ Terug naar standaard</button>
+    <button id="instelHome">🏠 Naar deluxeedition.nl</button>
+  </div>
+  <div class="tip">Je instellingen worden bewaard op dit apparaat.<br>💻 Tip: Esc = muis vrij, dan op ⚙️ klikken. Of druk op <b>I</b>.</div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -108,8 +144,8 @@ plafond.rotation.x = Math.PI / 2; plafond.position.y = HOOG; scene.add(plafond);
 }
 
 // ── licht: zacht, egaal en fel — een witte kamer is overal verlicht ──
-scene.add(new THREE.AmbientLight(0xffffff, 0.30));
-scene.add(new THREE.HemisphereLight(0xffffff, 0xb8b8c4, 0.40));
+const ambient = new THREE.AmbientLight(0xffffff, 0.30); scene.add(ambient);
+const hemel = new THREE.HemisphereLight(0xffffff, 0xb8b8c4, 0.40); scene.add(hemel);
 // vier lichtbakken in het plafond
 const lampen = [];
 for(const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]){
@@ -120,6 +156,45 @@ for(const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]){
   bak.position.set(x, HOOG - 0.03, z); scene.add(bak);
 }
 
+// ── ⚙️ INSTELLINGEN (Brian, 16 sep: "rechts van je scherm een instelling knop") ──
+// Kijk-snelheid, blikveld, licht, loopsnelheid en (telefoon) joystick-grootte.
+// Bewaard in localStorage, dus de volgende keer staat alles nog zo.
+const INSTEL_STANDAARD = {gevoel: 1.0, fov: 75, licht: 1.0, snel: 1.0, joy: 110};
+let instel = Object.assign({}, INSTEL_STANDAARD);
+try { Object.assign(instel, JSON.parse(localStorage.getItem('deluxe-imposter-instellingen') || '{}')); } catch(e) {}
+function instelToepassen(){
+  camera.fov = instel.fov; camera.updateProjectionMatrix();
+  ambient.intensity = 0.30 * instel.licht; hemel.intensity = 0.40 * instel.licht;
+  for(const l of lampen) l.intensity = 0.42 * instel.licht;
+  const joyEl = document.getElementById('joy'); joyEl.style.width = joyEl.style.height = instel.joy + 'px';
+  const st = document.getElementById('joyStick'); st.style.left = st.style.top = (instel.joy / 2 - 20) + 'px';
+  // schuifjes + getalletjes bijwerken
+  const zet = (id, w, waarde, tekst) => { document.getElementById(id).value = waarde; document.getElementById(w).textContent = tekst; };
+  zet('iGevoel', 'wGevoel', instel.gevoel, instel.gevoel.toFixed(1) + '×');
+  zet('iFov', 'wFov', instel.fov, Math.round(instel.fov) + '°');
+  zet('iLicht', 'wLicht', instel.licht, Math.round(instel.licht * 100) + '%');
+  zet('iSnel', 'wSnel', instel.snel, instel.snel.toFixed(1) + '×');
+  zet('iJoy', 'wJoy', instel.joy, instel.joy);
+  try { localStorage.setItem('deluxe-imposter-instellingen', JSON.stringify(instel)); } catch(e) {}
+}
+for(const [id, key] of [['iGevoel', 'gevoel'], ['iFov', 'fov'], ['iLicht', 'licht'], ['iSnel', 'snel'], ['iJoy', 'joy']]){
+  document.getElementById(id).addEventListener('input', e => { instel[key] = parseFloat(e.target.value); instelToepassen(); });
+}
+let instelOpen = false;
+function instelZet(open){
+  instelOpen = open;
+  document.getElementById('instellingen').classList.toggle('open', open);
+  if(open){ if(document.pointerLockElement) document.exitPointerLock(); }
+  else if(!IS_TOUCH && gestart) renderer.domElement.requestPointerLock();
+}
+document.getElementById('instelKnop').addEventListener('click', () => instelZet(!instelOpen));
+document.getElementById('instelKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); instelZet(!instelOpen); }, {passive: false});
+document.getElementById('instelKlaar').addEventListener('click', () => instelZet(false));
+document.getElementById('instelReset').addEventListener('click', () => { instel = Object.assign({}, INSTEL_STANDAARD); instelToepassen(); });
+document.getElementById('instelHome').addEventListener('click', () => { location.href = 'index.html'; });
+// toets I = instellingen open/dicht (handig op de computer: je muis is dan meteen vrij)
+addEventListener('keydown', e => { if(e.code === 'KeyI' && gestart) instelZet(!instelOpen); });
+
 // ── besturing: kijken ──
 let yaw = 0, pitch = 0, pointerLocked = false;
 camera.position.set(0, OOG, KAMER / 2 - 3);   // je start aan één kant en kijkt de kamer in
@@ -128,21 +203,21 @@ renderer.domElement.addEventListener('click', () => { if(!IS_TOUCH && !pointerLo
 document.addEventListener('pointerlockchange', () => { pointerLocked = document.pointerLockElement === renderer.domElement; });
 document.addEventListener('mousemove', e => {
   if(!pointerLocked) return;
-  yaw   -= e.movementX * 0.0022;
-  pitch -= e.movementY * 0.0022;
+  yaw   -= e.movementX * 0.0022 * instel.gevoel;
+  pitch -= e.movementY * 0.0022 * instel.gevoel;
   pitch = Math.max(-1.45, Math.min(1.45, pitch));
 });
 
 // telefoon: 1 vinger vegen (rechterhelft) = kijken
 const kijkVingers = new Map();
 addEventListener('touchstart', e => {
-  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start')) return;
+  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#instellingen')) return;   // knoppen zijn geen kijk-vingers!
   for(const t of e.changedTouches){ if(t.clientX > innerWidth / 2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY}); }
 }, {passive: false});
 addEventListener('touchmove', e => {
   for(const t of e.changedTouches){
     const v = kijkVingers.get(t.identifier); if(!v) continue;
-    yaw -= (t.clientX - v.x) * 0.005; pitch -= (t.clientY - v.y) * 0.005;
+    yaw -= (t.clientX - v.x) * 0.005 * instel.gevoel; pitch -= (t.clientY - v.y) * 0.005 * instel.gevoel;
     pitch = Math.max(-1.45, Math.min(1.45, pitch));
     v.x = t.clientX; v.y = t.clientY;
   }
@@ -162,16 +237,16 @@ joy.addEventListener('touchstart', e => { joyTouch = e.changedTouches[0].identif
 addEventListener('touchmove', e => {
   for(const t of e.changedTouches){
     if(joyTouch !== null && t.identifier === joyTouch){
-      const r = joy.getBoundingClientRect();
-      let dx = (t.clientX - (r.left + 55)) / 55, dy = (t.clientY - (r.top + 55)) / 55;
+      const r = joy.getBoundingClientRect(), R = r.width / 2;   // (grootte instelbaar in ⚙️)
+      let dx = (t.clientX - (r.left + R)) / R, dy = (t.clientY - (r.top + R)) / R;
       const len = Math.hypot(dx, dy); if(len > 1){ dx /= len; dy /= len; }
       joyVec = {x: dx, y: dy};
-      joyStick.style.left = (35 + dx * 32) + 'px'; joyStick.style.top = (35 + dy * 32) + 'px';
+      joyStick.style.left = (R - 20 + dx * (R - 23)) + 'px'; joyStick.style.top = (R - 20 + dy * (R - 23)) + 'px';
     }
   }
 }, {passive: false});
 addEventListener('touchend', e => {
-  for(const t of e.changedTouches){ if(joyTouch !== null && t.identifier === joyTouch){ joyTouch = null; joyVec = {x: 0, y: 0}; joyStick.style.left = '35px'; joyStick.style.top = '35px'; } }
+  for(const t of e.changedTouches){ if(joyTouch !== null && t.identifier === joyTouch){ joyTouch = null; joyVec = {x: 0, y: 0}; const R = joy.getBoundingClientRect().width / 2; joyStick.style.left = (R - 20) + 'px'; joyStick.style.top = (R - 20) + 'px'; } }
 });
 let springTik = false;
 document.getElementById('springKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); springTik = true; }, {passive: false});
@@ -192,7 +267,7 @@ function updateLopen(dt){
   const sin = Math.sin(yaw), cos = Math.cos(yaw);
   if(beweegt){
     const nvx = vx / Math.max(1, len), nvz = vz / Math.max(1, len);
-    const snelheid = bukt ? BUK_SNELHEID : (sprint ? SPRINT_SNELHEID : LOOP_SNELHEID);
+    const snelheid = (bukt ? BUK_SNELHEID : (sprint ? SPRINT_SNELHEID : LOOP_SNELHEID)) * instel.snel;
     // W = altijd vooruit waar je kijkt (zelfde formule als in DUELS)
     camera.position.x += (nvx * cos + nvz * sin) * snelheid * dt;
     camera.position.z += (-nvx * sin + nvz * cos) * snelheid * dt;
@@ -230,9 +305,11 @@ document.getElementById('start').addEventListener('click', () => {
   document.getElementById('start').style.display = 'none';
   document.getElementById('hud').style.display = 'block';
   document.getElementById('stap').style.display = 'block';
+  document.getElementById('instelKnop').style.display = 'block';
   gestart = true;
   if(!IS_TOUCH) renderer.domElement.requestPointerLock();
 });
+instelToepassen();   // bewaarde instellingen meteen toepassen (ook op het startscherm al)
 </script>
 <script src="smiles-widget.js"></script>
 </body>
