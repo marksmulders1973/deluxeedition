@@ -39,6 +39,20 @@
   #takenBalk{height:14px;background:rgba(255,255,255,0.12);border-radius:8px;overflow:hidden}
   #takenVul{height:100%;width:0%;background:linear-gradient(90deg,#2ecc71,#a3e635);border-radius:8px;transition:width .5s}
 
+  /* 🎭 rol-scherm bij START GAME: IMPOSTER of CREWMATE (Brian) */
+  #rol{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:27;background:#000;text-align:center}
+  #rol.open{display:flex}
+  #rolTekst{font-size:72px;font-weight:900;letter-spacing:8px;margin:0}
+  #rolTekst.imposter{color:#ff3b3b;text-shadow:0 0 40px rgba(255,59,59,0.8)}
+  #rolTekst.crewmate{color:#5fd7ff;text-shadow:0 0 40px rgba(95,215,255,0.8)}
+  #rolUitleg{color:#bbb;font-size:20px;margin-top:14px}
+  #af{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:27;background:rgba(80,0,0,0.85);text-align:center}
+  #af.open{display:flex}
+  #af h1{color:#fff;font-size:60px;margin:0;letter-spacing:4px}
+  #af p{color:#ffbbbb;font-size:20px}
+  #killKnop{display:none;position:fixed;right:22px;bottom:130px;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,255,255,0.4);background:rgba(255,59,59,0.6);font-size:36px;z-index:15}
+  #killHint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:12;color:#ff6b6b;font-weight:bold;font-size:14px;background:rgba(0,0,0,0.55);padding:6px 14px;border-radius:10px;display:none}
+
   /* 🏆 gewonnen: alle opdrachten gedaan (Brian) */
   #win{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:28;background:rgba(0,0,0,0.8);text-align:center}
   #win.open{display:flex}
@@ -102,6 +116,12 @@
 
 <!-- ⚙️ tandwiel-knop (Brian: "alleen deze knop", rechts in beeld — doet nog niks) -->
 <button id="startGame">▶ START GAME</button>
+
+<!-- 🎭 rol: imposter of crewmate -->
+<div id="rol"><h1 id="rolTekst">CREWMATE</h1><p id="rolUitleg"></p></div>
+<div id="af"><h1>💀 JE BENT AF</h1><p>De imposter heeft je te pakken… je kunt nog rondlopen als geest.</p></div>
+<button id="killKnop">☠️</button>
+<div id="killHint">☠️ IMPOSTER: klik op iemand dichtbij om hem af te maken</div>
 
 <!-- 🏆 winscherm: als de opdrachten-balk vol is -->
 <div id="win">
@@ -271,7 +291,7 @@ document.addEventListener('mousemove', e => {
 // telefoon: 1 vinger vegen (rechterhelft) = kijken
 const kijkVingers = new Map();
 addEventListener('touchstart', e => {
-  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart,#startGame,#som,#taken,#win')) return;   // knoppen zijn geen kijk-vingers!
+  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart,#startGame,#som,#taken,#win,#killKnop')) return;   // knoppen zijn geen kijk-vingers!
   for(const t of e.changedTouches){ if(t.clientX > innerWidth / 2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY}); }
 }, {passive: false});
 addEventListener('touchmove', e => {
@@ -605,8 +625,11 @@ async function samenTik(){
       kamer: 'i' + (samenCode || mijnCode).toLowerCase(), sessie: mijnSessie, naam: mijnNaam,
       x: camera.position.x, z: camera.position.z, y: voetY, yaw, oog: oogNu,
       wereld: mapGroep ? 'arena' : 'lobby',              // 'arena' = in de map
-      hp: aantalSpelers, doden: aantalImposters            // (de instellingen van de kamer reizen mee in deze velden)
+      hp: aantalSpelers, doden: aantalImposters,           // (de instellingen van de kamer reizen mee in deze velden)
+      schild: ikBenAf,                                      // 'schild' = ik ben af (ligt neer bij de anderen)
+      events: mijnEvents                                    // kills op echte spelers
     })});
+    mijnEvents = [];
     const j = await r.json();
     if(Array.isArray(j.spelers)) verwerkAnderen(j.spelers);
   } catch(e) {}
@@ -631,6 +654,9 @@ function verwerkAnderen(lijst){
     }
     a.doel = p; a.wereld = p.wereld;
     a.mesh.visible = (p.wereld === (mapGroep ? 'arena' : 'lobby'));   // alleen zien als je in dezelfde wereld bent
+    // heeft deze speler mij afgemaakt? (event met mijn sessie als doel)
+    if(Array.isArray(p.events)) for(const e of p.events){ if(e.doel === mijnSessie && !gezienEvents.has(e.id)){ gezienEvents.add(e.id); afTonen(); } }
+    if(p.schild && !a.af){ a.af = true; ligNeer(a.mesh); }       // die is af: ligt neer waar hij lag
     // de baas van de kamer is al in de map? → dan ga jij ook (met zijn instellingen)
     if(!mapGroep && p.wereld === 'arena' && gestart && !winOpen){
       if(p.hp >= 5 && p.hp <= 25) aantalSpelers = p.hp;
@@ -644,7 +670,7 @@ function verwerkAnderen(lijst){
 }
 function updateAnderen(dt){
   for(const a of anderen.values()){
-    if(!a.doel) continue;
+    if(!a.doel || a.af) continue;                              // af = blijft liggen
     const k = Math.min(1, dt * 10);
     a.x += (a.doel.x - a.x) * k; a.z += (a.doel.z - a.z) * k; a.y += ((a.doel.y || 0) - a.y) * k;
     a.mesh.position.set(a.x, a.y, a.z);
@@ -697,6 +723,7 @@ function startBots(n){
 }
 function updateBots(dt){
   for(const b of bots){
+    if(b.af) continue;                                         // af = blijft liggen
     if(b.wacht > 0){ b.wacht -= dt; continue; }
     const dx = b.doel.x - b.x, dz = b.doel.z - b.z, d = Math.hypot(dx, dz);
     if(d < 0.6){ b.doel = vrijePlek(); b.wacht = 0.5 + Math.random() * 3; continue; }   // aangekomen: even kijken, dan nieuw doel
@@ -710,6 +737,47 @@ function updateBots(dt){
     b.stap += dt * 10; b.mesh.position.y = Math.abs(Math.sin(b.stap)) * 0.06;   // een beetje huppelen
   }
 }
+// ── 🎭 ROLLEN + ☠️ KILLEN (Brian: "bij start spel een zwart scherm met imposter of crewmate;
+//    als je imposter bent kan je mensen aantikken en dan is die af") ──
+let mijnRol = 'crewmate', ikBenAf = false, killCooldown = 0, mijnEvents = [];
+const gezienEvents = new Set();
+function rollenVerdelen(){
+  const n = Math.max(2, aantalSpelers), k = Math.min(aantalImposters, n - 1);
+  mijnRol = Math.random() < k / n ? 'imposter' : 'crewmate';
+  let over = k - (mijnRol === 'imposter' ? 1 : 0);
+  const volgorde = bots.map((_, i) => i).sort(() => Math.random() - 0.5);
+  for(const b of bots) b.imposter = false;
+  for(let i = 0; i < over && i < volgorde.length; i++) bots[volgorde[i]].imposter = true;
+}
+function rolTonen(){
+  const el = document.getElementById('rol'), t = document.getElementById('rolTekst');
+  t.textContent = mijnRol === 'imposter' ? 'IMPOSTER' : 'CREWMATE'; t.className = mijnRol;
+  document.getElementById('rolUitleg').textContent = mijnRol === 'imposter' ? 'Tik mensen aan als je dichtbij bent… dan zijn ze af. Laat je niet betrappen!' : 'Doe de opdrachten bij de tv\'s en pas op voor de imposter!';
+  el.classList.add('open'); setTimeout(() => el.classList.remove('open'), 3500);
+  document.getElementById('killKnop').style.display = (mijnRol === 'imposter' && IS_TOUCH) ? 'block' : 'none';
+  document.getElementById('killHint').style.display = (mijnRol === 'imposter' && !IS_TOUCH) ? 'block' : 'none';
+}
+function ligNeer(mesh){ mesh.rotation.x = -Math.PI / 2; mesh.position.y = 0.4; }
+function probeerKill(){
+  if(mijnRol !== 'imposter' || ikBenAf || !mapGroep || killCooldown > 0 || somOpen || winOpen) return;
+  const px = camera.position.x, pz = camera.position.z, fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+  let beste = null, bd = 2.6;
+  const kijk = (x, z) => { const dx = x - px, dz = z - pz, d = Math.hypot(dx, dz); return (d < bd && (dx * fx + dz * fz) / Math.max(0.01, d) > 0.1) ? d : -1; };
+  for(const b of bots){ if(b.af) continue; const d = kijk(b.x, b.z); if(d >= 0){ bd = d; beste = {bot: b}; } }
+  for(const [sessie, a] of anderen){ if(a.af || !a.mesh.visible) continue; const d = kijk(a.x, a.z); if(d >= 0){ bd = d; beste = {ander: a, sessie}; } }
+  if(!beste) return;
+  killCooldown = 1.5;
+  if(beste.bot){ beste.bot.af = true; ligNeer(beste.bot.mesh); }
+  else { beste.ander.af = true; ligNeer(beste.ander.mesh); mijnEvents.push({id: mijnSessie + '-' + Date.now(), doel: beste.sessie, soort: 'schade', schade: 60}); }
+  const h = document.getElementById('killHint'); if(!IS_TOUCH){ h.textContent = '☠️ AF!'; setTimeout(() => { h.textContent = '☠️ IMPOSTER: klik op iemand dichtbij om hem af te maken'; }, 1200); }
+}
+function afTonen(){
+  if(ikBenAf) return; ikBenAf = true;
+  const el = document.getElementById('af'); el.classList.add('open'); setTimeout(() => el.classList.remove('open'), 3000);
+  if(somOpen) somSluit();
+}
+renderer.domElement.addEventListener('mousedown', e => { if(e.button === 0 && pointerLocked) probeerKill(); });
+document.getElementById('killKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); probeerKill(); }, {passive: false});
 function startGame(){
   if(mapGroep) return;
   mapGroep = bouwMap(); scene.add(mapGroep);
@@ -719,6 +787,7 @@ function startGame(){
   document.getElementById('startGame').style.display = 'none';
   document.getElementById('stap').textContent = '🕵️ IMPOSTER — de map';
   startBots(Math.max(0, aantalSpelers - 1 - anderen.size));   // jij + echte spelers + de rest = bots
+  ikBenAf = false; rollenVerdelen(); rolTonen();
   document.getElementById('instelKnop').style.display = 'none';   // Brian: instellingen-knop weg als je al speelt
   for(const a of anderen.values()) a.mesh.visible = (a.wereld === 'arena');
   document.getElementById('taken').style.display = 'block'; takenGedaan = 0; document.getElementById('takenTekst').textContent = '0 / ' + tvs.length; document.getElementById('takenVul').style.width = '0%';
@@ -733,7 +802,8 @@ function loop(t){
   requestAnimationFrame(loop);
   const dt = Math.min((t - vorigeTijd) / 1000, 0.05); vorigeTijd = t;
   if(gestart && !somOpen && !winOpen) updateLopen(dt);
-  if(gestart && !winOpen) updateSom();
+  if(gestart && !winOpen && !ikBenAf) updateSom();
+  if(killCooldown > 0) killCooldown -= dt;
   if(gestart && mapGroep && !winOpen) updateBots(dt);
   if(gestart) updateAnderen(dt);
   camera.rotation.set(0, 0, 0); camera.rotateY(yaw); camera.rotateX(pitch);
