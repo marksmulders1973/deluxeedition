@@ -74,6 +74,13 @@
   #zwart .spelers input[type=range]{width:260px;accent-color:#3b82ff}
   #zwart .spelers b{color:#ffd700;min-width:40px;text-align:center;font-size:30px}
   #zwart .uitleg{color:#8892a6;font-size:13px;margin-top:8px}
+  /* 🔑 lobby-code: jouw code + een vak om andermans code in te vullen */
+  #zwart .codeBlok{margin-top:30px;border-top:1px solid #2a2a3a;padding-top:18px}
+  #mijnCode{color:#ffd700;font-size:40px;font-weight:900;letter-spacing:8px;margin:4px 0 2px;text-shadow:0 0 16px rgba(255,215,0,0.5);user-select:all}
+  #zwart .codeRij{display:flex;gap:10px;justify-content:center;align-items:center;margin-top:10px}
+  #codeInvoer{width:200px;padding:12px;font-size:24px;font-weight:bold;text-align:center;letter-spacing:5px;text-transform:uppercase;background:#0d0d14;color:#fff;border:2px solid #3b82ff;border-radius:12px;outline:none}
+  #codeOk{padding:12px 24px;font-size:18px;font-weight:900;color:#fff;border:none;border-radius:12px;background:linear-gradient(135deg,#1f9d55,#2ecc71);cursor:pointer}
+  #codeStatus{color:#8fe2ff;font-size:14px;font-weight:bold;margin-top:10px;min-height:18px}
   #terug{position:absolute;top:14px;left:14px;padding:10px 18px;font-size:16px;font-weight:bold;color:#fff;border:2px solid rgba(255,255,255,0.35);border-radius:12px;background:rgba(255,255,255,0.08);cursor:pointer}
 </style>
 </head>
@@ -129,6 +136,13 @@
   <h3>HOEVEEL SPELERS?</h3>
   <div class="spelers"><span>5</span><input type="range" id="iSpelers" min="5" max="25" step="1" value="5"><span>25</span><b id="wSpelers">5</b></div>
   <div class="uitleg">Zijn er niet genoeg echte mensen? Dan doen er bots mee 🤖</div>
+  <div class="codeBlok">
+    <div class="kop" style="color:#8892a6;font-size:12px;font-weight:bold;letter-spacing:2px">JOUW CODE (zeg 'm tegen je vrienden):</div>
+    <div id="mijnCode">······</div>
+    <div class="kop" style="color:#8892a6;font-size:12px;font-weight:bold;letter-spacing:2px;margin-top:14px">VUL IN CODE (van iemand anders):</div>
+    <div class="codeRij"><input id="codeInvoer" maxlength="6" placeholder="ABC123" autocomplete="off"><button id="codeOk">OKE</button></div>
+    <div id="codeStatus"></div>
+  </div>
 </div>
 <button id="instelKnop" title="Instellingen"><svg viewBox="-52 -52 104 104" xmlns="http://www.w3.org/2000/svg"><g fill="#000"><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(0)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(45)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(90)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(135)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(180)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(225)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(270)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(315)"/><circle r="36"/></g><circle r="17" fill="#fff"/></svg></button>
 
@@ -229,7 +243,7 @@ for(const k of document.querySelectorAll('#zwart .groep')){
     try { localStorage.setItem('deluxe-imposter-groep', groep); } catch(e) {}
   });
 }
-function zwartBeeld(){ document.getElementById('zwart').classList.add('open'); if(document.pointerLockElement) document.exitPointerLock(); }
+function zwartBeeld(){ document.getElementById('zwart').classList.add('open'); if(document.pointerLockElement) document.exitPointerLock(); startSamen(); }
 function zwartDicht(){ document.getElementById('zwart').classList.remove('open'); if(!IS_TOUCH && gestart) renderer.domElement.requestPointerLock(); }
 document.getElementById('instelKnop').addEventListener('click', zwartBeeld);
 document.getElementById('instelKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); zwartBeeld(); }, {passive: false});
@@ -570,6 +584,87 @@ function updateSom(){
     if(!somOpen && !tv.klaar && d < 3){ somToon(tv); break; }
   }
 }
+// ── 🔑 SAMEN SPELEN MET EEN CODE (Brian: "bij instellingen staat een code, daaronder vul in code;
+//    iemand anders voert die in, drukt op oké en komt in jouw lobby") ──
+// Zelfde techniek als DUELS: elke speler stuurt een paar keer per seconde zijn plek naar /api/race
+// (body.kamer = de code) en krijgt de anderen terug. Wie jouw code invult zit in jouw kamer.
+// Drukt de baas van de kamer op START GAME, dan gaan de anderen automatisch mee de map in.
+const mijnSessie = 's' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+let mijnNaam = 'gast'; try { mijnNaam = (localStorage.getItem('deluxe-speler') || 'gast').trim().slice(0, 20) || 'gast'; } catch(e) {}
+function maakCode(){ const T = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let c = ''; for(let i = 0; i < 6; i++) c += T[Math.floor(Math.random() * T.length)]; return c; }
+const mijnCode = maakCode();
+let samenCode = null, samenTimer = null, samenBezig = false;
+const anderen = new Map();   // sessie → {mesh, label, doel, wereld}
+document.getElementById('mijnCode').textContent = mijnCode;
+function startSamen(){ if(samenTimer) return; samenTimer = setInterval(samenTik, 400); }
+async function samenTik(){
+  if(!gestart || samenBezig) return;
+  samenBezig = true;
+  try {
+    const r = await fetch('/api/race', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({
+      kamer: 'i' + (samenCode || mijnCode).toLowerCase(), sessie: mijnSessie, naam: mijnNaam,
+      x: camera.position.x, z: camera.position.z, y: voetY, yaw, oog: oogNu,
+      wereld: mapGroep ? 'arena' : 'lobby',              // 'arena' = in de map
+      hp: aantalSpelers, doden: aantalImposters            // (de instellingen van de kamer reizen mee in deze velden)
+    })});
+    const j = await r.json();
+    if(Array.isArray(j.spelers)) verwerkAnderen(j.spelers);
+  } catch(e) {}
+  samenBezig = false;
+}
+function naamLabel(naam){
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64; const g = c.getContext('2d');
+  g.font = 'bold 34px "Segoe UI",Arial,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = 'rgba(0,0,0,0.55)'; const w = Math.min(250, g.measureText(naam).width + 24); g.fillRect(128 - w / 2, 6, w, 52);
+  g.fillStyle = '#fff'; g.fillText(naam, 128, 32);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false})); sp.scale.set(2, 0.5, 1); sp.position.y = 2.1; return sp;
+}
+function verwerkAnderen(lijst){
+  const gezien = new Set();
+  for(const p of lijst){
+    gezien.add(p.sessie);
+    let a = anderen.get(p.sessie);
+    if(!a){
+      let h = 0; for(const ch of p.sessie) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      const mesh = maakBot(h); mesh.position.set(p.x, p.y || 0, p.z); mesh.add(naamLabel(p.naam || 'gast')); scene.add(mesh);
+      a = {mesh, x: p.x, z: p.z, y: p.y || 0}; anderen.set(p.sessie, a);
+    }
+    a.doel = p; a.wereld = p.wereld;
+    a.mesh.visible = (p.wereld === (mapGroep ? 'arena' : 'lobby'));   // alleen zien als je in dezelfde wereld bent
+    // de baas van de kamer is al in de map? → dan ga jij ook (met zijn instellingen)
+    if(!mapGroep && p.wereld === 'arena' && gestart && !winOpen){
+      if(p.hp >= 5 && p.hp <= 25) aantalSpelers = p.hp;
+      if(p.doden >= 1 && p.doden <= 3) aantalImposters = p.doden;
+      zwartDicht(); startGame();
+    }
+  }
+  for(const [sessie, a] of anderen){ if(!gezien.has(sessie)){ scene.remove(a.mesh); anderen.delete(sessie); } }
+  const n = anderen.size;
+  document.getElementById('codeStatus').textContent = samenCode ? ('✅ je zit in de lobby van ' + samenCode + (n ? ' — samen met ' + n : ' — wachten op de ander…')) : (n ? '👥 ' + n + ' speler' + (n > 1 ? 's' : '') + ' in jouw lobby' : '');
+}
+function updateAnderen(dt){
+  for(const a of anderen.values()){
+    if(!a.doel) continue;
+    const k = Math.min(1, dt * 10);
+    a.x += (a.doel.x - a.x) * k; a.z += (a.doel.z - a.z) * k; a.y += ((a.doel.y || 0) - a.y) * k;
+    a.mesh.position.set(a.x, a.y, a.z);
+    a.mesh.rotation.y = (a.doel.yaw || 0) + Math.PI;   // het poppetje kijkt waar de speler kijkt
+    a.mesh.scale.y = Math.max(0.5, (a.doel.oog || 1.6) / 1.6);   // bukken zie je ook
+  }
+}
+function codeInvoeren(){
+  const inv = document.getElementById('codeInvoer'), st = document.getElementById('codeStatus');
+  const code = inv.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if(code.length !== 6){ st.textContent = '❌ een code heeft 6 tekens'; return; }
+  if(code === mijnCode){ st.textContent = '😄 dat is je eigen code'; return; }
+  samenCode = code;
+  for(const [sessie, a] of anderen){ scene.remove(a.mesh); anderen.delete(sessie); }
+  st.textContent = '⏳ verbinden met ' + code + '…';
+  startSamen();
+}
+document.getElementById('codeOk').addEventListener('click', codeInvoeren);
+document.getElementById('codeInvoer').addEventListener('keydown', e => { if(e.key === 'Enter') codeInvoeren(); e.stopPropagation(); });
+
 // ── 🤖 BOTS: de lege plekken worden opgevuld met bots die door de map lopen ──
 // (echt samen spelen komt later — nu zijn alle medespelers bots)
 const bots = [];
@@ -623,7 +718,9 @@ function startGame(){
   camera.position.set(0, OOG, -66); voetY = 0; velY = 0; yaw = Math.PI; pitch = 0;   // bovenaan de map, kijkend over de platen
   document.getElementById('startGame').style.display = 'none';
   document.getElementById('stap').textContent = '🕵️ IMPOSTER — de map';
-  startBots(aantalSpelers - 1);   // jij + de rest = bots (tot er echte mensen meedoen)
+  startBots(Math.max(0, aantalSpelers - 1 - anderen.size));   // jij + echte spelers + de rest = bots
+  document.getElementById('instelKnop').style.display = 'none';   // Brian: instellingen-knop weg als je al speelt
+  for(const a of anderen.values()) a.mesh.visible = (a.wereld === 'arena');
   document.getElementById('taken').style.display = 'block'; takenGedaan = 0; document.getElementById('takenTekst').textContent = '0 / ' + tvs.length; document.getElementById('takenVul').style.width = '0%';
   if(!IS_TOUCH) renderer.domElement.requestPointerLock();
 }
@@ -638,6 +735,7 @@ function loop(t){
   if(gestart && !somOpen && !winOpen) updateLopen(dt);
   if(gestart && !winOpen) updateSom();
   if(gestart && mapGroep && !winOpen) updateBots(dt);
+  if(gestart) updateAnderen(dt);
   camera.rotation.set(0, 0, 0); camera.rotateY(yaw); camera.rotateX(pitch);
   renderer.render(scene, camera);
 }
