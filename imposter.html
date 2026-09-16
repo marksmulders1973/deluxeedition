@@ -89,7 +89,8 @@
   #somUitslag{min-height:26px;margin-top:10px;font-size:18px;font-weight:bold;color:#ffd700}
 
   /* zwart beeld na klik op het tandwiel (Brian) */
-  #zwart{position:fixed;inset:0;background:#000;z-index:30;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+  #zwart{position:fixed;inset:0;background:#000;z-index:30;display:none;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;overflow-y:auto;padding:80px 16px 50px;box-sizing:border-box;touch-action:pan-y;-webkit-overflow-scrolling:touch}   /* Brian: scrollen in de instellingen */
+  #zwart h2{margin-top:0}
   #zwart.open{display:flex}
   #zwart h2{color:#fff;font-size:30px;margin:0 0 22px;letter-spacing:2px}
   #zwart .keuzes{display:flex;gap:16px}
@@ -322,6 +323,7 @@ addEventListener('touchstart', e => {
   for(const t of e.changedTouches){ if(t.clientX > innerWidth / 2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY}); }
 }, {passive: false});
 addEventListener('touchmove', e => {
+  if(e.target.closest && e.target.closest('#zwart,#meeting,#som,#win,#rol')) return;   // in een paneel mag je gewoon scrollen
   for(const t of e.changedTouches){
     const v = kijkVingers.get(t.identifier); if(!v) continue;
     yaw -= (t.clientX - v.x) * 0.005; pitch -= (t.clientY - v.y) * 0.005;
