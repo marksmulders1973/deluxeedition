@@ -330,11 +330,21 @@ function bouwMap(){
     const tex = posterTex(t[0], t[1], t[2], t[3], t[4]);
     const mat = new THREE.MeshStandardMaterial({map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.45, roughness: 0.5});
     const zijMat = new THREE.MeshStandardMaterial({color: 0x101018, roughness: 0.5, metalness: 0.3});
-    // een platte plaat: van opzij alleen een donkere vierkante plaat, van boven de tegel (het logo!)
+    // een plaat: van opzij alleen een donkere vierkante plaat, van boven de tegel (het logo!)
+    // Brian: "maak dat ze allemaal scheef liggen" → elke plaat een eigen draai (−35° … +35°)
+    const draai = (Math.random() - 0.5) * 1.2;
     const blok = new THREE.Mesh(new THREE.BoxGeometry(TEGEL, TEGEL_H, TEGEL), [zijMat, zijMat, mat, zijMat, zijMat, zijMat]);
-    blok.position.set(x, TEGEL_H / 2, z); g.add(blok);
-    blokken.push({x, z, h: TEGEL / 2});
+    blok.position.set(x, TEGEL_H / 2, z); blok.rotation.y = draai; g.add(blok);
+    blokken.push({x, z, h: TEGEL / 2, draai});
   });
+  // ── de muur om alles heen (Brian): donker, 7 m hoog, precies op de grens van de map ──
+  const MUUR_H = 7, gx = TEL_B / 2, gz = TEL_L / 2;
+  const muurMat = new THREE.MeshStandardMaterial({color: 0x141420, roughness: 0.6, metalness: 0.2});
+  for(const [x, z, b, l] of [[0, -gz, TEL_B + 2, 1], [0, gz, TEL_B + 2, 1], [-gx, 0, 1, TEL_L + 2], [gx, 0, 1, TEL_L + 2]]){
+    const m = new THREE.Mesh(new THREE.BoxGeometry(b, MUUR_H, l), muurMat); m.position.set(x, MUUR_H / 2, z); g.add(m);
+    // een dunne lichtstreep bovenop, om en om rood en blauw (zoals op de site)
+    const streep = new THREE.Mesh(new THREE.BoxGeometry(b + 0.1, 0.12, l + 0.1), new THREE.MeshBasicMaterial({color: z !== 0 ? 0xff3b3b : 0x3b82ff})); streep.position.set(x, MUUR_H + 0.06, z); g.add(streep);
+  }
   // ── licht: het scherm en de tegels gloeien zelf; verder zacht koel licht + een paar witte spots ──
   g.add(new THREE.AmbientLight(0x7f86a8, 0.55));
   g.add(new THREE.HemisphereLight(0x8899cc, 0x101018, 0.45));
@@ -343,7 +353,11 @@ function bouwMap(){
 }
 // botsen met de tegel-blokken: mag je op (x, z) staan?
 function botstBlok(x, z){
-  for(const b of blokken){ if(Math.abs(x - b.x) < b.h + MARGE && Math.abs(z - b.z) < b.h + MARGE) return true; }
+  for(const b of blokken){
+    const dx = x - b.x, dz = z - b.z, c = Math.cos(-b.draai), sn = Math.sin(-b.draai);
+    const lx = dx * c + dz * sn, lz = -dx * sn + dz * c;   // in de 'eigen' richting van de scheve plaat
+    if(Math.abs(lx) < b.h + MARGE && Math.abs(lz) < b.h + MARGE) return true;
+  }
   return false;
 }
 function startGame(){
