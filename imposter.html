@@ -70,6 +70,10 @@
   #zwart .groepen{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:560px}
   #zwart .groep{min-width:56px;height:56px;padding:0 14px;border-radius:14px;border:3px solid #333;background:#14141c;color:#fff;font-size:22px;font-weight:900;cursor:pointer}
   #zwart .groep.gekozen{border-color:#3b82ff;background:linear-gradient(135deg,#1a3a7a,#3b82ff);box-shadow:0 0 22px rgba(59,130,255,0.6)}
+  #zwart .spelers{display:flex;align-items:center;gap:14px;color:#fff;font-weight:900;font-size:22px}
+  #zwart .spelers input[type=range]{width:260px;accent-color:#3b82ff}
+  #zwart .spelers b{color:#ffd700;min-width:40px;text-align:center;font-size:30px}
+  #zwart .uitleg{color:#8892a6;font-size:13px;margin-top:8px}
   #terug{position:absolute;top:14px;left:14px;padding:10px 18px;font-size:16px;font-weight:bold;color:#fff;border:2px solid rgba(255,255,255,0.35);border-radius:12px;background:rgba(255,255,255,0.08);cursor:pointer}
 </style>
 </head>
@@ -122,6 +126,9 @@
     <button class="groep gekozen" data-g="5">5</button><button class="groep" data-g="6">6</button><button class="groep" data-g="7">7</button><button class="groep" data-g="8">8</button>
     <button class="groep" data-g="middelbaar">middelbaar</button><button class="groep" data-g="hoger">hoger</button>
   </div>
+  <h3>HOEVEEL SPELERS?</h3>
+  <div class="spelers"><span>5</span><input type="range" id="iSpelers" min="5" max="25" step="1" value="5"><span>25</span><b id="wSpelers">5</b></div>
+  <div class="uitleg">Zijn er niet genoeg echte mensen? Dan doen er bots mee 🤖</div>
 </div>
 <button id="instelKnop" title="Instellingen"><svg viewBox="-52 -52 104 104" xmlns="http://www.w3.org/2000/svg"><g fill="#000"><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(0)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(45)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(90)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(135)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(180)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(225)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(270)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(315)"/><circle r="36"/></g><circle r="17" fill="#fff"/></svg></button>
 
@@ -206,6 +213,11 @@ for(const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]){
 
 // ── tandwiel: klik = zwart scherm met de keuze "hoeveel imposters? 1, 2 of 3" + terug-knop (Brian, 16 sep) ──
 let aantalImposters = 1;
+// Brian: kies met hoeveel spelers je speelt (5-25); te weinig echte mensen = bots erbij
+let aantalSpelers = 5;
+try { const n = parseInt(localStorage.getItem('deluxe-imposter-spelers') || '5', 10); if(n >= 5 && n <= 25) aantalSpelers = n; } catch(e) {}
+{ const sl = document.getElementById('iSpelers'); sl.value = aantalSpelers; document.getElementById('wSpelers').textContent = aantalSpelers;
+  sl.addEventListener('input', () => { aantalSpelers = parseInt(sl.value, 10); document.getElementById('wSpelers').textContent = aantalSpelers; try { localStorage.setItem('deluxe-imposter-spelers', String(aantalSpelers)); } catch(e) {} }); }
 // Brian: in de instellingen kies je je groep (1 t/m 8, middelbaar of hoger) → de sommen bij de tv passen erbij
 let groep = '5';
 try { const g = localStorage.getItem('deluxe-imposter-groep'); if(g) groep = g; } catch(e) {}
@@ -558,6 +570,51 @@ function updateSom(){
     if(!somOpen && !tv.klaar && d < 3){ somToon(tv); break; }
   }
 }
+// ── 🤖 BOTS: de lege plekken worden opgevuld met bots die door de map lopen ──
+// (echt samen spelen komt later — nu zijn alle medespelers bots)
+const bots = [];
+const BOT_KLEUREN = [0xff3b3b, 0x3b82ff, 0x2ecc71, 0xffd700, 0xff9f1c, 0x9b59b6, 0x1abc9c, 0xff5fa2, 0xffffff, 0x8e44ad, 0xe67e22, 0x00bcd4];
+function maakBot(i){
+  const g = new THREE.Group();
+  const kleur = BOT_KLEUREN[i % BOT_KLEUREN.length];
+  const mat = new THREE.MeshStandardMaterial({color: kleur, roughness: 0.5});
+  const lijf = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.9, 14), mat); lijf.position.y = 0.75; g.add(lijf);
+  const kop = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 12), mat); kop.position.y = 1.42; g.add(kop);
+  const vizier = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 8), new THREE.MeshStandardMaterial({color: 0x9fd8ff, roughness: 0.1, metalness: 0.3})); vizier.scale.set(1.3, 0.7, 0.6); vizier.position.set(0, 1.46, 0.26); g.add(vizier);
+  for(const sx of [-0.14, 0.14]){ const been = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.34, 8), mat); been.position.set(sx, 0.17, 0); g.add(been); }
+  const rug = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.5, 0.2), mat); rug.position.set(0, 0.85, -0.35); g.add(rug);
+  return g;
+}
+function vrijePlek(){
+  for(let i = 0; i < 40; i++){
+    const x = (Math.random() - 0.5) * (grensX * 2 - 6), z = (Math.random() - 0.5) * (grensZ * 2 - 6);
+    if(!botstBlok(x, z)) return {x, z};
+  }
+  return {x: 0, z: -66};
+}
+function startBots(n){
+  for(const b of bots) mapGroep.remove(b.mesh);
+  bots.length = 0;
+  for(let i = 0; i < n; i++){
+    const p = vrijePlek(), mesh = maakBot(i); mesh.position.set(p.x, 0, p.z); mapGroep.add(mesh);
+    bots.push({mesh, x: p.x, z: p.z, doel: vrijePlek(), snel: 2.2 + Math.random() * 1.4, wacht: Math.random() * 2, stil: 0, stap: Math.random() * 6});
+  }
+}
+function updateBots(dt){
+  for(const b of bots){
+    if(b.wacht > 0){ b.wacht -= dt; continue; }
+    const dx = b.doel.x - b.x, dz = b.doel.z - b.z, d = Math.hypot(dx, dz);
+    if(d < 0.6){ b.doel = vrijePlek(); b.wacht = 0.5 + Math.random() * 3; continue; }   // aangekomen: even kijken, dan nieuw doel
+    const oudX = b.x, oudZ = b.z, st = b.snel * dt;
+    b.x += dx / d * st; if(botstBlok(b.x, oudZ)) b.x = oudX;
+    b.z += dz / d * st; if(botstBlok(b.x, b.z)) b.z = oudZ;
+    b.x = Math.max(-grensX + MARGE, Math.min(grensX - MARGE, b.x)); b.z = Math.max(-grensZ + MARGE, Math.min(grensZ - MARGE, b.z));
+    // vast tegen een muur? → nieuw doel
+    if(Math.hypot(b.x - oudX, b.z - oudZ) < st * 0.2){ b.stil += dt; if(b.stil > 0.7){ b.doel = vrijePlek(); b.stil = 0; } } else b.stil = 0;
+    b.mesh.position.set(b.x, 0, b.z); b.mesh.rotation.y = Math.atan2(dx, dz);
+    b.stap += dt * 10; b.mesh.position.y = Math.abs(Math.sin(b.stap)) * 0.06;   // een beetje huppelen
+  }
+}
 function startGame(){
   if(mapGroep) return;
   mapGroep = bouwMap(); scene.add(mapGroep);
@@ -566,6 +623,7 @@ function startGame(){
   camera.position.set(0, OOG, -66); voetY = 0; velY = 0; yaw = Math.PI; pitch = 0;   // bovenaan de map, kijkend over de platen
   document.getElementById('startGame').style.display = 'none';
   document.getElementById('stap').textContent = '🕵️ IMPOSTER — de map';
+  startBots(aantalSpelers - 1);   // jij + de rest = bots (tot er echte mensen meedoen)
   document.getElementById('taken').style.display = 'block'; takenGedaan = 0; document.getElementById('takenTekst').textContent = '0 / ' + tvs.length; document.getElementById('takenVul').style.width = '0%';
   if(!IS_TOUCH) renderer.domElement.requestPointerLock();
 }
@@ -579,6 +637,7 @@ function loop(t){
   const dt = Math.min((t - vorigeTijd) / 1000, 0.05); vorigeTijd = t;
   if(gestart && !somOpen && !winOpen) updateLopen(dt);
   if(gestart && !winOpen) updateSom();
+  if(gestart && mapGroep && !winOpen) updateBots(dt);
   camera.rotation.set(0, 0, 0); camera.rotateY(yaw); camera.rotateX(pitch);
   renderer.render(scene, camera);
 }
