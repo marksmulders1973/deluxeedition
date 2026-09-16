@@ -332,10 +332,30 @@ function bouwMap(){
     const zijMat = new THREE.MeshStandardMaterial({color: 0x101018, roughness: 0.5, metalness: 0.3});
     // een plaat: van opzij alleen een donkere vierkante plaat, van boven de tegel (het logo!)
     // Brian: "maak dat ze allemaal scheef liggen" → elke plaat een eigen draai (−35° … +35°)
-    const draai = (Math.random() - 0.5) * 1.2;
-    const blok = new THREE.Mesh(new THREE.BoxGeometry(TEGEL, TEGEL_H, TEGEL), [zijMat, zijMat, mat, zijMat, zijMat, zijMat]);
-    blok.position.set(x, TEGEL_H / 2, z); blok.rotation.y = draai; g.add(blok);
-    blokken.push({x, z, h: TEGEL / 2, draai});
+    // Brian: "maak dat je in alle vakjes in kan" → elke plaat is HOL: vier muren + een dak, met in één
+    // muur een opening van 3 m waar je naar binnen loopt. Binnen is het leeg (de vloer is de map zelf).
+    const draai = (Math.random() - 0.5) * 1.2, DIK = 0.5, DEUR = 3.0, h = TEGEL / 2;
+    const kamer = new THREE.Group(); kamer.position.set(x, 0, z); kamer.rotation.y = draai; g.add(kamer);
+    // het dak: bovenkant = de tegel
+    const dak = new THREE.Mesh(new THREE.BoxGeometry(TEGEL, 0.3, TEGEL), [zijMat, zijMat, mat, zijMat, zijMat, zijMat]);
+    dak.position.y = TEGEL_H - 0.15; kamer.add(dak);
+    // de muren: in lokale coördinaten (x = links/rechts, z = voor/achter), als rechthoeken voor het botsen
+    const deurKant = Math.floor(Math.random() * 4);          // 0 = voor (+z), 1 = achter (−z), 2 = rechts (+x), 3 = links (−x)
+    const muren = [];                                         // {x0, x1, z0, z1} lokaal
+    const voeg = (x0, x1, z0, z1) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, TEGEL_H, z1 - z0), zijMat);
+      m.position.set((x0 + x1) / 2, TEGEL_H / 2, (z0 + z1) / 2); kamer.add(m); muren.push({x0, x1, z0, z1});
+    };
+    for(let kant = 0; kant < 4; kant++){
+      const langs = kant < 2;                                 // muur langs de x-as (voor/achter) of langs de z-as (links/rechts)
+      const a0 = -h, a1 = h;                                  // van hoek tot hoek
+      const b0 = kant === 0 ? h - DIK : kant === 1 ? -h : kant === 2 ? h - DIK : -h, b1 = b0 + DIK;
+      const stukken = kant === deurKant ? [[a0, -DEUR / 2], [DEUR / 2, a1]] : [[a0, a1]];   // deur = gat in het midden
+      for(const [s0, s1] of stukken){ if(langs) voeg(s0, s1, b0, b1); else voeg(b0, b1, s0, s1); }
+    }
+    // een lampje binnen, zodat het kamertje niet pikdonker is
+    const lampje = new THREE.PointLight(new THREE.Color(t[4]), 0.6, 14, 1.5); lampje.position.set(0, TEGEL_H - 0.6, 0); kamer.add(lampje);
+    blokken.push({x, z, h, draai, muren});
   });
   // ── de muur om alles heen (Brian): donker, 7 m hoog, precies op de grens van de map ──
   const MUUR_H = 7, gx = TEL_B / 2, gz = TEL_L / 2;
@@ -354,9 +374,11 @@ function bouwMap(){
 // botsen met de tegel-blokken: mag je op (x, z) staan?
 function botstBlok(x, z){
   for(const b of blokken){
-    const dx = x - b.x, dz = z - b.z, c = Math.cos(-b.draai), sn = Math.sin(-b.draai);
-    const lx = dx * c + dz * sn, lz = -dx * sn + dz * c;   // in de 'eigen' richting van de scheve plaat
-    if(Math.abs(lx) < b.h + MARGE && Math.abs(lz) < b.h + MARGE) return true;
+    const dx = x - b.x, dz = z - b.z;
+    if(Math.abs(dx) > b.h * 1.6 || Math.abs(dz) > b.h * 1.6) continue;   // ver weg: overslaan
+    const c = Math.cos(b.draai), sn = Math.sin(b.draai);
+    const lx = dx * c - dz * sn, lz = dx * sn + dz * c;     // het punt in de 'eigen' richting van de scheve kamer
+    for(const m of b.muren){ if(lx > m.x0 - MARGE && lx < m.x1 + MARGE && lz > m.z0 - MARGE && lz < m.z1 + MARGE) return true; }
   }
   return false;
 }
