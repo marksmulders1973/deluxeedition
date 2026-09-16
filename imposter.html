@@ -39,6 +39,14 @@
   #takenBalk{height:14px;background:rgba(255,255,255,0.12);border-radius:8px;overflow:hidden}
   #takenVul{height:100%;width:0%;background:linear-gradient(90deg,#2ecc71,#a3e635);border-radius:8px;transition:width .5s}
 
+  /* 🏆 gewonnen: alle opdrachten gedaan (Brian) */
+  #win{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:28;background:rgba(0,0,0,0.8);text-align:center}
+  #win.open{display:flex}
+  #win h1{font-size:54px;margin:0 0 10px;letter-spacing:3px;background:linear-gradient(90deg,#ffd700,#ff3b3b,#3b82ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:winPuls 1s infinite alternate}
+  @keyframes winPuls{from{transform:scale(1)}to{transform:scale(1.08)}}
+  #win p{color:#fff;font-size:20px;margin:6px 0 22px}
+  #winKnop{padding:16px 40px;font-size:22px;font-weight:900;color:#fff;border:none;border-radius:14px;background:linear-gradient(135deg,#ff3b3b,#3b82ff);cursor:pointer;box-shadow:0 0 30px rgba(59,130,255,0.5)}
+
   /* 🧮 rekensom bij de tv (Brian) */
   #som{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:25;background:rgba(0,0,0,0.55)}
   #som.open{display:flex}
@@ -83,6 +91,13 @@
 
 <!-- ⚙️ tandwiel-knop (Brian: "alleen deze knop", rechts in beeld — doet nog niks) -->
 <button id="startGame">▶ START GAME</button>
+
+<!-- 🏆 winscherm: als de opdrachten-balk vol is -->
+<div id="win">
+  <h1>🏆 JE HEBT GEWONNEN!</h1>
+  <p>Alle 24 opdrachten gedaan — alle tegels staan recht!</p>
+  <button id="winKnop">🔁 NOG EEN KEER</button>
+</div>
 
 <!-- 🧮 rekensom: verschijnt als je dicht bij een tv komt -->
 <div id="som"><div class="paneel">
@@ -230,7 +245,7 @@ document.addEventListener('mousemove', e => {
 // telefoon: 1 vinger vegen (rechterhelft) = kijken
 const kijkVingers = new Map();
 addEventListener('touchstart', e => {
-  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart,#startGame,#som,#taken')) return;   // knoppen zijn geen kijk-vingers!
+  if(e.target.closest && e.target.closest('#joy,#springKnop,#hud,#start,#instelKnop,#zwart,#startGame,#som,#taken,#win')) return;   // knoppen zijn geen kijk-vingers!
   for(const t of e.changedTouches){ if(t.clientX > innerWidth / 2) kijkVingers.set(t.identifier, {x: t.clientX, y: t.clientY}); }
 }, {passive: false});
 addEventListener('touchmove', e => {
@@ -518,7 +533,15 @@ function taakGedaan(){
   const totaal = tvs.length || TEGELS.length;
   document.getElementById('takenTekst').textContent = takenGedaan + ' / ' + totaal;
   document.getElementById('takenVul').style.width = Math.round(100 * takenGedaan / totaal) + '%';
+  if(takenGedaan >= totaal) setTimeout(gewonnen, 1200);   // Brian: balk vol = je wint!
 }
+let winOpen = false;
+function gewonnen(){
+  winOpen = true; somOpen = false; document.getElementById('som').classList.remove('open');
+  document.getElementById('win').classList.add('open');
+  if(document.pointerLockElement) document.exitPointerLock();
+}
+document.getElementById('winKnop').addEventListener('click', () => location.reload());
 function updateSom(){
   if(!mapGroep) return;
   // tegels die recht gezet worden: langzaam naar draai 0 draaien (het botsen draait mee)
@@ -554,8 +577,8 @@ let gestart = false;
 function loop(t){
   requestAnimationFrame(loop);
   const dt = Math.min((t - vorigeTijd) / 1000, 0.05); vorigeTijd = t;
-  if(gestart && !somOpen) updateLopen(dt);
-  if(gestart) updateSom();
+  if(gestart && !somOpen && !winOpen) updateLopen(dt);
+  if(gestart && !winOpen) updateSom();
   camera.rotation.set(0, 0, 0); camera.rotateY(yaw); camera.rotateX(pitch);
   renderer.render(scene, camera);
 }
