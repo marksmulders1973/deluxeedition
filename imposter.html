@@ -119,22 +119,23 @@ const vloerMat   = new THREE.MeshStandardMaterial({map: tegelTexture(KAMER / 2, 
 const muurMat    = new THREE.MeshStandardMaterial({map: tegelTexture(KAMER / 2, 'rgba(0,0,0,0.16)'), color: 0xeeeef2, roughness: 0.6});
 const plafondMat = new THREE.MeshStandardMaterial({color: 0xeeeef4, emissive: 0x3a3a42, roughness: 0.9});   // plafond krijgt weinig licht → een beetje eigen gloed
 
+const lobby = new THREE.Group(); scene.add(lobby);   // de witte kamer = de lobby (verdwijnt als de map start)
 const vloer = new THREE.Mesh(new THREE.PlaneGeometry(KAMER, KAMER), vloerMat);
-vloer.rotation.x = -Math.PI / 2; vloer.receiveShadow = true; scene.add(vloer);
+vloer.rotation.x = -Math.PI / 2; vloer.receiveShadow = true; lobby.add(vloer);
 const plafond = new THREE.Mesh(new THREE.PlaneGeometry(KAMER, KAMER), plafondMat);
-plafond.rotation.x = Math.PI / 2; plafond.position.y = HOOG; scene.add(plafond);
+plafond.rotation.x = Math.PI / 2; plafond.position.y = HOOG; lobby.add(plafond);
 {
   const mm = muurMat.clone(); mm.map = tegelTexture(KAMER / 2, 'rgba(0,0,0,0.16)'); mm.map.repeat.set(KAMER / 2, HOOG / 2);
   const geo = new THREE.PlaneGeometry(KAMER, HOOG);
   const plekken = [[0, HOOG / 2, -KAMER / 2, 0], [0, HOOG / 2, KAMER / 2, Math.PI], [-KAMER / 2, HOOG / 2, 0, Math.PI / 2], [KAMER / 2, HOOG / 2, 0, -Math.PI / 2]];
-  for(const [x, y, z, ry] of plekken){ const m = new THREE.Mesh(geo, mm); m.position.set(x, y, z); m.rotation.y = ry; m.receiveShadow = true; scene.add(m); }
+  for(const [x, y, z, ry] of plekken){ const m = new THREE.Mesh(geo, mm); m.position.set(x, y, z); m.rotation.y = ry; m.receiveShadow = true; lobby.add(m); }
 }
 // een dunne witte plint onderaan de muren (geeft de hoeken een randje)
 {
   const plintMat = new THREE.MeshStandardMaterial({color: 0xd9d9e0, roughness: 0.5});
   for(let i = 0; i < 4; i++){
     const p = new THREE.Mesh(new THREE.BoxGeometry(KAMER, 0.12, 0.06), plintMat);
-    const a = i * Math.PI / 2; p.position.set(Math.sin(a) * (KAMER / 2 - 0.03), 0.06, Math.cos(a) * (KAMER / 2 - 0.03)); p.rotation.y = a; scene.add(p);
+    const a = i * Math.PI / 2; p.position.set(Math.sin(a) * (KAMER / 2 - 0.03), 0.06, Math.cos(a) * (KAMER / 2 - 0.03)); p.rotation.y = a; lobby.add(p);
   }
 }
 
@@ -146,9 +147,9 @@ const lampen = [];
 for(const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]){
   const l = new THREE.PointLight(0xffffff, 0.42, 30, 1.6); l.position.set(x, HOOG - 0.25, z);
   if(!IS_TOUCH && lampen.length === 0){ l.castShadow = true; l.shadow.mapSize.set(1024, 1024); l.shadow.bias = -0.002; }
-  scene.add(l); lampen.push(l);
+  lobby.add(l); lampen.push(l);
   const bak = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.06, 1.2), new THREE.MeshBasicMaterial({color: 0xffffff}));
-  bak.position.set(x, HOOG - 0.03, z); scene.add(bak);
+  bak.position.set(x, HOOG - 0.03, z); lobby.add(bak);
 }
 
 // ── tandwiel: klik = zwart scherm met de keuze "hoeveel imposters? 1, 2 of 3" + terug-knop (Brian, 16 sep) ──
@@ -222,6 +223,7 @@ let springTik = false;
 document.getElementById('springKnop').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); springTik = true; }, {passive: false});
 
 const LOOP_SNELHEID = 3.2, SPRINT_SNELHEID = 5.8, BUK_SNELHEID = 1.5, MARGE = 0.4;
+let grens = KAMER / 2;   // hoe ver je mag lopen (lobby: 10 m, map: 18 m)
 let velY = 0, voetY = 0, opGrond = true, oogNu = OOG, springWas = false, vorigeTijd = 0;
 
 function updateLopen(dt){
@@ -243,8 +245,8 @@ function updateLopen(dt){
     camera.position.z += (-nvx * sin + nvz * cos) * snelheid * dt;
   }
   // niet door de muren heen
-  camera.position.x = Math.max(-KAMER / 2 + MARGE, Math.min(KAMER / 2 - MARGE, camera.position.x));
-  camera.position.z = Math.max(-KAMER / 2 + MARGE, Math.min(KAMER / 2 - MARGE, camera.position.z));
+  camera.position.x = Math.max(-grens + MARGE, Math.min(grens - MARGE, camera.position.x));
+  camera.position.z = Math.max(-grens + MARGE, Math.min(grens - MARGE, camera.position.z));
   // springen (spatie of groene knop) + zwaartekracht
   const springNu = !!toets['Space'] || springTik; springTik = false;
   if(springNu && !springWas && opGrond){ velY = 5.2; opGrond = false; }
@@ -256,6 +258,120 @@ function updateLopen(dt){
   oogNu += (doelOog - oogNu) * Math.min(1, 12 * dt);
   camera.position.y = voetY + oogNu;
 }
+
+// ═══════════════ DE MAP "DELUXEEDITION" (Brian, 16 sep: "een map die lijkt op deluxeedition,
+// dus als muur heb je bijv. de obliterator logo") ═══════════════
+// Donkere vloer met het rood/blauwe raster van de website, muren = reusachtige spel-posters
+// (OBLITERATOR, BLOKWERELD, IMPOSTER) en het echte DELUXE EDITION-logo, neon-randen in rood en blauw,
+// en langs de muren de kleine speltegels van de homepage.
+const MAP = 36, MAP_HOOG = 8;
+let mapGroep = null;
+// een speltegel zoals op de homepage, getekend op een canvas (donker kaartje, rood/blauwe rand, emoji, naam, status)
+function posterTex(emoji, naam, status, kleurA, kleurB, breed = 1024, hoog = 1024, img = null){
+  const c = document.createElement('canvas'); c.width = breed; c.height = hoog; const g = c.getContext('2d');
+  g.fillStyle = '#14141c'; g.fillRect(0, 0, breed, hoog);
+  // zacht raster zoals de achtergrond van de site
+  g.strokeStyle = 'rgba(59,130,255,0.10)'; g.lineWidth = 2; for(let x = 0; x < breed; x += 44){ g.beginPath(); g.moveTo(x, 0); g.lineTo(x, hoog); g.stroke(); }
+  g.strokeStyle = 'rgba(255,59,59,0.08)'; for(let y = 0; y < hoog; y += 44){ g.beginPath(); g.moveTo(0, y); g.lineTo(breed, y); g.stroke(); }
+  // rand in verloop
+  const rand = g.createLinearGradient(0, 0, breed, hoog); rand.addColorStop(0, kleurA); rand.addColorStop(1, kleurB);
+  g.strokeStyle = rand; g.lineWidth = breed * 0.03; g.strokeRect(g.lineWidth / 2, g.lineWidth / 2, breed - g.lineWidth, hoog - g.lineWidth);
+  // gloed achter de emoji
+  const gl = g.createRadialGradient(breed / 2, hoog * 0.4, 10, breed / 2, hoog * 0.4, breed * 0.4); gl.addColorStop(0, kleurA.replace('rgb(', 'rgba(').replace(')', ',0.35)')); gl.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gl; g.fillRect(0, 0, breed, hoog);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  if(img){ const h = hoog * 0.88, w = h * img.width / img.height; g.drawImage(img, breed / 2 - w / 2, hoog * 0.06, w, h); const t = new THREE.CanvasTexture(c); t.anisotropy = 8; return t; }   // het logo: groot in het midden, klaar
+  g.font = Math.round(hoog * 0.30) + 'px "Segoe UI Emoji","Apple Color Emoji",sans-serif'; g.fillText(emoji, breed / 2, hoog * 0.38);
+  // naam in wit, met een gekleurde gloed
+  g.font = '900 ' + Math.round(Math.min(hoog * 0.11, breed * 1.5 / Math.max(6, naam.length))) + 'px "Segoe UI",Arial,sans-serif';
+  g.fillStyle = '#fff'; g.shadowColor = kleurB; g.shadowBlur = 30; g.fillText(naam, breed / 2, hoog * 0.66); g.shadowBlur = 0;
+  // status-pil
+  const pw = breed * 0.5, ph = hoog * 0.075, px = breed / 2 - pw / 2, py = hoog * 0.76;
+  const pil = g.createLinearGradient(px, 0, px + pw, 0); pil.addColorStop(0, kleurA); pil.addColorStop(1, kleurB);
+  g.fillStyle = pil; g.beginPath(); if(g.roundRect) g.roundRect(px, py, pw, ph, ph / 2); else g.rect(px, py, pw, ph); g.fill();
+  g.fillStyle = '#fff'; g.font = 'bold ' + Math.round(ph * 0.55) + 'px "Segoe UI",Arial,sans-serif'; g.fillText(status, breed / 2, py + ph / 2);
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 8; return t;
+}
+// de donkere vloer met het raster van de site
+function rasterTex(){
+  const c = document.createElement('canvas'); c.width = c.height = 512; const g = c.getContext('2d');
+  g.fillStyle = '#0d0d16'; g.fillRect(0, 0, 512, 512);
+  g.lineWidth = 3;
+  for(let i = 0; i <= 512; i += 64){ g.strokeStyle = 'rgba(59,130,255,0.35)'; g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 512); g.stroke(); g.strokeStyle = 'rgba(255,59,59,0.30)'; g.beginPath(); g.moveTo(0, i); g.lineTo(512, i); g.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(MAP / 4, MAP / 4); t.anisotropy = 8; return t;
+}
+const ROOD = 'rgb(255,59,59)', BLAUW = 'rgb(59,130,255)', GROEN = 'rgb(46,204,113)', PAARS = 'rgb(155,89,182)', GEEL = 'rgb(255,215,0)', ORANJE = 'rgb(255,159,28)';
+function bouwMap(){
+  const g = new THREE.Group();
+  // vloer + plafond
+  const vloerM = new THREE.Mesh(new THREE.PlaneGeometry(MAP, MAP), new THREE.MeshStandardMaterial({map: rasterTex(), roughness: 0.4, metalness: 0.2}));
+  vloerM.rotation.x = -Math.PI / 2; g.add(vloerM);
+  const plafondM = new THREE.Mesh(new THREE.PlaneGeometry(MAP, MAP), new THREE.MeshStandardMaterial({color: 0x0a0a12, roughness: 0.9}));
+  plafondM.rotation.x = Math.PI / 2; plafondM.position.y = MAP_HOOG; g.add(plafondM);
+  // de vier muren: donker, met daarop een reusachtige poster (de muur = het logo)
+  const muurM = new THREE.MeshStandardMaterial({color: 0x101018, roughness: 0.7});
+  const PB = 1900, PH = 1000;   // canvas-maat van een grote poster (breed, zoals de muur)
+  const posters = [
+    {logo: true},                                                                                       // noord: het echte DELUXE EDITION-logo
+    {tex: posterTex('🛸', 'OBLITERATOR', '▶ SPEELBAAR', ROOD, BLAUW, PB, PH)},                          // oost
+    {tex: posterTex('🌍', 'BLOKWERELD ∞', '▶ EINDELOOS 3D', 'rgb(23,52,4)', 'rgb(111,194,79)', PB, PH)},   // zuid
+    {tex: posterTex('🕵️', 'IMPOSTER', '▶ NIEUW', 'rgb(139,0,0)', ROOD, PB, PH)},                          // west
+  ];
+  // per muur: positie, draaiing, en de richting "de kamer in" (nx, nz)
+  const plekken = [[0, -MAP / 2, 0, 0, 1], [MAP / 2, 0, -Math.PI / 2, -1, 0], [0, MAP / 2, Math.PI, 0, -1], [-MAP / 2, 0, Math.PI / 2, 1, 0]];
+  plekken.forEach(([x, z, ry, nx, nz], i) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(MAP, MAP_HOOG), muurM); m.position.set(x, MAP_HOOG / 2, z); m.rotation.y = ry; g.add(m);
+    // de grote poster: bijna de hele muur hoog
+    const maat = MAP_HOOG * 0.92, breed = maat * PB / PH;   // 7,4 m hoog, 14 m breed
+    const pm = new THREE.MeshStandardMaterial({color: posters[i].logo ? 0x14141c : 0xffffff, map: posters[i].tex || null, roughness: 0.5, emissive: 0xffffff, emissiveMap: posters[i].tex || null, emissiveIntensity: 0.55});
+    if(posters[i].logo){ const img = new Image(); img.onload = () => { const t = posterTex('', '', '', ROOD, BLAUW, PB, PH, img); pm.map = t; pm.emissiveMap = t; pm.color.set(0xffffff); pm.emissiveIntensity = 0.6; pm.needsUpdate = true; }; img.src = 'images/logo.jpg'; }
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(breed, maat), pm);
+    p.position.set(x + nx * 0.06, MAP_HOOG / 2 + 0.25, z + nz * 0.06); p.rotation.y = ry; g.add(p);
+    // links en rechts van de poster: neon-strepen (rood links, blauw rechts — als het logo)
+    for(const kant of [-1, 1]){
+      const off = kant * (breed / 2 + 0.6);
+      const ox = Math.cos(ry) * off, oz = -Math.sin(ry) * off;   // langs de muur
+      const neon = new THREE.Mesh(new THREE.BoxGeometry(0.16, MAP_HOOG * 0.9, 0.16), new THREE.MeshBasicMaterial({color: kant < 0 ? 0xff3b3b : 0x3b82ff}));
+      neon.position.set(x + ox + nx * 0.12, MAP_HOOG / 2, z + oz + nz * 0.12); g.add(neon);
+      const licht = new THREE.PointLight(kant < 0 ? 0xff3b3b : 0x3b82ff, 0.9, 16, 1.5); licht.position.set(neon.position.x + nx * 1.2, MAP_HOOG / 2, neon.position.z + nz * 1.2); g.add(licht);
+    }
+  });
+  // neon-rand langs de vloer: om en om rood en blauw, net als de tegels op de site
+  for(let i = 0; i < 4; i++){
+    const a = i * Math.PI / 2;
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(MAP - 0.4, 0.08, 0.14), new THREE.MeshBasicMaterial({color: i % 2 ? 0x3b82ff : 0xff3b3b}));
+    strip.position.set(Math.sin(a) * (MAP / 2 - 0.1), 0.05, Math.cos(a) * (MAP / 2 - 0.1)); strip.rotation.y = a; g.add(strip);
+  }
+  // de kleine speltegels van de homepage: als blokken langs de muren (met een tegel-poster erop)
+  const tegels = [['1', 'OBLITERATOR', '▶ SPEELBAAR', ROOD, BLAUW], ['2', 'MOFFEL', '▶ OP ROBLOX', BLAUW, ROOD], ['⛏️', 'ADVENTURE CRAFT', '▶ SPEELBAAR', 'rgb(31,157,85)', GROEN], ['🌍', 'BLOKWERELD ∞', '▶ EINDELOOS 3D', 'rgb(23,52,4)', 'rgb(111,194,79)'], ['🚀', 'DELUXE BATTLE', '▶ 10 SPELERS', 'rgb(139,0,0)', ROOD], ['🧱', 'MINI-MINECRAFT', '▶ BOUW JE GAME', 'rgb(122,90,0)', GEEL], ['🏝️', 'EILAND', '▶ DOOR JE OGEN', 'rgb(31,122,77)', GROEN], ['⚔️', 'DUELS', '▶ SAMEN SPELEN', 'rgb(74,35,90)', PAARS], ['🕵️', 'IMPOSTER', '▶ NIEUW', 'rgb(139,0,0)', ROOD], ['🚀', 'RAKET RUN', '▶ VAN CLAUDE 🤖', 'rgb(122,74,0)', ORANJE], ['🐍', 'SLANGEN-SNACK', '▶ VAN CLAUDE 🤖', 'rgb(11,83,69)', 'rgb(22,160,133)'], ['🧱', 'BLOKJES-BREKER', '▶ VAN CLAUDE 🤖', 'rgb(122,16,64)', 'rgb(209,58,120)'], ['🏓', 'PONG-ROBOT', '▶ ✏️ ARTHUR', 'rgb(68,74,90)', 'rgb(122,130,153)'], ['🧟', 'ZOMBIE-TIK', '▶ ✏️ ARTHUR', 'rgb(58,90,16)', 'rgb(109,141,42)'], ['🎯', 'DOELWIT-FLITS', '▶ VAN CLAUDE 🤖', 'rgb(122,16,16)', 'rgb(209,58,58)'], ['🧠', 'GEHEUGEN-MATCH', '▶ ✏️ ARTHUR', 'rgb(74,26,122)', 'rgb(141,74,209)']];
+  const blokMat = new THREE.MeshStandardMaterial({color: 0x14141c, roughness: 0.5, metalness: 0.3});
+  tegels.forEach((t, i) => {
+    const kant = Math.floor(i / 4), n = i % 4;                        // 4 tegels per muur: 2 links, 2 rechts van de grote poster
+    const a = kant * Math.PI / 2, langs = [-13.5, -9.5, 9.5, 13.5][n];  // positie langs de muur
+    const afst = MAP / 2 - 1.6;
+    const x = Math.sin(a) * afst + Math.cos(a) * langs, z = Math.cos(a) * afst - Math.sin(a) * langs;
+    const blok = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.6, 1.0), blokMat); blok.position.set(x, 1.3, z); blok.rotation.y = a; g.add(blok);
+    const pt = posterTex(t[0], t[1], t[2], t[3], t[4], 512, 512);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshStandardMaterial({map: pt, emissive: 0xffffff, emissiveMap: pt, emissiveIntensity: 0.5, roughness: 0.5}));
+    face.position.set(x - Math.sin(a) * 0.52, 1.3, z - Math.cos(a) * 0.52); face.rotation.y = a + Math.PI; g.add(face);
+  });
+  // licht: donker maar niet duister — de posters gloeien zelf, plus een wit licht in het midden
+  g.add(new THREE.AmbientLight(0x8888aa, 0.35));
+  const midden = new THREE.PointLight(0xffffff, 0.8, 40, 1.4); midden.position.set(0, MAP_HOOG - 0.5, 0); g.add(midden);
+  return g;
+}
+function startGame(){
+  if(mapGroep) return;
+  mapGroep = bouwMap(); scene.add(mapGroep);
+  lobby.visible = false; scene.background = new THREE.Color(0x0a0a12);
+  grens = MAP / 2;
+  camera.position.set(0, OOG, 6); voetY = 0; velY = 0; yaw = 0; pitch = 0;   // midden in de map, kijkend naar het logo
+  document.getElementById('startGame').style.display = 'none';
+  document.getElementById('stap').textContent = '🕵️ IMPOSTER — de map: deluxeedition';
+  if(!IS_TOUCH) renderer.domElement.requestPointerLock();
+}
+document.getElementById('startGame').addEventListener('click', startGame);
+document.getElementById('startGame').addEventListener('touchstart', e => { e.stopPropagation(); e.preventDefault(); startGame(); }, {passive: false});
 
 // ── game-loop ──
 let gestart = false;
