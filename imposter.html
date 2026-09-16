@@ -51,6 +51,10 @@
   #zwart .keuze small{display:block;font-size:12px;font-weight:normal;color:#8892a6;margin-top:2px}
   #zwart .keuze.gekozen{border-color:#ff3b3b;background:linear-gradient(135deg,#8b0000,#ff3b3b);box-shadow:0 0 22px rgba(255,59,59,0.6)}
   #zwart .keuze.gekozen small{color:#ffd0d0}
+  #zwart h3{color:#fff;font-size:20px;margin:34px 0 12px;letter-spacing:2px}
+  #zwart .groepen{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:560px}
+  #zwart .groep{min-width:56px;height:56px;padding:0 14px;border-radius:14px;border:3px solid #333;background:#14141c;color:#fff;font-size:22px;font-weight:900;cursor:pointer}
+  #zwart .groep.gekozen{border-color:#3b82ff;background:linear-gradient(135deg,#1a3a7a,#3b82ff);box-shadow:0 0 22px rgba(59,130,255,0.6)}
   #terug{position:absolute;top:14px;left:14px;padding:10px 18px;font-size:16px;font-weight:bold;color:#fff;border:2px solid rgba(255,255,255,0.35);border-radius:12px;background:rgba(255,255,255,0.08);cursor:pointer}
 </style>
 </head>
@@ -88,6 +92,12 @@
     <button class="keuze gekozen" data-n="1">1<small>imposter</small></button>
     <button class="keuze" data-n="2">2<small>imposters</small></button>
     <button class="keuze" data-n="3">3<small>imposters</small></button>
+  </div>
+  <h3>WELKE GROEP? (voor de rekensommen)</h3>
+  <div class="groepen">
+    <button class="groep" data-g="1">1</button><button class="groep" data-g="2">2</button><button class="groep" data-g="3">3</button><button class="groep" data-g="4">4</button>
+    <button class="groep gekozen" data-g="5">5</button><button class="groep" data-g="6">6</button><button class="groep" data-g="7">7</button><button class="groep" data-g="8">8</button>
+    <button class="groep" data-g="middelbaar">middelbaar</button><button class="groep" data-g="hoger">hoger</button>
   </div>
 </div>
 <button id="instelKnop" title="Instellingen"><svg viewBox="-52 -52 104 104" xmlns="http://www.w3.org/2000/svg"><g fill="#000"><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(0)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(45)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(90)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(135)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(180)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(225)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(270)"/><rect x="-9" y="-50" width="18" height="24" rx="3" transform="rotate(315)"/><circle r="36"/></g><circle r="17" fill="#fff"/></svg></button>
@@ -173,6 +183,17 @@ for(const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]){
 
 // ── tandwiel: klik = zwart scherm met de keuze "hoeveel imposters? 1, 2 of 3" + terug-knop (Brian, 16 sep) ──
 let aantalImposters = 1;
+// Brian: in de instellingen kies je je groep (1 t/m 8, middelbaar of hoger) → de sommen bij de tv passen erbij
+let groep = '5';
+try { const g = localStorage.getItem('deluxe-imposter-groep'); if(g) groep = g; } catch(e) {}
+for(const k of document.querySelectorAll('#zwart .groep')){
+  k.classList.toggle('gekozen', k.dataset.g === groep);
+  k.addEventListener('click', () => {
+    groep = k.dataset.g;
+    for(const a of document.querySelectorAll('#zwart .groep')) a.classList.toggle('gekozen', a === k);
+    try { localStorage.setItem('deluxe-imposter-groep', groep); } catch(e) {}
+  });
+}
 function zwartBeeld(){ document.getElementById('zwart').classList.add('open'); if(document.pointerLockElement) document.exitPointerLock(); }
 function zwartDicht(){ document.getElementById('zwart').classList.remove('open'); if(!IS_TOUCH && gestart) renderer.domElement.requestPointerLock(); }
 document.getElementById('instelKnop').addEventListener('click', zwartBeeld);
@@ -392,7 +413,7 @@ function bouwMap(){
       const tx = tafel.position.x, tz = tafel.position.z; muren.push({x0: tx - 1.25, x1: tx + 1.25, z0: tz - 1.25, z1: tz + 1.25});
       // de tv in wereld-coördinaten onthouden (voor de rekensom als je dichtbij komt)
       const c = Math.cos(draai), sn = Math.sin(draai);
-      tvs.push({x: x + (tx * c + tz * sn), z: z + (-tx * sn + tz * c), naam: t[1], klaar: false});
+      tvs.push({x: x + (tx * c + tz * sn), z: z + (-tx * sn + tz * c), naam: t[1], klaar: false, kamer, blok: blokken.length, recht: false});
     }
     blokken.push({x, z, h, draai, muren});
   });
@@ -425,12 +446,33 @@ function botstBlok(x, z){
 // Kom je binnen 3 m van een tv, dan verschijnt een som. Goed = ✅ en het paneel gaat dicht;
 // fout = nog een keer proberen. Loop je weg (>5 m), dan kan die tv later weer een som geven.
 let somOpen = false, somAntwoord = 0, somTv = null;
+// de som past bij je groep (gekozen in het tandwiel-scherm)
+const r = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
 function nieuweSom(){
-  const soort = Math.random();
-  let a, b, tekst;
-  if(soort < 0.4){ a = 2 + Math.floor(Math.random() * 48); b = 2 + Math.floor(Math.random() * 48); tekst = a + ' + ' + b; somAntwoord = a + b; }
-  else if(soort < 0.7){ a = 10 + Math.floor(Math.random() * 60); b = 1 + Math.floor(Math.random() * (a - 1)); tekst = a + ' − ' + b; somAntwoord = a - b; }
-  else { a = 2 + Math.floor(Math.random() * 9); b = 2 + Math.floor(Math.random() * 9); tekst = a + ' × ' + b; somAntwoord = a * b; }
+  let a, b, tekst, ant;
+  const kies = Math.random();
+  const plus = (max) => { a = r(1, max - 1); b = r(1, max - a); tekst = a + ' + ' + b; ant = a + b; };
+  const min = (max) => { a = r(2, max); b = r(1, a - 1); tekst = a + ' − ' + b; ant = a - b; };
+  const keer = (maxA, maxB) => { a = r(2, maxA); b = r(2, maxB); tekst = a + ' × ' + b; ant = a * b; };
+  const deel = (maxB, maxAnt) => { b = r(2, maxB); ant = r(2, maxAnt); a = b * ant; tekst = a + ' : ' + b; };
+  switch(groep){
+    case '1': plus(5); break;                                                          // tellen tot 5
+    case '2': kies < 0.6 ? plus(10) : min(10); break;                                    // tot 10
+    case '3': kies < 0.5 ? plus(20) : min(20); break;                                    // tot 20, over het tiental heen
+    case '4': kies < 0.35 ? plus(100) : kies < 0.7 ? min(100) : keer(5, 10); break;      // tot 100 + tafels 1-5
+    case '5': kies < 0.3 ? plus(1000) : kies < 0.55 ? min(1000) : kies < 0.8 ? keer(10, 10) : deel(10, 10); break;   // tafels t/m 10, delen
+    case '6': kies < 0.3 ? keer(99, 9) : kies < 0.55 ? deel(12, 20) : kies < 0.8 ? plus(10000) : min(10000); break;
+    case '7': kies < 0.4 ? keer(99, 99) : kies < 0.7 ? deel(25, 40) : min(100000); break;
+    case '8': if(kies < 0.35){ const pr = [10, 20, 25, 50, 75][r(0, 4)]; const van = r(2, 40) * 4; tekst = pr + '% van ' + van; ant = van * pr / 100; } else if(kies < 0.7) keer(999, 99); else deel(99, 99); break;
+    case 'middelbaar': if(kies < 0.3){ const x = r(2, 12); a = r(2, 9); b = r(1, 30); tekst = a + 'x + ' + b + ' = ' + (a * x + b) + '   →   x'; ant = x; }
+      else if(kies < 0.55){ a = r(2, 20); tekst = a + '²'; ant = a * a; }
+      else if(kies < 0.8){ a = r(-30, 30); b = r(-30, 30); tekst = a + ' + (' + b + ')'; ant = a + b; }
+      else { a = r(2, 9); b = r(2, 5); tekst = a + '^' + b; ant = Math.pow(a, b); } break;
+    default: if(kies < 0.3){ a = r(2, 25); tekst = '√' + (a * a); ant = a; }                // hoger
+      else if(kies < 0.55){ const x = r(2, 15); a = r(2, 12); b = r(1, 50); tekst = a + 'x − ' + b + ' = ' + (a * x - b) + '   →   x'; ant = x; }
+      else if(kies < 0.8) keer(999, 999); else { a = r(2, 30); b = r(2, 30); tekst = a + '² + ' + b + '²'; ant = a * a + b * b; }
+  }
+  somAntwoord = ant;
   document.getElementById('somTekst').textContent = tekst + ' = ?';
 }
 function somToon(tv){
@@ -452,7 +494,7 @@ function somCheck(){
   if(inv.value === '') return;
   if(parseInt(inv.value, 10) === somAntwoord){
     uit.style.color = '#2ecc71'; uit.textContent = '✅ GOED!';
-    if(somTv) somTv.klaar = true;
+    if(somTv){ somTv.klaar = true; somTv.recht = true; }   // Brian: goed = de tegel wordt recht gezet
     setTimeout(somSluit, 900);
   } else {
     uit.style.color = '#ff6b6b'; uit.textContent = '❌ Nee, probeer nog eens';
@@ -463,6 +505,13 @@ document.getElementById('somKnop').addEventListener('click', somCheck);
 document.getElementById('somInvoer').addEventListener('keydown', e => { if(e.key === 'Enter') somCheck(); e.stopPropagation(); });
 function updateSom(){
   if(!mapGroep) return;
+  // tegels die recht gezet worden: langzaam naar draai 0 draaien (het botsen draait mee)
+  for(const tv of tvs){
+    if(!tv.recht || Math.abs(tv.kamer.rotation.y) < 0.002) continue;
+    tv.kamer.rotation.y += (0 - tv.kamer.rotation.y) * 0.06;
+    if(Math.abs(tv.kamer.rotation.y) < 0.002) tv.kamer.rotation.y = 0;
+    blokken[tv.blok].draai = tv.kamer.rotation.y;
+  }
   const px = camera.position.x, pz = camera.position.z;
   for(const tv of tvs){
     const d = Math.hypot(px - tv.x, pz - tv.z);
