@@ -152,8 +152,8 @@
 
 <!-- 🏆 winscherm: als de opdrachten-balk vol is -->
 <div id="win">
-  <h1>🏆 JE HEBT GEWONNEN!</h1>
-  <p>Alle 24 opdrachten gedaan — alle tegels staan recht!</p>
+  <h1 id="winKop">🏆 JE HEBT GEWONNEN!</h1>
+  <p id="winTekst">Alle 24 opdrachten gedaan — alle tegels staan recht!</p>
   <button id="winKnop">🔁 NOG EEN KEER</button>
 </div>
 
@@ -619,8 +619,11 @@ function taakGedaan(){
   if(takenGedaan >= totaal) setTimeout(gewonnen, 1200);   // Brian: balk vol = je wint!
 }
 let winOpen = false;
-function gewonnen(){
+function gewonnen(kop, tekst){
+  if(winOpen) return;
+  if(kop){ document.getElementById('winKop').textContent = kop; document.getElementById('winTekst').textContent = tekst || ''; }
   winOpen = true; somOpen = false; document.getElementById('som').classList.remove('open');
+  meetingOpen = false; document.getElementById('meeting').classList.remove('open');
   document.getElementById('win').classList.add('open');
   if(document.pointerLockElement) document.exitPointerLock();
 }
@@ -921,6 +924,14 @@ function meetingUitslag(){
     else if(k && k.ander){ k.ander.af = true; ligNeer(k.ander.mesh); mijnEvents.push({id: mijnSessie + '-' + Date.now(), doel: k.sessie, soort: 'schade', schade: 60}); uit.textContent = k.naam + ' is eruit gestemd.'; }
   }
   setTimeout(meetingSluit, 4000);
+  checkImpostersWeg();
+}
+// Brian: als alle imposters eruit zijn, winnen de crewmates
+function checkImpostersWeg(){
+  const nog = bots.filter(b => b.imposter && !b.af).length + ((mijnRol === 'imposter' && !ikBenAf) ? 1 : 0);
+  const totaal = bots.filter(b => b.imposter).length + (mijnRol === 'imposter' ? 1 : 0);
+  if(totaal > 0 && nog === 0){ setTimeout(() => gewonnen('🎉 CREWMATES WINNEN!', 'Alle imposters zijn eruit gestemd!' + (mijnRol === 'imposter' ? ' (jij was de imposter… volgende keer beter 😈)' : '')), 4200); return true; }
+  return false;
 }
 function meetingSluit(){
   meetingOpen = false;
