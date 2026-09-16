@@ -4150,7 +4150,9 @@ function updateWeerLucht(dt){
   if(!_luchtMat){ const bol = scene.children.find(o => o.material && o.material.map === luchtTex && o.material.side === THREE.BackSide); _luchtMat = bol ? bol.material : {color: new THREE.Color()}; _fogKleur = scene.fog.color.clone(); _zonSterkte = zon.intensity; }
   if(_fogVer === null){ _fogDichtbij = scene.fog.near; _fogVer = scene.fog.far; }
   scene.fog.near += ((_fogDichtbij * (1 - 0.7 * kO)) - scene.fog.near) * Math.min(1, dt * 0.6);
-  scene.fog.far += ((_fogVer * (1 - 0.68 * kO) * (1 - 0.3 * kU)) - scene.fog.far) * Math.min(1, dt * 0.6);
+  // (Kraken v8: hij is kilometers groot — dan mag de stormmist hem niet opslokken: mist verder weg zolang hij er is)
+  const metKraken = typeof kraken !== 'undefined' && kraken && kraken.fase !== 'borrelt';
+  scene.fog.far += ((_fogVer * (metKraken ? 1.45 : 1) * (1 - (metKraken ? 0.12 : 0.68) * kO) * (1 - 0.3 * kU)) - scene.fog.far) * Math.min(1, dt * 0.6);
   lucht.rotation.y += dt * 0.0025 * (1 + 8 * kO);
   const snelheid = hemelFlits > 0 ? 14 : 0.8;
   const doelL = new THREE.Color(1, 1, 1).lerp(new THREE.Color(0.72, 0.42, 0.28), kU * 0.85).lerp(new THREE.Color(0.30, 0.33, 0.40), kO * 0.8).lerp(new THREE.Color(1.12, 1.12, 1.2), hemelFlits * 0.9);
@@ -4964,11 +4966,12 @@ addEventListener('resize', () => {
 //   🌋 DE VULKAAN — de gewone uitbarsting (7c): rommelen, lavabommen, as.
 // Testen: open eiland.html?ramp=kraken of ?ramp=vulkaan → begint na 3 sec.
 const RAMP_MIN = 90, RAMP_MAX = 180;         // seconden tussen twee rampen
-const KRAKEN_DUUR = 70, KRAKEN_OPKOMST = 11;  // hoe lang hij blijft / hoe lang het opkomen duurt
-// Brian 6 sep: "maak de Kraken 100x groter" — hij is nu 8x zo groot als eerst: zo hoog als de
-// vulkaan (mantel ~200 m, armen ~280 m). Alles wat in meters staat (opkomen, waterbal, schuim,
-// afstand tot jou) schaalt hiermee mee.
-const KRAKEN_SCHAAL = 8;
+const KRAKEN_DUUR = 70, KRAKEN_OPKOMST = 14;  // hoe lang hij blijft / hoe lang het opkomen duurt
+// Brian 6 sep: "maak de Kraken 100x groter" — toen 8x. Brian 16 sep: "maak nu 100x groter" — nu 40x:
+// een mantel van ~1700 m, armen van ~1350 m, hoger dan de wolkenlaag (520 m). Écht 100x (34 km) kan
+// niet: dan zie je alleen nog een muur van huid en niets van de zee of de lucht. Alles wat in meters
+// staat (opkomen, schuim, afstand tot jou, licht) schaalt hiermee mee.
+const KRAKEN_SCHAAL = 40;
 let rampTimer = 0, rampVolgende = 50, rampKeuze = null;   // eerste ramp na ~50 s
 const RAMP_TEST = new URLSearchParams(location.search).get('ramp');
 let rampTestGedaan = false, rampForce = null;
@@ -5428,7 +5431,8 @@ function krakenPlek(){
   const kijk = yaw + Math.PI;                         // de camera kijkt langs -Z bij yaw 0
   const richtingen = [0, 0.35, -0.35, 0.7, -0.7, 1.1, -1.1, 1.6, -1.6, 2.2, -2.2, Math.PI];
   for(const off of richtingen){
-    for(let d = 36 * KRAKEN_SCHAAL; d <= 58 * KRAKEN_SCHAAL; d += 12){
+    // (v8: dichterbij in verhouding tot zijn maat — hij is zo groot dat je omhoog moet kijken)
+    for(let d = 20 * KRAKEN_SCHAAL; d <= 34 * KRAKEN_SCHAAL; d += 12){
       const x = px + Math.sin(kijk + off) * d, z = pz + Math.cos(kijk + off) * d;
       if(hoogteOp(x, z) < -4 && Math.hypot(x, z) < ZEE_GRENS + 45 * KRAKEN_SCHAAL) return {x, z};
     }
@@ -5615,7 +5619,7 @@ function startKraken(){
   zeg('🐙 DE KRAKEN KOMT UIT DE ZEE!!!');
   geluidBrul(); schok = Math.max(schok, 1.6);
   spetter(plek.x, plek.z, 90, 1.6 + KRAKEN_SCHAAL * 0.4);
-  maakGolf(plek.x, plek.z, 24, 50, 46);   // de vloedgolf als hij opkomt
+  maakGolf(plek.x, plek.z, 24 * Math.sqrt(KRAKEN_SCHAAL / 8), 60, 46 * Math.sqrt(KRAKEN_SCHAAL / 8));   // de vloedgolf als hij opkomt (v8: groter monster = hogere golf)
   kraken.golfTimer = 1.2;
 }
 
@@ -5868,8 +5872,9 @@ function updateKraken(dt, t){
       u.vy -= 6 * dt;
       sp.position.x += u.vx * dt; sp.position.y += u.vy * dt; sp.position.z += u.vz * dt;
       sp.scale.set(u.maat * (1 + u.leeftijd * 0.3), u.maat * (6 + u.leeftijd * 3), 1);
-      sp.material.opacity = Math.max(0, 0.55 - u.leeftijd * 0.22);
-      if(sp.position.y < 1 || u.leeftijd > 2.6){ if(sp.position.y < 1 && Math.random() < 0.5) spetter(sp.position.x, sp.position.z, 2, 0.5); scene.remove(sp); sp.material.dispose(); krakenSpetters.splice(i, 1); }
+      const L = 2.6 * Math.sqrt(KRAKEN_SCHAAL / 8);   // v8: bij een reus valt het water seconden lang
+      sp.material.opacity = Math.max(0, 0.55 * (1 - u.leeftijd / L));
+      if(sp.position.y < 1 || u.leeftijd > L){ if(sp.position.y < 1 && Math.random() < 0.5) spetter(sp.position.x, sp.position.z, 2, 0.5); scene.remove(sp); sp.material.dispose(); krakenSpetters.splice(i, 1); }
       continue;
     }
     if(u.zand){
@@ -5927,7 +5932,7 @@ function updateKraken(dt, t){
     k.brulTimer -= dt;
     if(k.brulTimer <= 0){ k.brulTimer = 12 + Math.random() * 10; geluidBrul(); schok = Math.max(schok, 0.7); k.brult = 1.2; }
     // druppels die van de armen vallen
-    if(Math.random() < dt * 3){ const arm = k.armen[Math.floor(Math.random() * k.armen.length)]; const p = armPunt(arm); if(p.y > 2) spetter(p.x, p.z, 2, 0.35); }
+    if(Math.random() < dt * 3){ const arm = k.armen[Math.floor(Math.random() * k.armen.length)]; const p = armPunt(arm); if(p.y > 2) spetter(p.x, p.z, 2, 0.35 * Math.sqrt(KRAKEN_SCHAAL / 8)); }
     if(k.t >= KRAKEN_DUUR){ k.fase = 'zakken'; k.t = 0; zeg('🌊 de Kraken duikt weer onder…'); spetter(k.plek.x, k.plek.z, 60, 1.3 + KRAKEN_SCHAAL * 0.3); maakGolf(k.plek.x, k.plek.z, 18, 46, 40); inktwolk(k.plek.x, k.plek.z, IS_TOUCH ? 16 : 30); }
   } else if(k.fase === 'zakken'){
     const u = Math.min(1, k.t / 7); g.position.y = -50 * KRAKEN_SCHAAL * u * u;
@@ -5959,7 +5964,8 @@ function updateKraken(dt, t){
     const S = KRAKEN_SCHAAL, a = Math.random() * 6.283, rr = (6 + Math.random() * 8) * S;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: rookTex, transparent: true, depthWrite: false, opacity: 0.55, color: 0xdff2ff}));
     sp.position.set(g.position.x + Math.sin(a) * rr, g.position.y + (6 + Math.random() * 30) * S, g.position.z + Math.cos(a) * rr);
-    sp.userData = {vx: Math.sin(a) * 1.5, vy: -(14 + Math.random() * 10), vz: Math.cos(a) * 1.5, leeftijd: 0, maat: 2 + Math.random() * 3, val: true};
+    const sf = KRAKEN_SCHAAL / 8;   // v8: de waterstralen groeien mee met zijn maat
+    sp.userData = {vx: Math.sin(a) * 1.5 * sf, vy: -(14 + Math.random() * 10) * sf, vz: Math.cos(a) * 1.5 * sf, leeftijd: 0, maat: (2 + Math.random() * 3) * sf, val: true};
     sp.scale.set(sp.userData.maat, sp.userData.maat * 6, 1);
     scene.add(sp); krakenSpetters.push(sp);
   }
