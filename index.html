@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DELUXE EDITION — kies je spel</title>
   <link rel="icon" href="images/logo.jpg" />
+  <!-- 🔗 zo ziet de link eruit als je hem deelt (WhatsApp/Facebook) -->
+  <meta property="og:title" content="DELUXE EDITION — kies je spel" />
+  <meta property="og:description" content="Gratis spellen gebouwd door Brian 🎮 Kom ook spelen!" />
+  <meta property="og:url" content="https://deluxeedition.nl/" />
+  <meta property="og:image" content="https://deluxeedition.nl/images/logo.jpg" />
+  <meta property="og:type" content="website" />
   <style>
     /* ══════════════════════════════════════════════════
        BRIAN'S GAME-SITE — met het echte DELUXE EDITION-logo!
@@ -167,6 +173,40 @@
     @keyframes pulseren {
       50% { box-shadow: 0 0 18px rgba(255, 80, 80, 0.8); }
     }
+
+    /* 🔗 DEEL-BLOK onderaan: link + doorsturen */
+    #deel-blok {
+      max-width: 520px;
+      margin: 0 auto 18px;
+      padding: 16px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      font-size: 14px;
+    }
+    #deel-blok .deel-titel { font-weight: 800; letter-spacing: 2px; margin-bottom: 10px; }
+    #deel-link-rij { display: flex; gap: 8px; margin-bottom: 12px; }
+    #deel-link {
+      flex: 1; min-width: 0;
+      background: rgba(0, 0, 0, 0.35); color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 10px;
+      padding: 9px 10px; font-size: 14px; text-align: center;
+    }
+    #deel-blok button, #deel-blok a.deel-knop {
+      border: none; border-radius: 10px; padding: 9px 12px;
+      font-weight: 700; font-size: 14px; color: #fff; cursor: pointer;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+    }
+    #deel-kopieer { background: linear-gradient(135deg, var(--rood), #3b82ff); }
+    #deel-knoppen { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .deel-wa   { background: #25d366; }
+    .deel-fb   { background: #1877f2; }
+    .deel-x    { background: #000; border: 1px solid #555 !important; }
+    .deel-tg   { background: #229ed9; }
+    .deel-mail { background: #6b7280; }
+    #deel-meer { background: rgba(255, 255, 255, 0.15); display: none !important; }
+    #deel-meer.kan { display: inline-flex !important; }
 
     footer {
       margin-top: 56px;
@@ -617,6 +657,51 @@
   </div>
 
   <footer>
+    <!-- 🔗 DEEL-BLOK: link kopiëren + doorsturen -->
+    <div id="deel-blok">
+      <div class="deel-titel">📣 DEEL DEZE SITE MET JE VRIENDEN!</div>
+      <div id="deel-link-rij">
+        <input id="deel-link" value="https://deluxeedition.nl" readonly onclick="this.select()" />
+        <button id="deel-kopieer" onclick="deelKopieer()">📋 Kopieer</button>
+      </div>
+      <div id="deel-knoppen">
+        <a class="deel-knop deel-wa" id="deel-wa" target="_blank" rel="noopener">WhatsApp</a>
+        <a class="deel-knop deel-fb" id="deel-fb" target="_blank" rel="noopener">Facebook</a>
+        <a class="deel-knop deel-x" id="deel-x" target="_blank" rel="noopener">X</a>
+        <a class="deel-knop deel-tg" id="deel-tg" target="_blank" rel="noopener">Telegram</a>
+        <a class="deel-knop deel-mail" id="deel-mail">✉️ Mail</a>
+        <button id="deel-meer" onclick="deelMeer()">📤 Meer…</button>
+      </div>
+    </div>
+    <script>
+      // 🔗 deel-knoppen: maakt de links voor elk kanaal
+      (function () {
+        const url = "https://deluxeedition.nl";
+        const tekst = "Kom spelen op DELUXE EDITION! 🎮 Gratis spellen gebouwd door Brian:";
+        const u = encodeURIComponent(url), t = encodeURIComponent(tekst);
+        document.getElementById("deel-wa").href = "https://wa.me/?text=" + t + "%20" + u;
+        document.getElementById("deel-fb").href = "https://www.facebook.com/sharer/sharer.php?u=" + u;
+        document.getElementById("deel-x").href = "https://twitter.com/intent/tweet?text=" + t + "&url=" + u;
+        document.getElementById("deel-tg").href = "https://t.me/share/url?url=" + u + "&text=" + t;
+        document.getElementById("deel-mail").href = "mailto:?subject=" + encodeURIComponent("Kom spelen op DELUXE EDITION!") + "&body=" + t + "%20" + u;
+        // op telefoons: de "Meer…"-knop opent het deel-menu van je telefoon (Snapchat, Instagram, enz.)
+        if (navigator.share) document.getElementById("deel-meer").classList.add("kan");
+        window.deelMeer = function () {
+          navigator.share({ title: "DELUXE EDITION", text: tekst, url: url }).catch(() => {});
+        };
+        window.deelKopieer = function () {
+          const klaar = () => { if (window.apToast) apToast("🔗 Link gekopieerd!"); };
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(url).then(klaar).catch(() => { oudKopieer(); klaar(); });
+          } else { oudKopieer(); klaar(); }
+        };
+        function oudKopieer() {
+          const veld = document.getElementById("deel-link");
+          veld.select(); try { document.execCommand("copy"); } catch (e) {}
+        }
+      })();
+    </script>
+
     <a id="mods-knop" href="mods.html">🧩 MODS</a><br>
     deluxeedition.nl — gebouwd door Brian 🎮
   </footer>
