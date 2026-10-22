@@ -1314,6 +1314,8 @@ function inAchthoek(dx, dz, h, c){ const ax = Math.abs(dx), az = Math.abs(dz); r
 function inVorm(v, dx, dz, m){
   if(v.soort === 'acht') return inAchthoek(dx, dz, v.h + m, v.c);
   if(v.soort === 'rond') return Math.hypot(dx - v.x, dz - v.z) < v.r + m;
+  // glazen wand rond de lobby, met een opening bij de draaideur (v.deur = halve breedte)
+  if(v.soort === 'ring') return inAchthoek(dx, dz, v.h + m, v.c) && !inAchthoek(dx, dz, v.h - 0.25 - m, v.c) && !(Math.abs(dx) < v.deur && dz > 0);
   return Math.abs(dx - v.x) < v.hx + m && Math.abs(dz - v.z) < v.hz + m;
 }
 function torenDichtbij(dx, dz){ return Math.abs(dx) < TOREN.plein / 2 + 3 && Math.abs(dz) < TOREN.plein / 2 + 3; }
@@ -1322,6 +1324,12 @@ function torenBotst(x, z, y){
   const dx = x - TOREN.x, dz = z - TOREN.z;
   if(!torenDichtbij(dx, dz)) return false;
   const ly = y - TW.pleinY;
+  // op een kantoorverdieping: tegen de ramen, de liftkern en de meubels
+  if(KANTOOR.actief && ly > KANTOOR.vloer - 1.2 && ly < KANTOOR.vloer + 2.6){
+    if(!inAchthoek(dx, dz, KANTOOR.data.h - 0.45, KANTOOR.data.c)) return true;
+    for(const v of KANTOOR.data.kv) if(inVorm(v, dx, dz, 0.3)) return true;
+    return false;
+  }
   for(const v of TV){
     if(v.actief === false) continue;                       // (de helikopter is weg)
     if(ly >= v.y1 - 0.6 || ly + 1.8 <= v.y0) continue;     // eroverheen stappen of eronderdoor lopen
@@ -1334,6 +1342,7 @@ function torenGrond(x, z, y){
   const dx = x - TOREN.x, dz = z - TOREN.z;
   if(!torenDichtbij(dx, dz)) return null;
   const ly = y - TW.pleinY;
+  if(KANTOOR.actief && ly > KANTOOR.vloer - 1.5 && ly < KANTOOR.vloer + 2.6 && inAchthoek(dx, dz, KANTOOR.data.h, KANTOOR.data.c)) return KANTOOR.vloer + TW.pleinY;
   let best = null;
   for(const s of TS){
     if(s.y > ly + 1.6) continue;                         // een stoeprand tot 1,6 m stap je op
@@ -1703,18 +1712,43 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
       if(fract(sid * 13.0) > 0.7 && length(vec2(sx - 0.66, hq - 0.86)) < 0.09) return vec4(vec3(0.15, 0.4, 0.12), 1.0);
       return vec4(0.0);
     }
-    // ── een kamerplant in een pot ──
+    // ── een kamerplant in een pot (monstera: grote hartvormige bladeren met insnijdingen, nerven en glans) ──
     vec4 plant(vec2 p, float pid){
-      if(p.y < 0.5 && abs(p.x) < 0.2 - p.y * 0.06) return vec4(vec3(0.85, 0.84, 0.8) * (0.8 + 0.2 * step(0.45, p.y)), 1.0);
-      float d = 1.0;
-      for(int i = 0; i < 8; i++){
-        float fi = float(i) + pid;
-        vec2 c = vec2((kH(vec3(fi, 1.0, 2.0)) - 0.5) * 0.55, 0.62 + kH(vec3(fi, 4.0, 1.0)) * 0.95);
-        d = min(d, length((p - c) * vec2(1.0, 0.8)) - (0.1 + 0.08 * kH(vec3(fi, 7.0, 3.0))));
+      if(p.y < 0.48 && abs(p.x) < 0.21 - (0.48 - p.y) * 0.08){
+        float rand = step(0.44, p.y);
+        return vec4(vec3(0.84, 0.82, 0.78) * (0.72 + 0.28 * smoothstep(0.2, -0.2, p.x)) * (1.0 - 0.12 * rand), 1.0);
       }
-      if(d < 0.0) return vec4(mix(vec3(0.05, 0.16, 0.04), vec3(0.22, 0.42, 0.13), kH(vec3(floor(p * 28.0), pid))), 1.0);
-      if(abs(p.x) < 0.015 && p.y > 0.45 && p.y < 0.9) return vec4(vec3(0.2, 0.15, 0.08), 1.0);
-      return vec4(0.0);
+      vec4 uit = vec4(0.0);
+      for(int i = 0; i < 9; i++){
+        float fi = float(i) + floor(pid);
+        float a = (kH(vec3(fi, 1.0, 2.0)) - 0.5) * 2.2;
+        float lang = 0.42 + 0.6 * kH(vec3(fi, 4.0, 1.0));
+        vec2 voet = vec2((kH(vec3(fi, 3.0, 3.0)) - 0.5) * 0.12, 0.46);
+        vec2 top = voet + vec2(sin(a), cos(a)) * lang;
+        vec2 pa = p - voet, ba = top - voet;
+        float hh = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+        float steel = length(pa - ba * hh - vec2(0.04 * sin(hh * 3.14), 0.0));
+        float rot = a * 1.3 + (kH(vec3(fi, 7.0, 3.0)) - 0.5) * 0.9;
+        vec2 q = p - top;
+        q = vec2(q.x * cos(rot) - q.y * sin(rot), q.x * sin(rot) + q.y * cos(rot));
+        float gr = 0.12 + 0.1 * kH(vec3(fi, 2.0, 9.0));
+        vec2 e = q / vec2(gr * 0.85, gr);
+        e.y -= 0.35;
+        float hart = length(vec2(e.x, e.y * (e.y > 0.0 ? 0.9 : 1.15))) - 1.0 + 0.3 * exp(-abs(e.x) * 6.0) * step(e.y, -0.6);
+        float hoek = atan(e.x, e.y + 1.0);
+        float snij = step(0.42, length(e)) * step(0.82, fract(hoek * 3.0 + fi * 0.37));
+        float gat = step(length(vec2(abs(e.x) - 0.45, fract(e.y * 1.6 + 0.5) - 0.5)), 0.1) * step(0.6, kH(vec3(fi, 6.0, 6.0)));
+        if(hart < 0.0 && snij < 0.5 && gat < 0.5){
+          float nerf = 1.0 - 0.3 * (1.0 - smoothstep(0.0, 0.06, abs(e.x)));
+          float zij = 1.0 - 0.15 * step(0.85, fract((e.y + abs(e.x) * 0.8) * 3.5));
+          vec3 k = mix(vec3(0.03, 0.11, 0.035), vec3(0.15, 0.33, 0.11), clamp(0.45 + e.y * 0.25 - e.x * 0.15 + kH(vec3(fi, 5.0, 5.0)) * 0.25, 0.0, 1.0));
+          k = k * nerf * zij + vec3(0.07, 0.09, 0.05) * pow(max(0.0, 1.0 - length(e - vec2(-0.35, 0.3)) * 1.2), 3.0);
+          uit = vec4(k, 1.0);
+        } else if(steel < 0.011 && uit.a < 0.5 && hh < 0.98){
+          uit = vec4(vec3(0.1, 0.22, 0.07), 1.0);
+        }
+      }
+      return uit;
     }
 
     vec3 tKamer(vec3 pos, vec3 V, vec3 N, float donker){
@@ -2007,10 +2041,176 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
   }
   TS.push({soort: 'doos', x: 0, z: 0, hx: HP, hz: HP, y: 0});
 
+  // ═════ ECHTE KAMERPLANTEN (Brian 22 okt: "maak de planten binnen nog realistischer") ═════
+  // Vier soorten die je in elk kantoor ziet, elk zoals ze écht gebouwd zijn:
+  //  • monstera: grote glanzende hartvormige bladeren met gaten en insnijdingen
+  //  • kentiapalm: lange gebogen stengels vol smalle, hangende blaadjes
+  //  • ficus: een boompje met een gevlochten stammetje en honderden kleine blaadjes
+  //  • vrouwentong (sansevieria): stijve rechtopstaande zwaardbladeren met strepen
+  const plantTex = (w, h, teken) => { const c = canvas(w, h); teken(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t; };
+  // monstera-blad: hartvorm, nerven, insnijdingen tot bijna de middennerf en gaatjes ertussen
+  const monsteraTex = plantTex(256, 256, (g, W, H) => {
+    g.save(); g.translate(W / 2, H * 0.95);
+    g.beginPath(); g.moveTo(0, 0);
+    g.bezierCurveTo(-W * 0.55, -H * 0.12, -W * 0.52, -H * 0.82, -W * 0.08, -H * 0.9);
+    g.quadraticCurveTo(0, -H * 0.86, 0, -H * 0.78);
+    g.quadraticCurveTo(0, -H * 0.86, W * 0.08, -H * 0.9);
+    g.bezierCurveTo(W * 0.52, -H * 0.82, W * 0.55, -H * 0.12, 0, 0); g.closePath();
+    const gr = g.createLinearGradient(-W * 0.5, 0, W * 0.5, -H);
+    gr.addColorStop(0, '#1b4a1c'); gr.addColorStop(0.5, '#2f6d2a'); gr.addColorStop(1, '#3f8436');
+    g.fillStyle = gr; g.fill();
+    // zijnerven
+    g.strokeStyle = 'rgba(160,210,120,0.35)'; g.lineWidth = 2;
+    for(let i = 1; i < 9; i++){ const y = -H * 0.1 * i; for(const s of [-1, 1]){ g.beginPath(); g.moveTo(0, y); g.quadraticCurveTo(s * W * 0.2, y - H * 0.06, s * W * 0.45, y - H * 0.02 - i * 2); g.stroke(); } }
+    g.strokeStyle = 'rgba(190,230,150,0.6)'; g.lineWidth = 4; g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -H * 0.8); g.stroke();
+    // insnijdingen en gaatjes (wegknippen)
+    g.globalCompositeOperation = 'destination-out';
+    for(let i = 1; i < 8; i++){
+      const y = -H * (0.12 + 0.095 * i);
+      for(const s of [-1, 1]){
+        g.beginPath(); g.moveTo(s * W * 0.6, y - 8); g.lineTo(s * W * 0.09, y + 4); g.lineTo(s * W * 0.6, y + 6); g.closePath(); g.fill();
+        if(i % 2 === 0){ g.beginPath(); g.ellipse(s * W * 0.17, y + 14, 6, 11, s * 0.5, 0, Math.PI * 2); g.fill(); }
+      }
+    }
+    g.restore();
+  });
+  // kentia-blaadje: smal, puntig, met een lichte middennerf
+  const kentiaTex = plantTex(64, 256, (g, W, H) => {
+    g.beginPath(); g.moveTo(W / 2, 0); g.quadraticCurveTo(W, H * 0.4, W / 2, H); g.quadraticCurveTo(0, H * 0.4, W / 2, 0); g.closePath();
+    const gr = g.createLinearGradient(0, 0, W, 0); gr.addColorStop(0, '#24581f'); gr.addColorStop(0.5, '#3c7a2e'); gr.addColorStop(1, '#2a6223');
+    g.fillStyle = gr; g.fill(); g.fillStyle = 'rgba(200,230,150,0.5)'; g.fillRect(W / 2 - 1, 4, 2, H - 8);
+  });
+  // ficus-blaadjes: kleine glanzende puntige blaadjes op een kaartje
+  const ficusTex = plantTex(256, 256, (g) => {
+    for(let i = 0; i < 120; i++){
+      const x = 14 + r() * 228, y = 14 + r() * 228, l = 8 + r() * 7, b = l * 0.42, a = r() * Math.PI * 2;
+      g.save(); g.translate(x, y); g.rotate(a);
+      g.beginPath(); g.moveTo(-l, 0); g.quadraticCurveTo(0, -b * 1.6, l * 1.25, 0); g.quadraticCurveTo(0, b * 1.6, -l, 0); g.closePath();
+      const L = 18 + r() * 16; g.fillStyle = `hsl(${100 + r() * 25},${45 + r() * 20}%,${L}%)`; g.fill();
+      g.strokeStyle = `hsla(95,40%,${L + 20}%,0.6)`; g.lineWidth = 0.8; g.beginPath(); g.moveTo(-l, 0); g.lineTo(l, 0); g.stroke();
+      g.restore();
+    }
+  });
+  // vrouwentong: donkergroene dwarsstrepen met een gele rand
+  const sansTex = plantTex(64, 256, (g, W, H) => {
+    g.fillStyle = '#2c5a2a'; g.fillRect(0, 0, W, H);
+    for(let y = 0; y < H; y += 6 + r() * 8){ g.fillStyle = `rgba(${r() < 0.5 ? '15,45,18' : '120,160,95'},${0.35 + r() * 0.3})`; g.beginPath(); g.ellipse(W / 2, y, W * 0.45, 2 + r() * 2, (r() - 0.5) * 0.3, 0, Math.PI * 2); g.fill(); }
+    g.fillStyle = '#c9b84a'; g.fillRect(0, 0, 5, H); g.fillRect(W - 5, 0, 5, H);
+  });
+  const bladStd = (map, extra) => new THREE.MeshStandardMaterial(Object.assign({map, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.42, metalness: 0}, extra || {}));
+  const PM = {
+    monstera: bladStd(monsteraTex, {roughness: 0.32}), kentia: bladStd(kentiaTex), ficus: bladStd(ficusTex, {roughness: 0.35}), sans: bladStd(sansTex, {alphaTest: 0}),
+    potWit: std({color: 0xeae7e1, roughness: 0.3}, 0.7), potZwart: std({color: 0x29292b, roughness: 0.4}, 0.7), potTerra: std({color: 0xa95a3c, roughness: 0.85}, 0.2),
+    aarde: new THREE.MeshLambertMaterial({color: 0x2f2117}), steel: new THREE.MeshLambertMaterial({color: 0x4d6b2b}), stam: new THREE.MeshLambertMaterial({color: 0x6d5a45})
+  };
+  // een vlak blad dat gebogen is: in de lengte hangt het door, in de breedte een lichte V
+  function bladGeo(br, lang, buig, vouw){
+    const g = new THREE.PlaneGeometry(br, lang, 4, 8); g.translate(0, lang / 2, 0);
+    const p = g.attributes.position;
+    for(let i = 0; i < p.count; i++){ const x = p.getX(i), y = p.getY(i), t = y / lang; p.setZ(i, -buig * t * t * lang + Math.abs(x) * vouw); }
+    g.computeVertexNormals(); return g;
+  }
+  // een stengel tussen twee punten
+  function steelTussen(ouder, a, b, dik, mat){
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(dik * 0.7, dik, a.distanceTo(b), 6), mat);
+    m.position.copy(a).add(b).multiplyScalar(0.5); m.lookAt(b); m.rotateX(Math.PI / 2); m.castShadow = true; ouder.add(m); return m;
+  }
+  function pot(ouder, straal, hoog, mat){
+    const prof = [[0, 0], [straal * 0.78, 0], [straal * 0.86, hoog * 0.1], [straal, hoog * 0.92], [straal * 1.04, hoog], [straal * 0.96, hoog]].map(([x, y]) => new THREE.Vector2(x, y));
+    const m = new THREE.Mesh(new THREE.LatheGeometry(prof, 28), mat); m.castShadow = true; m.receiveShadow = true; ouder.add(m);
+    const a = new THREE.Mesh(new THREE.CircleGeometry(straal * 0.95, 20), PM.aarde); a.rotation.x = -Math.PI / 2; a.position.y = hoog * 0.94; ouder.add(a);
+  }
+  function maakPlant(soort, s){
+    const pg = new THREE.Group(); s = s || 1;
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    if(soort === 'monstera'){
+      pot(pg, 0.32 * s, 0.5 * s, PM.potWit);
+      for(let i = 0; i < 9; i++){
+        const a = i * 2.4 + r() * 0.6, uit = (0.3 + r() * 0.5) * s, hoog = (0.6 + r() * 0.8) * s;
+        const voet = V(Math.cos(a) * 0.05, 0.48 * s, Math.sin(a) * 0.05), top = V(Math.cos(a) * uit, hoog, Math.sin(a) * uit);
+        steelTussen(pg, voet, top, 0.012 * s, PM.steel);
+        const b = new THREE.Mesh(bladGeo((0.62 + r() * 0.25) * s, (0.62 + r() * 0.25) * s, 0.3, 0.16), PM.monstera);
+        b.position.copy(top); b.rotation.order = 'YXZ'; b.rotation.y = -a + Math.PI / 2; b.rotation.x = 0.75 + r() * 0.6; b.castShadow = true; pg.add(b);   // blad helt naar buiten
+      }
+    } else if(soort === 'kentia'){
+      pot(pg, 0.38 * s, 0.55 * s, PM.potZwart);
+      for(let i = 0; i < 8; i++){
+        const a = i * 0.785 + r() * 0.4, hoog = (1.3 + r() * 0.6) * s, uit = (0.55 + r() * 0.4) * s;
+        // de stengel: een boog omhoog en dan naar buiten/omlaag
+        const kromme = new THREE.QuadraticBezierCurve3(V(0, 0.5 * s, 0), V(Math.cos(a) * uit * 0.3, hoog * 1.15, Math.sin(a) * uit * 0.3), V(Math.cos(a) * uit * 1.6, hoog * 0.72, Math.sin(a) * uit * 1.6));
+        const st = new THREE.Mesh(new THREE.TubeGeometry(kromme, 14, 0.009 * s, 5), PM.steel); st.castShadow = true; pg.add(st);
+        // blaadjes in paren langs de stengel, hangend
+        const pos = [], nor = [], uv = [], idx = []; let v = 0;
+        for(let k = 8; k < 40; k++){
+          const t = k / 40, p = kromme.getPoint(t), tan = kromme.getTangent(t);
+          const zij = new THREE.Vector3().crossVectors(tan, V(0, 1, 0)).normalize();
+          const lang = (0.36 - 0.24 * Math.abs(t - 0.45) * 1.6) * s;
+          for(const sg of [-1, 1]){
+            const richting = zij.clone().multiplyScalar(sg).add(V(0, -0.55 - t * 0.5, 0)).add(tan.clone().multiplyScalar(0.35)).normalize();
+            const eind = p.clone().add(richting.multiplyScalar(lang));
+            const breed = zij.clone().cross(richting).normalize().multiplyScalar(0.025 * s);
+            for(const [q, u2, w2] of [[p.clone().sub(breed), 0, 0], [p.clone().add(breed), 1, 0], [eind.clone().add(breed), 1, 1], [eind.clone().sub(breed), 0, 1]]){ pos.push(q.x, q.y, q.z); nor.push(0, 1, 0); uv.push(u2, w2); }
+            idx.push(v, v + 1, v + 2, v, v + 2, v + 3); v += 4;
+          }
+        }
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
+        const m = new THREE.Mesh(g, PM.kentia); m.castShadow = true; pg.add(m);
+      }
+    } else if(soort === 'ficus'){
+      pot(pg, 0.3 * s, 0.45 * s, PM.potTerra);
+      // drie stammetjes die om elkaar heen draaien
+      for(let k = 0; k < 3; k++){
+        let vorig = V(0, 0.42 * s, 0);
+        for(let j = 1; j <= 6; j++){
+          const y = (0.42 + j * 0.2) * s, a = k * 2.1 + j * 0.9;
+          const p = V(Math.cos(a) * 0.035 * s, y, Math.sin(a) * 0.035 * s);
+          steelTussen(pg, vorig, p, 0.022 * s, PM.stam); vorig = p;
+        }
+      }
+      const R = 0.55 * s, ky = 1.75 * s;
+      const pos = [], nor = [], uv = [], idx = []; let v = 0;
+      for(let i = 0; i < 46; i++){
+        let px, py, pz; do { px = r() * 2 - 1; py = r() * 2 - 1; pz = r() * 2 - 1; } while(px * px + py * py + pz * pz > 1);
+        const cx = px * R, cy = ky + py * R * 0.85, cz = pz * R, gr = (0.32 + r() * 0.2) * s;
+        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(r() * 6.3, r() * 6.3, r() * 6.3));
+        const ax = V(1, 0, 0).applyQuaternion(q).multiplyScalar(gr / 2), ay = V(0, 1, 0).applyQuaternion(q).multiplyScalar(gr / 2);
+        const n = V(px, py * 0.7 + 0.35, pz).normalize();
+        for(const [sx, sy, u2, w2] of [[-1, -1, 0, 0], [1, -1, 1, 0], [1, 1, 1, 1], [-1, 1, 0, 1]]){ pos.push(cx + ax.x * sx + ay.x * sy, cy + ax.y * sx + ay.y * sy, cz + ax.z * sx + ay.z * sy); nor.push(n.x, n.y, n.z); uv.push(u2, w2); }
+        idx.push(v, v + 1, v + 2, v, v + 2, v + 3); v += 4;
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
+      const m = new THREE.Mesh(g, PM.ficus); m.castShadow = true; pg.add(m);
+    } else {
+      // vrouwentong
+      pot(pg, 0.2 * s, 0.32 * s, PM.potWit);
+      for(let i = 0; i < 11; i++){
+        const a = r() * 6.3, d = r() * 0.09 * s, lang = (0.45 + r() * 0.45) * s, br = (0.05 + r() * 0.03) * s;
+        const g = new THREE.PlaneGeometry(br, lang, 2, 8); g.translate(0, lang / 2, 0);
+        const p = g.attributes.position;
+        for(let k = 0; k < p.count; k++){ const t = p.getY(k) / lang; p.setX(k, p.getX(k) * (1 - t * t * 0.95)); p.setZ(k, Math.abs(p.getX(k)) * 0.6 + t * t * 0.05 * lang); }
+        g.computeVertexNormals();
+        const m = new THREE.Mesh(g, PM.sans); m.position.set(Math.cos(a) * d, 0.3 * s, Math.sin(a) * d);
+        m.rotation.order = 'YXZ'; m.rotation.y = a; m.rotation.x = (r() - 0.5) * 0.35; m.rotation.z = (r() - 0.5) * 0.25; m.castShadow = true; pg.add(m);
+      }
+    }
+    return pg;
+  }
+  // een plant neerzetten in de toren-groep (of een andere groep)
+  function zetPlant(soort, x, y, z, s, ouder){ const p = maakPlant(soort, s); p.position.set(x, y, z); p.rotation.y = r() * 6.3; (ouder || groep).add(p); return p; }
+
   // ═════ 5. DE LOBBY: hoog glas onder een overstek met zuilen ═════
   const LB = TOREN.lobby, LH = TOREN.lobbyH, L1 = TW.lagen[0];
-  zet(mantel(LB.h, LB.c, 0, LH), glasHelder, 0, 0, 0, false);
-  TV.push({soort: 'acht', h: LB.h, c: LB.c, y0: 0, y1: LH});
+  // het glas rondom, met een opening waar de draaideur staat (Brian 22 okt: je kunt nu naar binnen)
+  {
+    const P = punten(LB.h, LB.c);
+    const wand = (a, b) => { const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const m = zet(new THREE.BoxGeometry(L, LH, 0.04), glasHelder, (a[0] + b[0]) / 2, LH / 2, (a[1] + b[1]) / 2, false); m.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); };
+    for(let i = 0; i < 8; i++){
+      const a = P[i], b = P[(i + 1) % 8];
+      if(Math.abs(a[1] - LB.h) < 0.01 && Math.abs(b[1] - LB.h) < 0.01){ wand(a, [-1.8, LB.h]); wand([1.8, LB.h], b); }
+      else wand(a, b);
+    }
+  }
+  TV.push({soort: 'ring', h: LB.h, c: LB.c, deur: 1.5, y0: 0, y1: LH});
   // marmeren vloer binnen
   const marmer = std({color: 0xe9e4da, roughness: 0.12, metalness: 0.05}, 0.8);
   zet(mantel(LB.h - 0.05, LB.c, 0.01, 0.02, {dak: true}), [marmer, marmer], 0, 0, 0, false);
@@ -2020,6 +2220,7 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
     for(let i = 1; i < 8; i += 2){
       const a = P[i], b = P[(i + 1) % 8], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
       for(let s = 0; s <= L + 0.01; s += 3){
+        if(Math.abs(a[1] - LB.h) < 0.01 && Math.abs(a[0] + (b[0] - a[0]) * s / L) < 1.95) continue;   // niet in de deuropening
         const m = zet(g, aluDonker, a[0] + (b[0] - a[0]) * s / L, LH / 2, a[1] + (b[1] - a[1]) * s / L, false);
         m.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]);
       }
@@ -2039,15 +2240,16 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
     const kern = std({map: tex(c, false), roughness: 0.35, metalness: 0.4}, 0.6);
     const steen = std({color: 0x3a3532, roughness: 0.4}, 0.4);
     doos(11, LH, 8, [steen, steen, steen, steen, kern, kern], 0, 0, -1);
+    torenAnim.kernMats = [steen, steen, steen, steen, kern, kern];
+    TV.push({soort: 'doos', x: 0, z: -1, hx: 5.5, hz: 4, y0: 0, y1: LH});
   }
   // de balie (wit marmer met een lichtlijn) en planten in grote potten
   doos(7, 1.1, 1.3, marmer, 0, 0, 6.2);
+  TV.push({soort: 'doos', x: 0, z: 6.2, hx: 3.5, hz: 0.65, y0: 0, y1: 1.6});
   doos(7.02, 0.05, 1.32, new THREE.MeshBasicMaterial({color: 0xfff1d0}), 0, 0.85, 6.2);
-  const pot = std({color: 0x2c2c2e, roughness: 0.5}, 0.4);
-  const blad = new THREE.MeshLambertMaterial({color: 0x3f7a35});
-  for(const [x, z] of [[-9, 6], [9, 6], [-9, -6], [9, -6]]){
-    cil(0.55, 0.42, 0.9, pot, x, 0, z);
-    for(let i = 0; i < 4; i++){ const m = zet(new THREE.IcosahedronGeometry(0.6 + r() * 0.3, 1), blad, x + (r() - 0.5) * 0.6, 1.3 + i * 0.35, z + (r() - 0.5) * 0.6); m.scale.y = 1.3; }
+  for(const [x, z, soort] of [[-9, 6, 'kentia'], [9, 6, 'monstera'], [-9, -6, 'ficus'], [9, -6, 'kentia'], [-6.3, 3.6, 'sans'], [6.3, 3.6, 'sans']]){
+    zetPlant(soort, x, 0, z, soort === 'sans' ? 1.1 : 1.25);
+    TV.push({soort: 'rond', x, z, r: 0.5, y0: 0, y1: 2});
   }
   // het overstek: onderkant van de eerste laag met inbouwspotjes
   zet(mantel(L1.h, L1.c, L1.y0 - 0.01, L1.y0, {bodem: true}), [alu, alu, plafond], 0, 0, 0, false);
@@ -2074,7 +2276,6 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
       const lat = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.6, 0.06), alu); lat.position.set(0, 1.35, 1.72); v.add(lat);
     }
     torenAnim.draaideur = vleugels;
-    TV.push({soort: 'rond', x: 0, z: LB.h, r: 1.9, y0: 0, y1: 3.2});
   }
   // de luifel boven de ingang, met trekstangen en de naam erop
   {
@@ -2273,6 +2474,237 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
     }
   }
 
+  // ═════ PLAT MAKEN: losse onderdelen in subgroepjes direct onder de groep hangen (dan kunnen ze samengevoegd worden) ═════
+  function platMaken(ouder, behalve){
+    ouder.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(ouder.matrixWorld).invert();
+    const lijst = [];
+    ouder.traverse(o => {
+      if(!o.isMesh || o.isInstancedMesh || o.parent === ouder) return;
+      let p = o.parent; while(p && p !== ouder){ if(behalve.includes(p)) return; p = p.parent; }
+      lijst.push(o);
+    });
+    for(const m of lijst){
+      const g = m.geometry.clone(); g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+      const n = new THREE.Mesh(g, m.material); n.castShadow = m.castShadow; n.receiveShadow = m.receiveShadow; ouder.add(n);
+      m.parent.remove(m);
+    }
+    // lege groepjes opruimen
+    for(const k of ouder.children.slice()) if(k.isGroup && !behalve.includes(k) && k.children.length === 0) ouder.remove(k);
+  }
+  function samenvoegen(ouder){
+    const perMat = new Map();
+    for(const o of ouder.children.slice()){
+      if(!o.isMesh || o.isInstancedMesh || Array.isArray(o.material) || o.userData.beweegt) continue;
+      if(!perMat.has(o.material)) perMat.set(o.material, []);
+      perMat.get(o.material).push(o);
+    }
+    for(const [mat, lijst] of perMat){
+      if(lijst.length < 2) continue;
+      const pos = [], nor = [], uv = []; let schaduw = false, ontvang = false;
+      for(const m of lijst){
+        m.updateMatrix();
+        const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()); g.applyMatrix4(m.matrix);
+        const P = g.attributes.position, N = g.attributes.normal, U = g.attributes.uv;
+        for(let i = 0; i < P.count; i++){ pos.push(P.getX(i), P.getY(i), P.getZ(i)); nor.push(N ? N.getX(i) : 0, N ? N.getY(i) : 1, N ? N.getZ(i) : 0); uv.push(U ? U.getX(i) : 0, U ? U.getY(i) : 0); }
+        schaduw = schaduw || m.castShadow; ontvang = ontvang || m.receiveShadow;
+        g.dispose(); ouder.remove(m);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      const m = new THREE.Mesh(g, mat); m.castShadow = schaduw; m.receiveShadow = ontvang; ouder.add(m);
+    }
+  }
+
+  // ═════ 11. DE KANTOORVERDIEPINGEN — om echt in rond te lopen (Brian 22 okt: "maak dat je naar binnen kan") ═════
+  // Er worden er geen 53 tegelijk gebouwd (veel te zwaar): per laag van de toren
+  // maken we één echte verdieping, en die schuiven we naar de verdieping waar je
+  // met de lift naartoe gaat. Van buiten zie je nog steeds de kamers achter het
+  // glas; van binnen loop je tussen echte bureaus, stoelen, mensen en planten,
+  // en kijk je door de ramen naar buiten.
+  const KERN = {x: 0, z: -1, hx: 5.5, hz: 4};            // de liftkern (zelfde plek als in de lobby)
+  torenAnim.KERN = KERN;
+  const VH = 3.2;                                         // van vloer tot plafond
+  // tapijttegels
+  const tapijtTex = (() => {
+    const c = canvas(512, 512), g = c.getContext('2d'), id = g.createImageData(512, 512), d = id.data;
+    const tint = []; for(let i = 0; i < 64; i++) tint.push(0.9 + r() * 0.16);
+    for(let y = 0; y < 512; y++) for(let x = 0; x < 512; x++){
+      const tx = (x / 64) | 0, ty = (y / 64) | 0, rij = (tx + ty) % 2;
+      const streep = rij ? (x % 4 < 2 ? 1.06 : 0.94) : (y % 4 < 2 ? 1.06 : 0.94);
+      const v = (52 + (r() - 0.5) * 26) * tint[ty * 8 + tx] * streep, i = (y * 512 + x) * 4;
+      d[i] = kl(v * 0.92); d[i + 1] = kl(v * 0.96); d[i + 2] = kl(v * 1.08); d[i + 3] = 255;
+    }
+    g.putImageData(id, 0, 0); const t = tex(c); t.repeat.set(1 / 4, 1 / 4); return t;
+  })();
+  const tapijt = new THREE.MeshStandardMaterial({map: tapijtTex, roughness: 0.95});
+  // systeemplafond met lichtpanelen (60 × 120 cm, om de 2,4 m)
+  const plafKantoor = (() => {
+    const c = canvas(256, 256), g = c.getContext('2d'), e = canvas(256, 256), ge = e.getContext('2d');
+    g.fillStyle = '#d4d5d3'; g.fillRect(0, 0, 256, 256); ge.fillStyle = '#4a4a48'; ge.fillRect(0, 0, 256, 256);
+    for(let i = 0; i < 1500; i++){ g.fillStyle = `rgba(0,0,0,${r() * 0.05})`; g.fillRect(r() * 256, r() * 256, 1, 1); }
+    g.fillStyle = '#a9aba9'; for(let k = 0; k <= 4; k++){ g.fillRect(k * 64 - 1, 0, 2, 256); g.fillRect(0, k * 64 - 1, 256, 2); }
+    // lichtpaneel in het midden (1 tegel breed, 2 lang)
+    g.fillStyle = '#f2f2ee'; g.fillRect(97, 65, 62, 126); ge.fillStyle = '#fff6e6'; ge.fillRect(99, 67, 58, 122);
+    ge.fillStyle = 'rgba(0,0,0,0.25)'; for(let k = 0; k < 6; k++) ge.fillRect(99, 67 + k * 21, 58, 2);
+    const t = tex(c), te = tex(e); t.repeat.set(1 / 2.4, 1 / 2.4); te.repeat.set(1 / 2.4, 1 / 2.4);
+    return new THREE.MeshStandardMaterial({map: t, emissiveMap: te, emissive: 0xffffff, emissiveIntensity: 1.1, roughness: 0.8});
+  })();
+  // raamstijlen van binnen (doorzichtig glas met een lichte tint, aluminium stijlen)
+  const raamBinnen = (() => {
+    const c = canvas(64, 256), g = c.getContext('2d');
+    g.fillStyle = 'rgba(170,200,212,0.10)'; g.fillRect(0, 0, 64, 256);
+    g.fillStyle = 'rgba(190,196,202,1)'; g.fillRect(0, 0, 4, 256); g.fillRect(60, 0, 4, 256);
+    g.fillRect(0, 248, 64, 8);
+    const t = tex(c);
+    return new THREE.MeshStandardMaterial({map: t, transparent: true, depthWrite: false, side: THREE.BackSide, roughness: 0.3, metalness: 0.4});
+  })();
+  // beeldschermen: vier soorten inhoud
+  const schermen = [
+    (g) => { g.fillStyle = '#f3f4f6'; g.fillRect(0, 0, 256, 144); g.fillStyle = '#2b5797'; g.fillRect(0, 0, 256, 14); g.fillStyle = '#9aa0a8'; for(let y = 24; y < 140; y += 7) g.fillRect(30, y, 60 + r() * 150, 3); },
+    (g) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, 256, 144); g.fillStyle = '#1f4f8f'; g.fillRect(0, 0, 70, 144); g.fillStyle = '#d8dde4'; for(let y = 8; y < 140; y += 18) g.fillRect(76, y, 176, 14); g.fillStyle = '#6a7380'; for(let y = 12; y < 140; y += 18) g.fillRect(80, y, 60 + r() * 80, 3); },
+    (g) => { g.fillStyle = '#1e1f24'; g.fillRect(0, 0, 256, 144); for(let y = 6; y < 140; y += 7){ g.fillStyle = ['#7fc4f0', '#e8a35a', '#9ad27a', '#c792ea'][(r() * 4) | 0]; g.fillRect(10 + ((r() * 4) | 0) * 10, y, 30 + r() * 150, 3); } },
+    (g) => { g.fillStyle = '#fbfbfb'; g.fillRect(0, 0, 256, 144); g.strokeStyle = '#d0d4d8'; for(let x = 0; x < 256; x += 32){ g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 144); g.stroke(); } for(let y = 0; y < 144; y += 16){ g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke(); } g.fillStyle = '#3a8f5a'; for(let x = 150; x < 250; x += 14) g.fillRect(x, 130 - r() * 90, 9, 200); }
+  ].map(t => { const c = canvas(256, 144); t(c.getContext('2d')); return new THREE.MeshBasicMaterial({map: tex(c, false)}); });
+  // materialen voor meubels en mensen (een vast palet, zodat alles samengevoegd kan worden)
+  const M = {
+    blad: std({color: 0xe6e4df, roughness: 0.45}, 0.4), poot: std({color: 0x8c9196, metalness: 0.3, roughness: 0.45}, 0.3),
+    scherm: std({color: 0x1d1f22, roughness: 0.4, metalness: 0.3}, 0.5), stof: new THREE.MeshLambertMaterial({color: 0x5f6c78}),
+    stoel: std({color: 0x222326, roughness: 0.6}, 0.3), toets: new THREE.MeshLambertMaterial({color: 0x2a2b2e}),
+    tafel: std({color: 0x5a3c26, roughness: 0.35}, 0.5), mok: std({color: 0xf2f0ea, roughness: 0.3}, 0.5),
+    shirts: [0xf0f0ee, 0x2f4f7f, 0x8a2c2c, 0x3d6b4f, 0x1f2328, 0x9a8a6a, 0x6d4f8a].map(c => new THREE.MeshLambertMaterial({color: c})),
+    broek: [0x1f2633, 0x2b2b2b, 0x4a4036].map(c => new THREE.MeshLambertMaterial({color: c})),
+    huid: [0xe8b896, 0xc68e66, 0x8a5a3c, 0x5a3a26].map(c => new THREE.MeshLambertMaterial({color: c})),
+    haar: [0x1a1410, 0x3b2a1c, 0x7a5a36, 0xb9a27a, 0x8a8a8a].map(c => new THREE.MeshLambertMaterial({color: c})),
+    schoen: new THREE.MeshLambertMaterial({color: 0x141414})
+  };
+  const kies = (lijst) => lijst[Math.floor(r() * lijst.length)];
+  // een ledemaat tussen twee punten
+  function lid(ouder, a, b, dik, mat){
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(dik, dik * 0.9, a.distanceTo(b), 8), mat);
+    m.position.copy(a).add(b).multiplyScalar(0.5); m.lookAt(b); m.rotateX(Math.PI / 2); m.castShadow = true; ouder.add(m); return m;
+  }
+  // een bureaustoel (kijkt naar +z)
+  function bureaustoel(ouder){
+    const s = new THREE.Group(); ouder.add(s);
+    const zit = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.07, 0.46), M.stoel); zit.position.y = 0.47; s.add(zit);
+    const rug = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.52, 0.05), M.stoel); rug.position.set(0, 0.8, -0.24); rug.rotation.x = -0.12; s.add(rug);
+    const kolom = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.36, 8), M.poot); kolom.position.y = 0.26; s.add(kolom);
+    for(let i = 0; i < 5; i++){
+      const a = i * Math.PI * 2 / 5, poot = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.04), M.stoel);
+      poot.position.set(Math.cos(a) * 0.15, 0.08, Math.sin(a) * 0.15); poot.rotation.y = -a; s.add(poot);
+      const wiel = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), M.stoel); wiel.position.set(Math.cos(a) * 0.29, 0.03, Math.sin(a) * 0.29); s.add(wiel);
+    }
+    for(const sx of [-0.26, 0.26]){ const arm = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.3), M.stoel); arm.position.set(sx, 0.66, 0); s.add(arm); const st = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.18, 0.03), M.stoel); st.position.set(sx, 0.57, 0); s.add(st); }
+    s.traverse(o => { if(o.isMesh) o.castShadow = true; });
+    return s;
+  }
+  // een zittend mens op een stoel (kijkt naar +z, handen op het bureau)
+  function zittendMens(ouder){
+    const p = new THREE.Group(); ouder.add(p);
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const shirt = kies(M.shirts), broek = kies(M.broek), huid = kies(M.huid), haar = kies(M.haar);
+    const romp = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.15, 0.55, 12), shirt); romp.scale.z = 0.62; romp.position.set(0, 0.84, -0.06); romp.rotation.x = -0.08; p.add(romp);
+    const schouders = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 8), shirt); schouders.scale.set(1.05, 0.45, 0.65); schouders.position.set(0, 1.1, -0.08); p.add(schouders);
+    const heup = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.26), broek); heup.position.set(0, 0.56, -0.05); p.add(heup);
+    for(const sx of [-0.09, 0.09]){
+      lid(p, V(sx, 0.56, -0.02), V(sx, 0.55, 0.38), 0.075, broek);       // bovenbeen
+      lid(p, V(sx, 0.55, 0.38), V(sx * 1.1, 0.08, 0.44), 0.058, broek);   // onderbeen
+      const sch = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.25), M.schoen); sch.position.set(sx * 1.1, 0.04, 0.5); p.add(sch);
+      const s = Math.sign(sx);
+      lid(p, V(s * 0.19, 1.08, -0.06), V(s * 0.22, 0.86, 0.14), 0.05, shirt);   // bovenarm
+      lid(p, V(s * 0.22, 0.86, 0.14), V(s * 0.14, 0.79, 0.4), 0.042, shirt);    // onderarm
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), huid); hand.scale.set(1, 0.6, 1.4); hand.position.set(s * 0.13, 0.78, 0.44); p.add(hand);
+    }
+    const nek = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.1, 8), huid); nek.position.set(0, 1.18, -0.06); p.add(nek);
+    const kop = new THREE.Mesh(new THREE.SphereGeometry(0.105, 16, 12), huid); kop.scale.set(0.9, 1.1, 1); kop.position.set(0, 1.31, -0.04); p.add(kop);
+    const haarM = new THREE.Mesh(new THREE.SphereGeometry(0.112, 16, 10, 0, Math.PI * 2, 0, Math.PI * (0.45 + r() * 0.12)), haar); haarM.scale.set(0.92, 1.1, 1.04); haarM.position.set(0, 1.315, -0.055); haarM.rotation.x = -0.35; p.add(haarM);
+    for(const sx of [-0.1, 0.1]){ const oor = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 4), huid); oor.position.set(sx, 1.31, -0.04); p.add(oor); }
+    p.traverse(o => { if(o.isMesh) o.castShadow = true; });
+    return p;
+  }
+  // één werkplek: bureau met twee schermen, toetsenbord, muis; de gebruiker zit aan de +z kant
+  function werkplek(ouder){
+    const w = new THREE.Group(); ouder.add(w);
+    const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; w.add(m); return m; };
+    add(new THREE.BoxGeometry(1.58, 0.03, 0.78), M.blad, 0, 0.735, 0);
+    for(const sx of [-0.76, 0.76]) add(new THREE.BoxGeometry(0.05, 0.72, 0.7), M.poot, sx, 0.36, 0);
+    add(new THREE.BoxGeometry(1.5, 0.35, 0.02), M.poot, 0, 0.47, -0.36);
+    const inhoud = kies(schermen);
+    for(const sx of [-0.28, 0.28]){
+      const sch = add(new THREE.BoxGeometry(0.54, 0.32, 0.025), M.scherm, sx, 1.03, -0.2); sch.rotation.y = -sx * 0.25;
+      const vlak = new THREE.Mesh(new THREE.PlaneGeometry(0.51, 0.29), inhoud); vlak.position.set(sx, 1.03, -0.186); vlak.rotation.y = -sx * 0.25; w.add(vlak);
+      add(new THREE.BoxGeometry(0.04, 0.16, 0.03), M.scherm, sx, 0.82, -0.22);
+      add(new THREE.BoxGeometry(0.2, 0.012, 0.14), M.scherm, sx, 0.756, -0.22);
+    }
+    add(new THREE.BoxGeometry(0.44, 0.02, 0.14), M.toets, -0.05, 0.76, 0.17);
+    add(new THREE.BoxGeometry(0.06, 0.025, 0.1), M.toets, 0.3, 0.76, 0.18);
+    if(r() < 0.4) add(new THREE.CylinderGeometry(0.04, 0.035, 0.1, 10), M.mok, 0.55, 0.8, 0.05);
+    return w;
+  }
+  const kantoorCache = {};
+  torenAnim.maakKantoor = (n) => {
+    if(kantoorCache[n]) return kantoorCache[n];
+    const l = TW.lagen[n], kg = new THREE.Group(), kv = [];
+    const zetK = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x || 0, y || 0, z || 0); m.castShadow = true; m.receiveShadow = true; kg.add(m); return m; };
+    // vloer, plafond en raamstijlen
+    zetK(mantel(l.h - 0.08, l.c, -0.05, 0, {dak: true}), [M.poot, tapijt]).castShadow = false;
+    zetK(mantel(l.h - 0.08, l.c, VH, VH + 0.05, {bodem: true}), [M.poot, M.poot, plafKantoor]);
+    { const m = zetK(mantel(l.h - 0.07, l.c, 0, VH + 0.02, {tb: 1.5, th: VH + 0.02}), raamBinnen); m.castShadow = false; m.receiveShadow = false; }
+    // de liftkern, met dezelfde liftdeuren als beneden
+    zetK(new THREE.BoxGeometry(KERN.hx * 2, VH, KERN.hz * 2), torenAnim.kernMats, KERN.x, VH / 2, KERN.z);
+    kv.push({soort: 'doos', x: KERN.x, z: KERN.z, hx: KERN.hx, hz: KERN.hz});
+    // bureaus in groepjes van vier (twee tegenover twee), met een scheidingsschotje
+    const binnen = (x, z, m) => inAchthoek(x, z, l.h - m, l.c);
+    const uitKern = (x, z, m) => Math.abs(x - KERN.x) > KERN.hx + m || Math.abs(z - KERN.z) > KERN.hz + m;
+    let vergader = 0;
+    for(let gx = -l.h + 2.6; gx <= l.h - 2.6; gx += 3.8) for(let gz = -l.h + 2.6; gz <= l.h - 2.6; gz += 4.0){
+      const hoeken = [[-1.75, -1.5], [1.75, -1.5], [-1.75, 1.5], [1.75, 1.5]];
+      if(!hoeken.every(([ox, oz]) => binnen(gx + ox, gz + oz, 1.0) && uitKern(gx + ox, gz + oz, 1.5))) continue;
+      if(vergader < 2 && r() < 0.16){
+        // ronde vergadertafel met vier stoelen
+        vergader++;
+        zetK(new THREE.CylinderGeometry(0.95, 0.95, 0.04, 32), M.tafel, gx, 0.74, gz);
+        zetK(new THREE.CylinderGeometry(0.06, 0.08, 0.72, 10), M.poot, gx, 0.36, gz);
+        zetK(new THREE.CylinderGeometry(0.4, 0.4, 0.03, 20), M.poot, gx, 0.015, gz);
+        for(let i = 0; i < 4; i++){
+          const a = i * Math.PI / 2 + 0.4, sx = gx + Math.sin(a) * 1.35, sz = gz + Math.cos(a) * 1.35;
+          const st = bureaustoel(kg); st.position.set(sx, 0, sz); st.rotation.y = a + Math.PI;
+          if(r() < 0.45){ const p = zittendMens(kg); p.position.set(sx, 0, sz); p.rotation.y = a + Math.PI; }
+        }
+        kv.push({soort: 'rond', x: gx, z: gz, r: 1.0});
+        continue;
+      }
+      zetK(new THREE.BoxGeometry(3.2, 0.42, 0.03), M.stof, gx, 0.96, gz);   // scheidingsschotje
+      for(const zk of [-1, 1]) for(const xk of [-0.8, 0.8]){
+        const w = werkplek(kg); w.position.set(gx + xk, 0, gz + zk * 0.4); w.rotation.y = zk > 0 ? 0 : Math.PI;
+        // de stoel en soms iemand aan het werk (kijkt naar het bureau)
+        const sx = gx + xk, sz = gz + zk * 1.25;
+        const st = bureaustoel(kg); st.position.set(sx, 0, sz); st.rotation.y = zk > 0 ? Math.PI : 0;
+        if(r() < 0.5){ const p = zittendMens(kg); p.position.set(sx, 0, sz - zk * 0.08); p.rotation.y = zk > 0 ? Math.PI : 0; }
+      }
+      kv.push({soort: 'doos', x: gx, z: gz, hx: 1.6, hz: 0.8});
+    }
+    // planten: groot bij de schuine hoeken (bij het raam), kleiner langs de kern
+    const P = punten(l.h - 1.4, l.c);
+    for(let i = 0; i < 8; i += 2){
+      const x = (P[i][0] + P[i + 1][0]) / 2, z = (P[i][1] + P[i + 1][1]) / 2;
+      if(!uitKern(x, z, 0.8)) continue;
+      zetPlant(i % 4 === 0 ? 'kentia' : 'monstera', x, 0, z, 1.05, kg);
+      kv.push({soort: 'rond', x, z, r: 0.45});
+    }
+    for(const [x, z, sp] of [[KERN.hx + 0.6, KERN.z + KERN.hz - 0.4, 'ficus'], [-KERN.hx - 0.6, KERN.z + KERN.hz - 0.4, 'ficus'], [KERN.hx + 0.45, KERN.z - 1.5, 'sans'], [-KERN.hx - 0.45, KERN.z - 1.5, 'sans']]){
+      if(!binnen(x, z, 0.8)) continue;
+      zetPlant(sp, x, 0, z, 1, kg);
+      kv.push({soort: 'rond', x, z, r: 0.35});
+    }
+    platMaken(kg, []);
+    samenvoegen(kg);
+    const data = {groep: kg, kv, h: l.h, c: l.c};
+    kantoorCache[n] = data;
+    return data;
+  };
+
   // ═════ 10. DE HELIKOPTER 🚁 (staat op het dak, stijgt op, vliegt een rondje om het eiland en landt weer) ═════
   {
     const heli = new THREE.Group(); heli.rotation.order = 'YZX';
@@ -2373,6 +2805,7 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
       fase: 'staat', tijd: 20, u: 0, toeren: 0, hoek: 0, koers: -Math.PI / 2, rol: 0, neus: 0, geluid: null};
   }
 
+  platMaken(groep, [torenAnim.draaideur.parent]);
   // ═════ SAMENVOEGEN: honderden losse stukjes → één vorm per materiaal ═════
   // Elk los stukje kost de grafische kaart een aparte tekenopdracht. Alles wat
   // stilstaat en hetzelfde materiaal heeft, plakken we aan elkaar.
@@ -2587,6 +3020,104 @@ function updateHeli(dt, t){
     H.geluid.lfo.frequency.setTargetAtTime(Math.max(0.5, 21 * H.toeren), nu, 0.2);   // vijf bladen × ~4 rondjes per seconde
     H.geluid.turb.frequency.setTargetAtTime(300 + 900 * H.toeren, nu, 0.3);
   }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 🛗 DE LIFT (Brian 22 okt: "maak het dat je naar binnen kan" — lobby + lift naar de kantoren)
+// Ga in de lobby voor de liftdeuren staan en druk op L (of tik op de knop).
+// Kies een verdieping; de lift telt af en dan sta je op die verdieping.
+// ══════════════════════════════════════════════════════════════════
+const KANTOOR = {actief: false, laag: -1, k: 0, vloer: 0, data: null};
+const LIFT_VERDIEPINGEN = [];
+TW.lagen.forEach((l, n) => { for(let k = l.y0 / 4; k < (l.y1 - 4) / 4; k++) LIFT_VERDIEPINGEN.push({k, laag: n}); });
+let liftOpen = false, liftBezig = false, inLiftZone = false;
+const liftHint = document.createElement('div');
+liftHint.textContent = IS_TOUCH ? '🛗 Tik hier voor de lift' : '🛗 Druk op L voor de lift';
+liftHint.style.cssText = 'position:fixed;left:50%;bottom:120px;transform:translateX(-50%);background:rgba(10,14,20,0.72);color:#fff;padding:10px 18px;border-radius:12px;font:600 16px system-ui,sans-serif;display:none;cursor:pointer;z-index:40;border:1px solid rgba(255,255,255,0.25)';
+document.body.appendChild(liftHint);
+const liftPaneel = document.createElement('div');
+liftPaneel.style.cssText = 'position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:60;font-family:system-ui,sans-serif';
+liftPaneel.innerHTML = '<div style="background:linear-gradient(#2b3036,#1c1f23);border:2px solid #8d959c;border-radius:16px;padding:18px;max-width:560px;width:92%;max-height:86vh;overflow:auto;color:#fff;box-shadow:0 10px 40px rgba(0,0,0,0.6)">' +
+  '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b style="font-size:20px">🛗 DELUXE TOWER — kies een verdieping</b><button id="liftDicht" style="background:#444;color:#fff;border:0;border-radius:8px;padding:6px 12px;font-size:16px;cursor:pointer">✕</button></div>' +
+  '<div id="liftKnoppen" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:8px"></div></div>';
+document.body.appendChild(liftPaneel);
+const liftZwart = document.createElement('div');
+liftZwart.style.cssText = 'position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity 0.45s;z-index:70;display:flex;align-items:center;justify-content:center;color:#ffcf6a;font:700 64px system-ui,sans-serif;letter-spacing:4px';
+document.body.appendChild(liftZwart);
+function openLift(){
+  if(liftOpen || liftBezig) return;
+  liftOpen = true; liftHint.style.display = 'none';
+  const box = liftPaneel.querySelector('#liftKnoppen'); box.innerHTML = '';
+  const nu = KANTOOR.actief ? KANTOOR.k : 0;
+  const knop = (label, k) => {
+    const b = document.createElement('button'); b.textContent = label;
+    const hier = k === nu;
+    b.style.cssText = 'height:48px;border-radius:50%;border:2px solid ' + (hier ? '#ffcf6a' : '#9aa2aa') + ';background:' + (hier ? '#5a4a1a' : 'radial-gradient(#d9dde1,#9aa2aa)') + ';color:' + (hier ? '#ffcf6a' : '#1c1f23') + ';font:700 16px system-ui;cursor:pointer';
+    b.onclick = () => rijLift(k); box.appendChild(b);
+  };
+  knop('BG', 0);
+  for(const v of LIFT_VERDIEPINGEN) knop(String(v.k), v.k);
+  liftPaneel.style.display = 'flex';
+  if(pointerLocked) document.exitPointerLock();
+}
+function sluitLift(){ liftOpen = false; liftPaneel.style.display = 'none'; }
+liftPaneel.querySelector('#liftDicht').onclick = sluitLift;
+liftHint.onclick = openLift;
+addEventListener('keydown', e => {
+  if(e.code === 'KeyL' && gestart && inLiftZone && !liftOpen) openLift();
+  else if(e.code === 'Escape' && liftOpen) sluitLift();
+});
+function liftDing(){ metAudio(ac => { for(const [f, d] of [[880, 0], [660, 0.32]]){ const o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, ac.currentTime + d); g.gain.exponentialRampToValueAtTime(0.25, ac.currentTime + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + d + 1.2); o.connect(g); g.connect(ac.destination); o.start(ac.currentTime + d); o.stop(ac.currentTime + d + 1.3); } }); }
+const _hemi = scene.children.find(o => o.isHemisphereLight), _hemiGrond = _hemi ? _hemi.groundColor.clone() : null, _hemiLucht = _hemi ? _hemi.color.clone() : null;
+function binnenLicht(aan){   // binnen kaatst het licht van het tapijt en de muren, niet van het groene gras
+  if(!_hemi) return;
+  if(aan){ _hemi.groundColor.setHex(0x6e6a66); _hemi.color.setHex(0xdfe6ea); }
+  else { _hemi.groundColor.copy(_hemiGrond); _hemi.color.copy(_hemiLucht); }
+}
+function zetKantoor(doelK){
+  if(KANTOOR.data && KANTOOR.data.groep.parent) scene.remove(KANTOOR.data.groep);
+  binnenLicht(doelK !== 0);
+  if(doelK === 0){ Object.assign(KANTOOR, {actief: false, laag: -1, k: 0, vloer: 0, data: null}); return; }
+  const v = LIFT_VERDIEPINGEN.find(x => x.k === doelK);
+  const data = torenAnim.maakKantoor(v.laag);
+  const vloer = doelK * 4 + 0.72;
+  data.groep.position.set(TOREN.x, TW.pleinY + vloer, TOREN.z);
+  scene.add(data.groep);
+  Object.assign(KANTOOR, {actief: true, laag: v.laag, k: doelK, vloer, data});
+}
+function rijLift(doelK){
+  sluitLift();
+  const vanK = KANTOOR.actief ? KANTOOR.k : 0;
+  if(doelK === vanK || liftBezig) return;
+  liftBezig = true;
+  liftZwart.style.opacity = '1';
+  const stappen = Math.min(28, Math.abs(doelK - vanK)), duur = 900 + stappen * 70, start = performance.now();
+  const omhoog = doelK > vanK;
+  const tel = () => {
+    const f = Math.min(1, (performance.now() - start) / duur);
+    const nu = Math.round(vanK + (doelK - vanK) * f);
+    liftZwart.textContent = (omhoog ? '▲ ' : '▼ ') + (nu === 0 ? 'BG' : nu);
+    if(f < 1){ requestAnimationFrame(tel); return; }
+    zetKantoor(doelK);
+    // je stapt uit vóór de liftdeuren, met je gezicht van de lift af
+    const ly = KANTOOR.actief ? KANTOOR.vloer : 0;
+    camera.position.x = TOREN.x + torenAnim.KERN.x; camera.position.z = TOREN.z + torenAnim.KERN.z + torenAnim.KERN.hz + 1.3;
+    spelerY = TW.pleinY + ly; velY = 0; opGrond = true; adminVlieg = false;
+    camera.position.y = spelerY + OOG; yaw = Math.PI; pitch = -0.05;
+    renderer.shadowMap.needsUpdate = true;
+    liftDing();
+    setTimeout(() => { liftZwart.style.opacity = '0'; liftZwart.textContent = ''; liftBezig = false; zeg(doelK === 0 ? '🛗 Begane grond — de uitgang is rechtdoor' : '🛗 Verdieping ' + doelK); }, 250);
+  };
+  setTimeout(tel, 450);
+}
+// elk beeldje: sta je voor de lift? ben je de kantoorverdieping uit (vliegen)?
+function updateLift(){
+  const dx = camera.position.x - TOREN.x, dz = camera.position.z - TOREN.z, ly = spelerY - TW.pleinY, K = torenAnim.KERN;
+  const voorDeur = Math.abs(dx - K.x) < 4.5 && dz > K.z + K.hz && dz < K.z + K.hz + 2.4;
+  const opVloer = KANTOOR.actief ? Math.abs(ly - KANTOOR.vloer) < 1.2 : (ly > -0.5 && ly < 1.2);
+  inLiftZone = gestart && voorDeur && opVloer && !adminVlieg;
+  liftHint.style.display = (inLiftZone && !liftOpen && !liftBezig) ? 'block' : 'none';
+  if(KANTOOR.actief && (Math.abs(ly - KANTOOR.vloer) > 3.5 || !inAchthoek(dx, dz, KANTOOR.data.h + 1, KANTOOR.data.c))) zetKantoor(0);
 }
 
 // ── alles wat beweegt aan de toren, elk beeldje ──
@@ -8063,6 +8594,7 @@ function loop(nu){
     updateCrafterSpook();
   }
   updateToren(dt, t);   // 🏙️ draaideur, vlaggen, lichten
+  updateLift();         // 🛗 sta je voor de lift?
   golfZee(t);
   updateWolkenV2(dt, t);   // ☁️ v2: stapelwolken + wolkenlaag reizen mee en drijven
   updateWind(t);      _m.wind     += performance.now() - _t; _t = performance.now();
@@ -8075,8 +8607,9 @@ function loop(nu){
   // Op het grote eiland past het schaduw-vak (140×140 m) niet meer over alles:
   // daarom schuift de zon mee, zodat er altijd schaduw is waar jij staat.
   if((schaduwTeller++ % 20) === 0){
-    zon.position.set(camera.position.x + 70, 95, camera.position.z + 45);
-    zon.target.position.set(camera.position.x, 0, camera.position.z);
+    const zy = KANTOOR.actief ? camera.position.y - 3 : 0;   // op een kantoorverdieping: schaduw op die hoogte
+    zon.position.set(camera.position.x + 70, zy + 95, camera.position.z + 45);
+    zon.target.position.set(camera.position.x, zy, camera.position.z);
     zon.target.updateMatrixWorld();
     renderer.shadowMap.needsUpdate = true;
   }
