@@ -9051,7 +9051,7 @@ scene.add(SPELER.groep);
       o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
     });
     // ── het pantser: echte platen, uit de vorm van het lijf gesneden ──
-    const plaatMat = new THREE.MeshPhysicalMaterial({vertexColors: true, roughness: 0.42, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.08, envMap: env, envMapIntensity: 0.55, skinning: true});
+    const plaatMat = new THREE.MeshPhysicalMaterial({vertexColors: true, roughness: 0.5, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.1, envMap: env, envMapIntensity: 0.3, skinning: true});
     const gloedMat = new THREE.MeshBasicMaterial({color: 0x2f7dff, skinning: true});
     const P = bouwPantser(lijf, {plaatMat, gloedMat, licht: IS_TOUCH});
     if(P.platen) lijf.parent.add(P.platen);
@@ -9092,6 +9092,12 @@ scene.add(SPELER.groep);
     const laagste = Math.min(...voeten.map(v => v.y));
     g.scene.position.set(-bekken.x, -laagste + 0.035, -bekken.z);
     SPELER.groep.add(g.scene);
+    // botten onthouden voor de extra bewegingen (springen, landen, zwemmen, leunen, ogen)
+    const BB = {}; g.scene.traverse(o => { if(o.isBone) BB[o.name.replace(/^Bip0\d_/, '')] = o; });
+    SPELER.B = BB;
+    SPELER.leden = {};
+    for(const n of ['REyeBlinkTop', 'LEyeBlinkTop', 'REyeBlinkBottom', 'LEyeBlinkBottom']) if(BB[n]) SPELER.leden[n] = BB[n].position.clone();
+    SPELER.oogRust = {}; for(const n of ['REye', 'LEye']) if(BB[n]) SPELER.oogRust[n] = BB[n].quaternion.clone();
     SPELER.model = g.scene; SPELER.klaar = true;
   }).catch(e => console.warn('speler niet geladen', e));
 })();
@@ -9100,7 +9106,7 @@ function updateSpelerModel(dt){
   const tonen = S.derde && S.klaar && gestart && !dood;
   S.groep.visible = tonen;
   for(const h of handen) h.visible = !S.derde;
-  if(!tonen) return;
+  if(!tonen){ if(camera.fov !== 72){ camera.fov = 72; camera.updateProjectionMatrix(); } return; }
   const voet = new THREE.Vector3(camera.position.x, spelerY, camera.position.z);
   const v = Math.hypot(voet.x - S.vorige.x, voet.z - S.vorige.z) / Math.max(dt, 0.001);
   S.vorige.copy(voet);
@@ -9116,14 +9122,14 @@ function updateSpelerModel(dt){
   S.groep.rotation.x = S.kantel;
   if(S.kantel > 0.01){
     // de heup (0,55 m boven de voeten) blijft op het water, en precies op de plek van de speler
-    S.groep.position.y = (zwemt ? -0.55 - 0.08 : spelerY + 0.55) - 0.55 * Math.cos(S.kantel);
+    S.groep.position.y = (zwemt ? -0.55 + 0.04 + golfRingHoogte(camera.position.x, camera.position.z) * 0.85 : spelerY + 0.55) - 0.55 * Math.cos(S.kantel);   // rug net aan het oppervlak, deint mee op de golven
     S.groep.position.x -= Math.sin(S.groep.rotation.y) * 0.55 * Math.sin(S.kantel);
     S.groep.position.z -= Math.cos(S.groep.rotation.y) * 0.55 * Math.sin(S.kantel);
   }
   // ── welke beweging? (en hoe snel, zodat de voeten niet over de grond glijden) ──
   const A = S.acties, sp = S.snelheid, lucht = !opGrond && !zwemt && !adminVlieg;
   let doel = 'stil';
-  if(zwemt) doel = 'lopen';
+  if(zwemt) doel = 'stil';   // armen en benen doet de zwemslag hieronder
   else if(lucht) doel = 'sprinten';
   else if(sp > 3.3) doel = 'sprinten';
   else if(sp > 1.4) doel = 'rennen';
@@ -9138,9 +9144,85 @@ function updateSpelerModel(dt){
   if(lucht && A.sprinten && !S.inLucht){ A.sprinten.actie.time = A.sprinten.actie.getClip().duration * 0.28; }
   S.inLucht = lucht;
   S.mixer.update(dt);
+  extraBewegingen(dt, lucht);
+}
+// ── EXTRA BEWEGINGEN bovenop de opgenomen bewegingen ──
+// (draaien om een as in de wereld, voor dit beeldje — de mixer zet elk beeldje alles weer terug)
+const _xq = new THREE.Quaternion(), _xp = new THREE.Quaternion(), _xa = new THREE.Vector3();
+function draaiW(bot, as, hoek){
+  if(!bot || !hoek) return;
+  bot.parent.getWorldQuaternion(_xp);
+  _xa.copy(as).applyQuaternion(_xp.invert());                 // de as in het stelsel van de ouder
+  bot.quaternion.premultiply(_xq.setFromAxisAngle(_xa.normalize(), hoek));
+  bot.updateMatrixWorld(true);
+}
+function extraBewegingen(dt, lucht){
+  const S = SPELER, B = S.B; if(!B) return;
+  const t = performance.now() / 1000;
+  S.groep.updateMatrixWorld(true);
+  // de assen van het lijf in de wereld: opzij (links), vooruit, omhoog
+  const Q = S.groep.getWorldQuaternion(new THREE.Quaternion());
+  const ZIJ = new THREE.Vector3(1, 0, 0).applyQuaternion(Q), VOORUIT = new THREE.Vector3(0, 0, 1).applyQuaternion(Q), OP = new THREE.Vector3(0, 1, 0).applyQuaternion(Q);
+  if(S.modelY0 === undefined) S.modelY0 = S.model.position.y;
+  // ── springen: knieën omhoog, armen mee ──
+  S.sprong = (S.sprong || 0) + ((lucht ? 1 : 0) - (S.sprong || 0)) * Math.min(1, dt * 12);
+  if(lucht && !S.wasLucht) S.luchtTijd = 0;
+  if(lucht) S.luchtTijd = (S.luchtTijd || 0) + dt;
+  // ── landen: even door de knieën veren ──
+  if(!lucht && S.wasLucht && (S.luchtTijd || 0) > 0.25) S.land = Math.min(1, 0.45 + (S.luchtTijd || 0) * 0.6);
+  S.wasLucht = lucht;
+  S.land = Math.max(0, (S.land || 0) - dt * 3.2);
+  const sp = S.sprong;
+  if(sp > 0.01){
+    const omhoog = velY > 0 ? 1 : 0.6;                       // op weg omhoog trekt hij ze het hoogst op
+    for(const [z, k] of [['L', 1], ['R', 0.75]]){
+      draaiW(B[z + '_Thigh'], ZIJ, -1.05 * sp * k * omhoog);
+      draaiW(B[z + '_Calf'], ZIJ, 1.55 * sp * k * omhoog);
+      draaiW(B[z + '_Foot'], ZIJ, -0.35 * sp);
+      draaiW(B[z + '_UpperArm'], ZIJ, -0.6 * sp);
+      draaiW(B[z + '_Forearm'], ZIJ, -0.6 * sp);
+    }
+    draaiW(B.Spine, ZIJ, 0.12 * sp);
+  }
+  const ld = S.land, lv = ld * ld * (3 - 2 * ld);
+  if(lv > 0.01){
+    for(const z of ['L', 'R']){ draaiW(B[z + '_Thigh'], ZIJ, -0.75 * lv); draaiW(B[z + '_Calf'], ZIJ, 1.2 * lv); draaiW(B[z + '_Foot'], ZIJ, -0.45 * lv); draaiW(B[z + '_UpperArm'], ZIJ, -0.35 * lv); }
+    draaiW(B.Spine, ZIJ, 0.25 * lv);
+  }
+  S.model.position.y = S.modelY0 - 0.16 * lv;                 // het lijf zakt mee bij het landen
+  // ── zwemmen: borstcrawl, armen om en om rond, benen trappelen ──
+  if(zwemt){
+    const sl = t * 4.2;
+    for(const [z, f] of [['L', 0], ['R', Math.PI]]){
+      const a = sl + f;
+      draaiW(B[z + '_UpperArm'], ZIJ, -1.6 - 1.6 * Math.sin(a));      // armen draaien rond: naar voren, trekken, terug
+      draaiW(B[z + '_UpperArm'], VOORUIT, (z === 'L' ? 1 : -1) * 0.35 * Math.max(0, Math.cos(a)));
+      draaiW(B[z + '_Forearm'], ZIJ, -0.5 * Math.max(0, Math.cos(a)));
+      draaiW(B[z + '_Thigh'], ZIJ, 0.3 * Math.sin(t * 9 + f));
+      draaiW(B[z + '_Calf'], ZIJ, 0.25 + 0.2 * Math.sin(t * 9 + f + 0.6));
+      draaiW(B[z + '_Foot'], ZIJ, 0.6);
+    }
+    draaiW(B.Head, ZIJ, -0.55);                                   // hoofd omhoog: kijken waar je zwemt
+    draaiW(B.Spine, VOORUIT, 0.18 * Math.sin(sl));                // het lijf rolt mee met de slag
+  }
+  // ── leunen in de bocht: hoe sneller en scherper, hoe schuiner ──
+  const draai = S.kijkYaw - (S.vorigeYaw === undefined ? S.kijkYaw : S.vorigeYaw); S.vorigeYaw = S.kijkYaw;
+  const doelRol = zwemt ? 0 : Math.max(-0.22, Math.min(0.22, -(draai / Math.max(dt, 0.001)) * S.snelheid * 0.018));
+  S.rol = (S.rol || 0) + (doelRol - (S.rol || 0)) * Math.min(1, dt * 6);
+  draaiW(B.Pelvis, VOORUIT, S.rol);
+  // ── ogen: kijken af en toe rond en knipperen elke paar seconden ──
+  if(S.volgendeKnip === undefined) S.volgendeKnip = t + 2;
+  let knip = 0;
+  if(t > S.volgendeKnip){ const k = (t - S.volgendeKnip) / 0.16; knip = k < 1 ? Math.sin(k * Math.PI) : 0; if(k >= 1) S.volgendeKnip = t + 2 + Math.random() * 4; }
+  for(const [n, d] of [['REyeBlinkTop', -0.014], ['LEyeBlinkTop', -0.014], ['REyeBlinkBottom', 0.003], ['LEyeBlinkBottom', 0.003]]) if(B[n] && S.leden[n]){ B[n].position.copy(S.leden[n]); B[n].position.x += d * knip; }
+  if(S.volgendeBlik === undefined || t > S.volgendeBlik){ S.blik = [(Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.2]; S.volgendeBlik = t + 1 + Math.random() * 3; }
+  S.blikNu = S.blikNu || [0, 0];
+  S.blikNu[0] += (S.blik[0] - S.blikNu[0]) * Math.min(1, dt * 14); S.blikNu[1] += (S.blik[1] - S.blikNu[1]) * Math.min(1, dt * 14);
+  for(const n of ['REye', 'LEye']){ if(S.oogRust[n]) B[n].quaternion.copy(S.oogRust[n]); draaiW(B[n], OP, S.blikNu[0]); draaiW(B[n], ZIJ, S.blikNu[1]); }   // (eerst terug naar rust: anders tellen de draaiingen op)
 }
 // de camera tijdelijk achter de speler zetten (vlak vóór het tekenen), en daarna terug
 const _oog = new THREE.Vector3(), _vw = new THREE.Vector3(), _rechts = new THREE.Vector3();
+const _camDoel = new THREE.Vector3(), _camVeer = new THREE.Vector3(), _camNaloop = new THREE.Vector3(), _camVorigOog = new THREE.Vector3(), _camStap = new THREE.Vector3(); let _camTijd = performance.now();
 function cameraAchter(){
   if(!(SPELER.derde && SPELER.klaar && gestart && !dood)) return false;
   _oog.copy(camera.position);
@@ -9148,8 +9230,19 @@ function cameraAchter(){
   _rechts.set(-_vw.z, 0, _vw.x).normalize();
   const binnen = typeof KANTOOR !== 'undefined' && KANTOOR.actief;
   const afst = binnen ? 1.7 : 2.3;
-  camera.position.copy(_oog).addScaledVector(_vw, -afst).addScaledVector(_rechts, 0.5);
-  camera.position.y -= 0.05;
+  const doel = _camDoel.copy(_vw).multiplyScalar(-afst).addScaledVector(_rechts, 0.5); doel.y -= 0.05;
+  // de camera veert zacht mee (loopt een fractie achter als je wegrent), zoals in Fortnite
+  const dt = Math.min(0.05, (performance.now() - _camTijd) / 1000); _camTijd = performance.now();
+  if(!_camVeer.lengthSq() || _camVeer.distanceTo(doel) > 3) _camVeer.copy(doel);
+  _camVeer.lerp(doel, 1 - Math.exp(-dt * 14));
+  const beweging = _camStap.copy(_oog).sub(_camVorigOog); _camVorigOog.copy(_oog);
+  if(beweging.length() < 2) _camNaloop.add(beweging);
+  _camNaloop.multiplyScalar(Math.exp(-dt * 7));
+  if(_camNaloop.length() > 0.6) _camNaloop.setLength(0.6);
+  camera.position.copy(_oog).add(_camVeer).addScaledVector(_camNaloop, -0.5);
+  // sprinten: het beeld wordt iets wijder (dan voelt het sneller)
+  const fovDoel = 72 + Math.max(0, Math.min(1, (SPELER.snelheid - 6) / 5)) * 8;
+  if(Math.abs(camera.fov - fovDoel) > 0.05){ camera.fov += (fovDoel - camera.fov) * Math.min(1, dt * 4); camera.updateProjectionMatrix(); }
   // niet door de grond
   const g = hoogteOp(camera.position.x, camera.position.z) + 0.4;
   if(!binnen && camera.position.y < g) camera.position.y = g;

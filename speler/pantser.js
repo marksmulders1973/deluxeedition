@@ -85,7 +85,11 @@
       zaad(voet.clone().sub(VOOR.clone().multiplyScalar(0.05)), VOOR.clone().negate(), 'voet');
       // grote schouderplaat
       const sch = BP(s + '_UpperArm');
-      zaad(sch.clone().add(V(Math.sign(sch.x) * 0.02, 0.04, 0)), V(Math.sign(sch.x), 1, 0).normalize(), 'romp');
+      zaad(sch.clone().add(V(Math.sign(sch.x) * 0.02, 0.04, 0)), V(Math.sign(sch.x), 1, 0).normalize(), 'schouder');
+      // kniekap (vóór de knie) en elleboogkap (achter de elleboog)
+      const kn = BP(s + '_Calf'), el = BP(s + '_Forearm');
+      zaad(kn.clone().add(VOOR.clone().multiplyScalar(straal(BP(s + '_Thigh'), kn, s + '_Thigh') * 0.9)), VOOR, 'kap');
+      zaad(el.clone().sub(VOOR.clone().multiplyScalar(straal(BP(s + '_UpperArm'), el, s + '_UpperArm') * 0.9)), VOOR.clone().negate(), 'kap');
     }
     // romp: borst (2 helften + borstbeen), buik in rijen, flanken, rug, heupen
     const r2 = BP('Spine2'), r1 = BP('Spine1'), bk = BP('Pelvis');
@@ -127,8 +131,12 @@
       for(let s = 0; s < 2; s++){
         const sg = Math.sign(pols[s].x) || 1;                              // aan welke kant zit deze hand?
         m = Math.min(m, sg * (pols[s].x - x) - 0.015);                     // de armplaat stopt 1,5 cm vóór de pols; daarna handschoen
-        m = Math.min(m, dist(elleboog[s]) - 0.045);
-        m = Math.min(m, dist(knie[s]) - 0.05);
+        // elleboog: aan de buigkant (voorkant) het zwarte pak, aan de achterkant een kap
+        const ve = (x - elleboog[s].x) * VOOR.x + (z - elleboog[s].z) * VOOR.z;
+        m = Math.min(m, Math.max(dist(elleboog[s]) - 0.05, -ve - 0.012));
+        // knie: aan de achterkant (knieholte) het zwarte pak, vóór een kniekap
+        const vk = (x - knie[s].x) * VOOR.x + (z - knie[s].z) * VOOR.z;
+        m = Math.min(m, Math.max(dist(knie[s]) - 0.058, vk - 0.014));
         m = Math.min(m, dist(enkel[s]) - 0.035);
         // oksel: alleen het hoekje waar arm en romp elkaar raken (onder het schoudergewricht, aan de binnenkant)
         m = Math.min(m, Math.max(y - (schouder[s].y - 0.04), Math.abs(x - (schouder[s].x - sg * 0.03)) - 0.03, Math.abs(z - schouder[s].z) - 0.055, (schouder[s].y - 0.13) - y));
@@ -202,12 +210,21 @@
       return uitP;
     };
     // de plaat zelf: buitenkant + zijkanten
-    const dikte = (d) => d === 'romp' ? 0.013 : d === 'been' ? 0.012 : d === 'arm' ? 0.010 : 0.009;
+    const dikte = (d) => d === 'schouder' ? 0.021 : d === 'kap' ? 0.016 : d === 'romp' ? 0.013 : d === 'been' ? 0.012 : d === 'arm' ? 0.010 : 0.009;
     const OFF = 0.0025;
     const op = (q, h) => [q.p[0] + q.n[0] * h, q.p[1] + q.n[1] * h, q.p[2] + q.n[2] * h];
-    const vul = (doel, poly, kl, onder, boven) => {
+    // afronding: aan de rand staat de plaat op 55% van zijn dikte en over 7 mm loopt hij rond op tot vol
+    const BW = 0.007;
+    const rondHoogte = (q, onder, boven, c) => {
+      if(c === undefined || onder === null) return boven;
+      const f = q.rand ? 0 : Math.max(0, veldPlaat(q, c));
+      const t = Math.min(1, f / BW), r = Math.sqrt(1 - (1 - t) * (1 - t));     // kwart cirkel
+      return onder + (boven - onder) * (0.55 + 0.45 * r);
+    };
+    const vul = (doel, poly, kl, onder, boven, c) => {
+      const hg = poly.map(q => rondHoogte(q, onder, boven, c));
       for(let k = 1; k + 1 < poly.length; k++){
-        for(const q of [poly[0], poly[k], poly[k + 1]]){ const g = gewichten(q.w); zet(doel, op(q, boven), q.n, kl, g.si, g.sw); }
+        for(const i of [0, k, k + 1]){ const q = poly[i], g = gewichten(q.w); zet(doel, op(q, hg[i]), q.n, kl, g.si, g.sw); }
       }
       if(onder === null) return;
       // zijkanten langs de randen die door het knippen zijn ontstaan
@@ -218,7 +235,7 @@
         let wn = [ab[1] * a.n[2] - ab[2] * a.n[1], ab[2] * a.n[0] - ab[0] * a.n[2], ab[0] * a.n[1] - ab[1] * a.n[0]];
         const l = Math.hypot(wn[0], wn[1], wn[2]) || 1; wn = wn.map(x => x / l);
         const ga = gewichten(a.w), gb = gewichten(b.w), donker = [kl[0] * 0.78, kl[1] * 0.78, kl[2] * 0.8];
-        const a0 = op(a, onder), a1 = op(a, boven), b0 = op(b, onder), b1 = op(b, boven);
+        const a0 = op(a, onder), a1 = op(a, hg[k]), b0 = op(b, onder), b1 = op(b, hg[(k + 1) % poly.length]);
         zet(doel, a0, wn, donker, ga.si, ga.sw); zet(doel, b0, wn, donker, gb.si, gb.sw); zet(doel, b1, wn, donker, gb.si, gb.sw);
         zet(doel, a0, wn, donker, ga.si, ga.sw); zet(doel, b1, wn, donker, gb.si, gb.sw); zet(doel, a1, wn, donker, ga.si, ga.sw);
       }
@@ -279,22 +296,44 @@
           const poly = f.every(x => x > 0) ? pts : knip(pts, f);
           if(poly.length < 3) continue;
           const s = zaden[c], h = hash(c, 3), h2 = hash(c, 9);
-          const basis = h < 0.12 ? 0.6 : 0.74 + 0.05 * h2;                  // gebroken wit (echt wit plastic weerkaatst ~75%), een paar platen net iets grijzer
+          const basis = h < 0.12 ? 0.68 : 0.8 + 0.04 * h2;                  // gebroken wit (echt wit plastic weerkaatst ~75%), een paar platen net iets grijzer
           const kl = opties.kleurPerPlaat ? [hash(c, 1), hash(c, 2), hash(c, 4)] : [basis * 0.985, basis * 0.99, basis];
           const dk = dikte(s.deel) + (h - 0.5) * 0.003;
-          vul(uit.plaat, poly, kl, OFF, OFF + dk);
+          vul(uit.plaat, poly, kl, OFF, OFF + dk, c);
           if(h2 > 0.62 && s !== borstbeen) groef(pts, s, c, OFF + dk + 0.0006);
-          if(Math.hypot(s.x - borstbeen.x, s.y - borstbeen.y, s.z - borstbeen.z) < 0.14) for(const v of vStrepen) streep(pts, v.start, v.langs, v.dwars, 0.0045, v.L, [q => veldPlaat(q, c) - 0.004, q => q.qn[0] * VOOR.x + q.qn[2] * VOOR.z - 0.3], OFF + dk + 0.0006);
+          if(Math.hypot(s.x - borstbeen.x, s.y - borstbeen.y, s.z - borstbeen.z) < 0.14) for(const v of vStrepen) streep(pts, v.start, v.langs, v.dwars, 0.0045, v.L, [q => veldPlaat(q, c) - BW, q => q.qn[0] * VOOR.x + q.qn[2] * VOOR.z - 0.3], OFF + dk + 0.0006);   // (niet op de afgeronde rand: daar ligt de plaat lager)
         }
         // blauwe lichtlijn in sommige naden
         // lichtlijn in sommige naden (tussen twee bepaalde platen), net onder de plaatrand
         { const a0 = pts[0].id1, b0 = pts[0].id2;
           if(paarGloeit(a0, b0) && pts.every(q => (q.id1 === a0 || q.id1 === b0) && (q.id2 === a0 || q.id2 === b0))){
             const poly = knipReeks(pts, [q => 0.0017 - totGrens(q, a0, b0), q => 0.0017 + totGrens(q, a0, b0), q => q.mk + 0.01]);
-            if(poly.length >= 3) vul(uit.gloed, poly, [1, 1, 1], null, OFF + 0.0105);
+            if(poly.length >= 3) vul(uit.gloed, poly, [1, 1, 1], null, OFF + 0.0062);   // diep in de naad, net onder de afgeronde plaatranden
           } }
       }
     }
+    // gladde normalen: voor elk hoekpunt het gemiddelde van de vlakjes eromheen die minder dan 55° afwijken.
+    // Dan zien de afgeronde randen er rond uit, maar blijven de zijkanten van de platen scherp.
+    const gladNormalen = (b) => {
+      const n = b.p.length / 9, fn = new Float32Array(n * 3), emmer = new Map(), sleutel = (i) => Math.round(b.p[i * 3] * 8000) + ',' + Math.round(b.p[i * 3 + 1] * 8000) + ',' + Math.round(b.p[i * 3 + 2] * 8000);
+      for(let f = 0; f < n; f++){
+        const o = f * 9, ux = b.p[o + 3] - b.p[o], uy = b.p[o + 4] - b.p[o + 1], uz = b.p[o + 5] - b.p[o + 2], vx = b.p[o + 6] - b.p[o], vy = b.p[o + 7] - b.p[o + 1], vz = b.p[o + 8] - b.p[o + 2];
+        let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        // de gewenste kant (zoals bij het maken gezet) bepaalt de richting
+        if(nx * b.n[o] + ny * b.n[o + 1] + nz * b.n[o + 2] < 0){ nx = -nx; ny = -ny; nz = -nz; }
+        fn[f * 3] = nx; fn[f * 3 + 1] = ny; fn[f * 3 + 2] = nz;     // (lengte = 2× oppervlak: grote vlakjes tellen zwaarder)
+        for(let k = 0; k < 3; k++){ const key = sleutel(f * 3 + k); let e = emmer.get(key); if(!e) emmer.set(key, e = []); e.push(f); }
+      }
+      const KREUK = Math.cos(55 * Math.PI / 180);
+      for(let i = 0; i < n * 3; i++){
+        const f = (i / 3) | 0, ax = fn[f * 3], ay = fn[f * 3 + 1], az = fn[f * 3 + 2], al = Math.hypot(ax, ay, az) || 1;
+        let sx = 0, sy = 0, sz = 0;
+        for(const g of emmer.get(sleutel(i))){ const gx = fn[g * 3], gy = fn[g * 3 + 1], gz = fn[g * 3 + 2], gl = Math.hypot(gx, gy, gz) || 1; if((ax * gx + ay * gy + az * gz) / (al * gl) >= KREUK){ sx += gx; sy += gy; sz += gz; } }
+        const l = Math.hypot(sx, sy, sz);
+        if(l > 0){ b.n[i * 3] = sx / l; b.n[i * 3 + 1] = sy / l; b.n[i * 3 + 2] = sz / l; }
+      }
+    };
+    gladNormalen(uit.plaat);
     const maak = (b, mat) => {
       if(!b.p.length) return null;
       const g = new THREE.BufferGeometry();
