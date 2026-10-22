@@ -196,6 +196,10 @@ const KOKOS_TOTAAL = 12;
 // omhoog naar de top.
 // ══════════════════════════════════════════════════════════════════
 const VULKAAN = {x: 0, z: -150, R: 540, H: 450, kraterR: 48, kraterDiep: 36};
+// 🏙️ DE WOLKENKRABBER (Brian 22 okt: "in het midden van het eiland een sky scraper",
+// naast de vulkaan op het vlakke gras). B = breedte van de voet, de toren
+// heeft drie lagen die steeds smaller worden, plus een spits met een rood lampje.
+const TOREN = {x: 0, z: 450, lagen: [{b: 30, h: 120}, {b: 24, h: 60}, {b: 17, h: 30}], sokkel: 33};
 function vulkaanInfo(x, z){
   const dx = x - VULKAAN.x, dz = z - VULKAAN.z;
   const r = Math.hypot(dx, dz);
@@ -1262,11 +1266,103 @@ function zoekPlek(minH, maxH, maxD, rond){
   for(let poging = 0; poging < 60; poging++){
     const hoek = rnd() * Math.PI * 2, afst = Math.sqrt(rnd()) * maxD * (rond ? 1 : SCHAAL);
     const x = (rond ? rond.x : 0) + Math.cos(hoek) * afst, z = (rond ? rond.z : 0) + Math.sin(hoek) * afst;
+    if(Math.abs(x - TOREN.x) < TOREN.sokkel / 2 + 8 && Math.abs(z - TOREN.z) < TOREN.sokkel / 2 + 8) continue;   // niks in de wolkenkrabber
     const h = hoogteOp(x, z);
     if(h >= minH && h <= maxH) return {x, z, h};
   }
   return null;
 }
+
+// ══════════════════════════════════════════════════════════════════
+// 🏙️ DE WOLKENKRABBER (Brian 22 okt)
+// Een glazen toren van 210 m (+ spits) in drie lagen. De ramen zijn een
+// getekend plaatje; een deel brandt geel, dat zie je ook als het donker is.
+// Je kunt er niet doorheen lopen, en als je er met vliegen bovenop landt
+// kun je op het dak staan.
+// ══════════════════════════════════════════════════════════════════
+const torenVoetY = (() => {   // laagste punt onder de voet, zodat hij nergens zweeft
+  let m = Infinity; const s = TOREN.sokkel / 2;
+  for(let i = -2; i <= 2; i++) for(let j = -2; j <= 2; j++) m = Math.min(m, hoogteOp(TOREN.x + i * s / 2, TOREN.z + j * s / 2));
+  return m - 0.4;
+})();
+const SOKKEL_H = 7;
+// hoe hoog is het dak van de toren op deze plek? (null = niet op de toren)
+function torenDak(x, z, marge){
+  const dx = Math.abs(x - TOREN.x), dz = Math.abs(z - TOREN.z), m = marge || 0;
+  if(dx > TOREN.sokkel / 2 + m || dz > TOREN.sokkel / 2 + m) return null;
+  let y = torenVoetY + SOKKEL_H;                       // op de sokkel
+  for(const l of TOREN.lagen){                         // elke laag is smaller dan de vorige
+    if(dx < l.b / 2 + m && dz < l.b / 2 + m) y += l.h; else break;
+  }
+  return y;
+}
+(function bouwToren(){
+  // ── het ramen-plaatje: 8 ramen breed, 16 verdiepingen hoog ──
+  const W = 256, H = 512, KOL = 8, VER = 16;
+  const kleur = document.createElement('canvas'); kleur.width = W; kleur.height = H;
+  const gloei = document.createElement('canvas'); gloei.width = W; gloei.height = H;
+  const c = kleur.getContext('2d'), g = gloei.getContext('2d');
+  const lucht = c.createLinearGradient(0, 0, W, H);           // spiegeling van de lucht in het glas
+  lucht.addColorStop(0, '#5f86a8'); lucht.addColorStop(0.5, '#2c4a66'); lucht.addColorStop(1, '#4b7193');
+  c.fillStyle = lucht; c.fillRect(0, 0, W, H);
+  g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+  const rw = W / KOL, rh = H / VER;
+  for(let r = 0; r < VER; r++) for(let k = 0; k < KOL; k++){
+    const x = k * rw, y = r * rh;
+    c.fillStyle = 'rgba(255,255,255,' + (0.03 + Math.random() * 0.08) + ')';   // elk raam een tikje anders
+    c.fillRect(x + 2, y + 3, rw - 4, rh - 6);
+    if(Math.random() < 0.28){                                // licht aan in dit kantoor
+      const warm = Math.random() < 0.7 ? '#ffd98a' : '#cfe8ff';
+      g.fillStyle = warm; g.fillRect(x + 3, y + 4, rw - 6, rh - 8);
+      c.fillStyle = 'rgba(255,230,170,0.35)'; c.fillRect(x + 3, y + 4, rw - 6, rh - 8);
+    }
+  }
+  c.fillStyle = '#c9d2da';                                   // de stalen stijlen en vloerranden
+  for(let k = 0; k <= KOL; k++) c.fillRect(k * rw - 1.5, 0, 3, H);
+  for(let r = 0; r <= VER; r++) c.fillRect(0, r * rh - 2, W, 4);
+  const tKleur = new THREE.CanvasTexture(kleur), tGloei = new THREE.CanvasTexture(gloei);
+  for(const t of [tKleur, tGloei]){ t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; }
+
+  const beton = new THREE.MeshStandardMaterial({color: 0xb9bec4, roughness: 0.85});
+  const donker = new THREE.MeshStandardMaterial({color: 0x3a3f46, roughness: 0.6, metalness: 0.3});
+  const groep = new THREE.Group();
+  const doos = (b, h, d, mat, y) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(b, h, d), mat);
+    m.position.y = y + h / 2; m.castShadow = true; m.receiveShadow = true; groep.add(m); return m;
+  };
+
+  // de sokkel met de ingang (glazen deuren aan de kant van het strand, +z)
+  doos(TOREN.sokkel, SOKKEL_H, TOREN.sokkel, donker, 0);
+  const deurMat = new THREE.MeshStandardMaterial({color: 0x9fd3ff, emissive: 0xffe2a8, emissiveIntensity: 0.35, roughness: 0.1, metalness: 0.5});
+  const deur = new THREE.Mesh(new THREE.BoxGeometry(9, 4.5, 0.3), deurMat);
+  deur.position.set(0, 2.25 + 0.4, TOREN.sokkel / 2 + 0.1); groep.add(deur);
+  const luifel = doos(13, 0.5, 4, beton, 5.2); luifel.position.z = TOREN.sokkel / 2 + 2;
+
+  // de drie lagen glas, met een betonnen rand ertussen
+  let y = SOKKEL_H;
+  for(const l of TOREN.lagen){
+    const zij = new THREE.MeshStandardMaterial({
+      map: tKleur.clone(), emissiveMap: tGloei.clone(), emissive: 0xffffff, emissiveIntensity: 0.55,
+      roughness: 0.18, metalness: 0.35
+    });
+    zij.map.needsUpdate = zij.emissiveMap.needsUpdate = true;
+    zij.map.repeat.set(l.b / 24, l.h / 56); zij.emissiveMap.repeat.copy(zij.map.repeat);
+    doos(l.b, l.h, l.b, [zij, zij, beton, beton, zij, zij], y);
+    y += l.h;
+    doos(l.b + 0.8, 1.2, l.b + 0.8, beton, y - 0.6);         // de rand bovenop deze laag
+  }
+  // dakopbouw + spits met een knipperend rood lampje (voor vliegtuigen ✈️)
+  doos(7, 5, 7, beton, y);
+  const spits = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.7, 35, 8), donker);
+  spits.position.y = y + 5 + 17.5; groep.add(spits);
+  const lampMat = new THREE.MeshBasicMaterial({color: 0xff2020});
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8), lampMat);
+  lamp.position.y = y + 5 + 35.5; groep.add(lamp);
+  setInterval(() => lampMat.color.setHex(lampMat.color.getHex() === 0xff2020 ? 0x401010 : 0xff2020), 900);
+
+  groep.position.set(TOREN.x, torenVoetY, TOREN.z);
+  scene.add(groep);
+})();
 
 // ══════════════════════════════════════════════════════════════════
 // 5b. DE PALMBOMEN — helemaal opnieuw gebouwd (Brian: "10× realistischer")
@@ -4657,11 +4753,15 @@ function updateVliegen(dt){
   // vooruit = kijkrichting (met hoogte), opzij = plat
   const fx = -Math.sin(yaw) * cp, fy = sp, fz = -Math.cos(yaw) * cp;
   const rx = Math.cos(yaw), rz = -Math.sin(yaw);
-  const nx = camera.position.x + (fx * -vz + rx * vx) * snel * dt;
-  const nz = camera.position.z + (fz * -vz + rz * vx) * snel * dt;
+  let nx = camera.position.x + (fx * -vz + rx * vx) * snel * dt;
+  let nz = camera.position.z + (fz * -vz + rz * vx) * snel * dt;
   let ny = camera.position.y + (fy * -vz + vy * 0.7) * snel * dt;
   // niet door de grond of het water, niet hoger dan de wolken, niet van de kaart af
-  const grond = Math.max(hoogteOp(nx, nz), -0.55);
+  // tegen de wolkenkrabber botsen: dan blijf je hangen waar je was (wel omhoog/omlaag)
+  const td = torenDak(nx, nz, 0.5);
+  if(td !== null && ny < td + 1.2 && camera.position.y >= td + 1.2 - 0.01){ ny = td + 1.2; }   // landen op het dak
+  else if(td !== null && ny < td + 1.2){ nx = camera.position.x; nz = camera.position.z; }
+  const grond = Math.max(hoogteOp(nx, nz), -0.55, torenDak(nx, nz, 0.5) ?? -Infinity);
   ny = Math.max(grond + 1.2, Math.min(1400, ny));
   const d = Math.hypot(nx, nz), maxR = ZEE_MAAT * 0.48;
   camera.position.set(d > maxR ? nx / d * maxR : nx, ny, d > maxR ? nz / d * maxR : nz);
@@ -4702,6 +4802,7 @@ function updateSpeler(dt){
     if(Math.abs(nx - p.voetX) < 0.6 && Math.abs(nz - p.voetZ) < 0.6 && Math.hypot(nx - p.voetX, nz - p.voetZ) < 0.5){ nx = oudX; nz = oudZ; break; }
   }
   if(muren.length && botstMuur(nx, nz)){ nx = oudX; nz = oudZ; }   // niet door je eigen muur heen
+  { const td = torenDak(nx, nz, 0.35); if(td !== null && td > spelerY + 0.6){ nx = oudX; nz = oudZ; } }   // niet door de wolkenkrabber
   // niet te ver de zee in — haaien! 🦈
   const d = Math.hypot(nx, nz);
   if(d > ZEE_GRENS){
@@ -4711,7 +4812,7 @@ function updateSpeler(dt){
   camera.position.x = nx; camera.position.z = nz;
 
   // hoe hoog ligt de grond hier?
-  const grondH = hoogteOp(nx, nz);
+  const grondH = Math.max(hoogteOp(nx, nz), torenDak(nx, nz) ?? -Infinity);   // op het dak van de toren sta je gewoon
   zwemt = grondH < -0.55;
 
   if(zwemt){
