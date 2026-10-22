@@ -199,7 +199,10 @@ const VULKAAN = {x: 0, z: -150, R: 540, H: 450, kraterR: 48, kraterDiep: 36};
 // 🏙️ DE WOLKENKRABBER (Brian 22 okt: "in het midden van het eiland een sky scraper",
 // naast de vulkaan op het vlakke gras). B = breedte van de voet, de toren
 // heeft drie lagen die steeds smaller worden, plus een spits met een rood lampje.
-const TOREN = {x: 0, z: 450, lagen: [{b: 30, h: 120}, {b: 24, h: 60}, {b: 17, h: 30}], sokkel: 33};
+// v2 (zelfde dag, "100x realistischer"): h = halve breedte, c = afgeschuinde hoek, hoog = meters;
+// onder de eerste laag een glazen lobby van 8 m, bovenop een glazen kroon van 6 m.
+const TOREN = {x: 0, z: 450, plein: 84, lobbyH: 8, lobby: {h: 12.5, c: 2.5}, kroon: 6,
+  lagen: [{h: 15, c: 3, hoog: 124}, {h: 12, c: 2.25, hoog: 64}, {h: 8.5, c: 1.75, hoog: 36}]};
 function vulkaanInfo(x, z){
   const dx = x - VULKAAN.x, dz = z - VULKAAN.z;
   const r = Math.hypot(dx, dz);
@@ -1266,7 +1269,7 @@ function zoekPlek(minH, maxH, maxD, rond){
   for(let poging = 0; poging < 60; poging++){
     const hoek = rnd() * Math.PI * 2, afst = Math.sqrt(rnd()) * maxD * (rond ? 1 : SCHAAL);
     const x = (rond ? rond.x : 0) + Math.cos(hoek) * afst, z = (rond ? rond.z : 0) + Math.sin(hoek) * afst;
-    if(Math.abs(x - TOREN.x) < TOREN.sokkel / 2 + 8 && Math.abs(z - TOREN.z) < TOREN.sokkel / 2 + 8) continue;   // niks in de wolkenkrabber
+    if(Math.abs(x - TOREN.x) < TOREN.plein / 2 + 6 && Math.abs(z - TOREN.z) < TOREN.plein / 2 + 6) continue;   // niks op het plein van de wolkenkrabber
     const h = hoogteOp(x, z);
     if(h >= minH && h <= maxH) return {x, z, h};
   }
@@ -1274,95 +1277,691 @@ function zoekPlek(minH, maxH, maxD, rond){
 }
 
 // ══════════════════════════════════════════════════════════════════
-// 🏙️ DE WOLKENKRABBER (Brian 22 okt)
-// Een glazen toren van 210 m (+ spits) in drie lagen. De ramen zijn een
-// getekend plaatje; een deel brandt geel, dat zie je ook als het donker is.
-// Je kunt er niet doorheen lopen, en als je er met vliegen bovenop landt
-// kun je op het dak staan.
+// 🏙️ DE WOLKENKRABBER v2 — "DELUXE TOWER" (Brian 22 okt: "100x realistischer, neem je tijd")
+//
+// Wat een echte glazen toren echt maakt, en wat we daarom hebben gebouwd:
+//  • SPIEGELEN: een glazen toren is vooral een spiegel. We maken één keer
+//    een rondom-foto vanaf de toren (vulkaan, palmen, zee, lucht) en die
+//    spiegelt in het glas. Elke glasplaat staat een fractie scheef (zo gaat
+//    dat bij echt glas), dus de spiegeling breekt een beetje per ruit.
+//  • DE GEVEL: ramen van 1,5 m breed, verdiepingen van 4 m, een dichte
+//    borstwering bij elke vloer, aluminium lijsten die echt uitsteken (3D),
+//    zonweringen die half dicht zijn, en kantoren waar het licht brandt.
+//  • DE VORM: drie lagen met afgeschuinde hoeken, een technische verdieping
+//    met roosters bovenaan elke laag, een daktuin met glazen reling, een
+//    glazen kroon, een helikopterplatform en een antennemast.
+//  • BENEDEN: een hoge glazen lobby onder een overstek met zuilen, een
+//    draaideur die draait, een luifel met de naam, en een plein van graniet
+//    met bomen, lantaarns, vlaggen en een spiegelvijver.
+//  • LEVEN: een glazenwassersbakje dat op en neer gaat, knipperende
+//    vliegtuiglichten, en bij onweer gaan de kantoorlampen feller schijnen.
+// Je kunt er niet doorheen lopen; onder het overstek wel. Met vliegen kun je
+// op de daken en het helikopterplatform landen (er staat een reling omheen).
 // ══════════════════════════════════════════════════════════════════
-const torenVoetY = (() => {   // laagste punt onder de voet, zodat hij nergens zweeft
-  let m = Infinity; const s = TOREN.sokkel / 2;
-  for(let i = -2; i <= 2; i++) for(let j = -2; j <= 2; j++) m = Math.min(m, hoogteOp(TOREN.x + i * s / 2, TOREN.z + j * s / 2));
-  return m - 0.4;
+const TW = (() => {
+  // het plein ligt net boven het hoogste punt eronder, zodat er nergens gras door prikt
+  let mx = -Infinity; const s = TOREN.plein / 2;
+  for(let i = -6; i <= 6; i++) for(let j = -6; j <= 6; j++) mx = Math.max(mx, hoogteOp(TOREN.x + i * s / 6, TOREN.z + j * s / 6));
+  const t = {pleinY: mx + 0.22, lagen: []};
+  let y = TOREN.lobbyH;
+  for(const l of TOREN.lagen){ t.lagen.push({h: l.h, c: l.c, y0: y, y1: y + l.hoog}); y += l.hoog; }
+  t.dakY = y;                                    // dak van de bovenste laag (lokaal)
+  t.heliY = y + TOREN.kroon + 1.6;               // bovenkant van het helikopterplatform
+  return t;
 })();
-const SOKKEL_H = 7;
-// hoe hoog is het dak van de toren op deze plek? (null = niet op de toren)
-function torenDak(x, z, marge){
-  const dx = Math.abs(x - TOREN.x), dz = Math.abs(z - TOREN.z), m = marge || 0;
-  if(dx > TOREN.sokkel / 2 + m || dz > TOREN.sokkel / 2 + m) return null;
-  let y = torenVoetY + SOKKEL_H;                       // op de sokkel
-  for(const l of TOREN.lagen){                         // elke laag is smaller dan de vorige
-    if(dx < l.b / 2 + m && dz < l.b / 2 + m) y += l.h; else break;
-  }
-  return y;
+const TV = [], TS = [];        // botsvormen (volumes) en loopvlakken, lokaal t.o.v. het plein
+function inAchthoek(dx, dz, h, c){ const ax = Math.abs(dx), az = Math.abs(dz); return ax < h && az < h && ax + az < 2 * h - c; }
+function inVorm(v, dx, dz, m){
+  if(v.soort === 'acht') return inAchthoek(dx, dz, v.h + m, v.c);
+  if(v.soort === 'rond') return Math.hypot(dx - v.x, dz - v.z) < v.r + m;
+  return Math.abs(dx - v.x) < v.hx + m && Math.abs(dz - v.z) < v.hz + m;
 }
+function torenDichtbij(dx, dz){ return Math.abs(dx) < TOREN.plein / 2 + 3 && Math.abs(dz) < TOREN.plein / 2 + 3; }
+// botst iemand (voeten op hoogte y, 1,8 m lang) hier tegen de toren of iets op het plein?
+function torenBotst(x, z, y){
+  const dx = x - TOREN.x, dz = z - TOREN.z;
+  if(!torenDichtbij(dx, dz)) return false;
+  const ly = y - TW.pleinY;
+  for(const v of TV){
+    if(ly >= v.y1 - 0.6 || ly + 1.8 <= v.y0) continue;     // eroverheen stappen of eronderdoor lopen
+    if(inVorm(v, dx, dz, 0.35)) return true;
+  }
+  return false;
+}
+// op welke hoogte sta je hier (het hoogste loopvlak onder je voeten), of null
+function torenGrond(x, z, y){
+  const dx = x - TOREN.x, dz = z - TOREN.z;
+  if(!torenDichtbij(dx, dz)) return null;
+  const ly = y - TW.pleinY;
+  let best = null;
+  for(const s of TS){
+    if(s.y > ly + 1.6) continue;                         // een stoeprand tot 1,6 m stap je op
+    if(!inVorm(s, dx, dz, 0)) continue;
+    if(best === null || s.y > best) best = s.y;
+  }
+  return best === null ? null : best + TW.pleinY;
+}
+function opPlein(x, z){ return Math.abs(x - TOREN.x) < TOREN.plein / 2 + 0.6 && Math.abs(z - TOREN.z) < TOREN.plein / 2 + 0.6; }
+
+const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje, lichten)
 (function bouwToren(){
-  // ── het ramen-plaatje: 8 ramen breed, 16 verdiepingen hoog ──
-  const W = 256, H = 512, KOL = 8, VER = 16;
-  const kleur = document.createElement('canvas'); kleur.width = W; kleur.height = H;
-  const gloei = document.createElement('canvas'); gloei.width = W; gloei.height = H;
-  const c = kleur.getContext('2d'), g = gloei.getContext('2d');
-  const lucht = c.createLinearGradient(0, 0, W, H);           // spiegeling van de lucht in het glas
-  lucht.addColorStop(0, '#5f86a8'); lucht.addColorStop(0.5, '#2c4a66'); lucht.addColorStop(1, '#4b7193');
-  c.fillStyle = lucht; c.fillRect(0, 0, W, H);
-  g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
-  const rw = W / KOL, rh = H / VER;
-  for(let r = 0; r < VER; r++) for(let k = 0; k < KOL; k++){
-    const x = k * rw, y = r * rh;
-    c.fillStyle = 'rgba(255,255,255,' + (0.03 + Math.random() * 0.08) + ')';   // elk raam een tikje anders
-    c.fillRect(x + 2, y + 3, rw - 4, rh - 6);
-    if(Math.random() < 0.28){                                // licht aan in dit kantoor
-      const warm = Math.random() < 0.7 ? '#ffd98a' : '#cfe8ff';
-      g.fillStyle = warm; g.fillRect(x + 3, y + 4, rw - 6, rh - 8);
-      c.fillStyle = 'rgba(255,230,170,0.35)'; c.fillRect(x + 3, y + 4, rw - 6, rh - 8);
+  const KLEIN = IS_TOUCH;
+  const groep = new THREE.Group();
+  const envMats = [];          // alle materialen die de spiegeling krijgen
+  const metEnv = (m, sterk) => { m.envMapIntensity = sterk || 1; envMats.push(m); return m; };
+  const std = (o, sterk) => metEnv(new THREE.MeshStandardMaterial(o), sterk);
+  const canvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+  const tex = (c, herhaal) => { const t = new THREE.CanvasTexture(c); if(herhaal !== false){ t.wrapS = t.wrapT = THREE.RepeatWrapping; } t.anisotropy = KLEIN ? 2 : 8; return t; };
+  let zaad = 2210;   // eigen vaste toevalsgetallen: de toren ziet er elke keer hetzelfde uit
+  const r = () => { zaad = (zaad * 16807) % 2147483647; return zaad / 2147483647; };
+  const kl = (v) => Math.max(0, Math.min(255, Math.round(v)));
+
+  // ═════ 1. DE GEVEL-PLAATJES ═════
+  // Eén tegel = 16 ramen breed (24 m) × 16 verdiepingen hoog (64 m).
+  // Vier plaatjes die precies over elkaar vallen: kleur, ruwheid/metaal,
+  // reliëf (normal map) en licht (emissive).
+  const GW = KLEIN ? 512 : 1024, GH = GW * 2, MOD = 16, VER = 16;
+  const mw = GW / MOD, fh = GH / VER;
+  const cK = canvas(GW, GH), cM = canvas(GW, GH), cN = canvas(GW, GH), cE = canvas(GW, GH);
+  const gK = cK.getContext('2d'), gM = cM.getContext('2d'), gN = cN.getContext('2d'), gE = cE.getContext('2d');
+  gE.fillStyle = '#000'; gE.fillRect(0, 0, GW, GH);
+  const mul = Math.max(2, Math.round(mw * 0.07));          // breedte van een stijl
+  const borst = Math.round(fh * 0.17);                     // de dichte strook bij de vloer
+  for(let v = 0; v < VER; v++){
+    const y0 = v * fh;
+    // is deze verdieping in gebruik? dan branden er stukken licht (hele afdelingen)
+    const bezet = r() < 0.42, koel = r() < 0.35;
+    let licht = false, nogLicht = 0;
+    for(let k = 0; k < MOD; k++){
+      const x0 = k * mw, px = x0 + mul / 2, pw = mw - mul, ph = fh - borst - 2;
+      if(nogLicht <= 0){ licht = bezet && r() < 0.5; nogLicht = 2 + Math.floor(r() * 7); }
+      nogLicht--;
+      // — de ruit —
+      const L = 30 + r() * 9, tint = 200 + r() * 14;
+      gK.fillStyle = `hsl(${tint},${18 + r() * 8}%,${L}%)`; gK.fillRect(px, y0, pw, ph);
+      // ruit-ruwheid (G) en metaal (B): glas = glad en spiegelend
+      gM.fillStyle = `rgb(255,${kl(8 + r() * 16)},${kl(225 + r() * 20)})`; gM.fillRect(px, y0, pw, ph);
+      // elke ruit een fractie scheef → de spiegeling breekt per ruit (zoals echt)
+      gN.fillStyle = `rgb(${kl(128 + (r() - 0.5) * 14)},${kl(128 + (r() - 0.5) * 14)},250)`; gN.fillRect(px, y0, pw, ph);
+      // zonwering half omlaag (licht doek achter het glas)
+      let doek = 0;
+      if(r() < 0.14){
+        doek = ph * (0.15 + r() * 0.65);
+        gK.fillStyle = `hsl(38,${8 + r() * 8}%,${44 + r() * 10}%)`; gK.fillRect(px, y0, pw, doek);
+        gM.fillStyle = 'rgb(255,30,200)'; gM.fillRect(px, y0, pw, doek);
+        for(let s = 2; s < doek; s += 3){ gK.fillStyle = 'rgba(0,0,0,0.06)'; gK.fillRect(px, y0 + s, pw, 1); }
+      }
+      // — licht in het kantoor —
+      if(licht){
+        const gr = gE.createLinearGradient(0, y0, 0, y0 + ph);
+        const top = koel ? [215, 232, 255] : [255, 228, 182];
+        gr.addColorStop(0, `rgb(${top[0]},${top[1]},${top[2]})`);
+        gr.addColorStop(0.18, `rgb(${top[0] * 0.8 | 0},${top[1] * 0.8 | 0},${top[2] * 0.8 | 0})`);
+        gr.addColorStop(1, `rgb(${top[0] * 0.38 | 0},${top[1] * 0.38 | 0},${top[2] * 0.38 | 0})`);
+        gE.fillStyle = gr; gE.fillRect(px, y0, pw, ph);
+        // tl-balken in het plafond
+        gE.fillStyle = '#fff'; gE.fillRect(px + pw * 0.1, y0 + ph * 0.05, pw * 0.8, Math.max(1, ph * 0.02));
+        // bureaus, schermen en mensen: donkere vormen onderin
+        gE.fillStyle = 'rgba(0,0,0,0.75)';
+        if(r() < 0.6) gE.fillRect(px + r() * pw * 0.5, y0 + ph * 0.66, pw * (0.3 + r() * 0.4), ph * 0.34);
+        if(r() < 0.3) gE.fillRect(px + r() * pw * 0.7, y0 + ph * 0.42, pw * 0.12, ph * 0.58);
+        if(doek > 0){ gE.fillStyle = `rgba(${top[0]},${top[1] * 0.92 | 0},${top[2] * 0.75 | 0},0.55)`; gE.fillRect(px, y0, pw, doek); }
+        // achter verlicht glas zie je iets van binnen: wat warmer, minder spiegel
+        gK.fillStyle = 'rgba(255,225,170,0.05)'; gK.fillRect(px, y0, pw, ph);
+      }
+      // — de borstwering bij de vloer (dicht, gezandstraald glas) —
+      const by = y0 + fh - borst;
+      gK.fillStyle = `hsl(208,12%,${20 + r() * 4}%)`; gK.fillRect(x0, by, mw, borst);
+      gM.fillStyle = 'rgb(255,70,190)'; gM.fillRect(x0, by, mw, borst);
+      gN.fillStyle = `rgb(${kl(128 + (r() - 0.5) * 6)},128,252)`; gN.fillRect(x0, by, mw, borst);
+      // — de aluminium stijl links van dit raam —
+      gK.fillStyle = '#aeb6bd'; gK.fillRect(x0 - mul / 2, y0, mul, fh);
+      gM.fillStyle = 'rgb(255,85,235)'; gM.fillRect(x0 - mul / 2, y0, mul, fh);
+      gN.fillStyle = 'rgb(92,128,236)'; gN.fillRect(x0 - mul / 2, y0, mul / 2, fh);
+      gN.fillStyle = 'rgb(164,128,236)'; gN.fillRect(x0, y0, mul / 2, fh);
+      gE.fillStyle = '#000'; gE.fillRect(x0 - mul / 2, y0, mul, fh);
+    }
+    // de dorpels (liggende regels) boven en onder de ruit
+    gK.fillStyle = '#9aa3ab'; gK.fillRect(0, y0 + fh - borst - 2, GW, 3); gK.fillRect(0, y0, GW, 2);
+    gN.fillStyle = 'rgb(128,164,236)'; gN.fillRect(0, y0, GW, 2);
+    gN.fillStyle = 'rgb(128,92,236)'; gN.fillRect(0, y0 + fh - borst - 2, GW, 3);
+    gE.fillStyle = '#000'; gE.fillRect(0, y0 + fh - borst - 2, GW, borst + 2);
+  }
+  // de laatste stijl (rechts) loopt door naar de volgende tegel
+  gK.fillStyle = '#aeb6bd'; gK.fillRect(GW - mul / 2, 0, mul / 2, GH); gK.fillRect(0, 0, mul / 2, GH);
+  const tGevelK = tex(cK), tGevelM = tex(cM), tGevelN = tex(cN), tGevelE = tex(cE);
+  const TEXB = 24, TEXH = 64;   // meters per tegel
+
+  // ═════ 2. DE MATERIALEN ═════
+  const gevel = std({map: tGevelK, roughnessMap: tGevelM, metalnessMap: tGevelM, normalMap: tGevelN,
+    normalScale: new THREE.Vector2(0.55, 0.55), emissiveMap: tGevelE, emissive: 0xffffff, emissiveIntensity: 0.16,
+    roughness: 1, metalness: 1}, 1.15);
+  const kroonGlas = std({map: tGevelK, roughnessMap: tGevelM, metalnessMap: tGevelM, normalMap: tGevelN,
+    normalScale: new THREE.Vector2(0.55, 0.55), roughness: 1, metalness: 1, side: THREE.DoubleSide}, 1.15);
+  const alu = std({color: 0xc3c9cf, metalness: 0.9, roughness: 0.32}, 1);
+  const aluDonker = std({color: 0x3b4148, metalness: 0.8, roughness: 0.4}, 0.8);
+  const beton = std({color: 0xd2d5d6, metalness: 0, roughness: 0.82}, 0.35);
+  const glasHelder = std({color: 0xa9cbd9, metalness: 0.15, roughness: 0.03, transparent: true, opacity: 0.26, depthWrite: false, side: THREE.DoubleSide}, 1.6);
+  // roosters van de technische verdieping
+  const cL = canvas(64, 128), gL = cL.getContext('2d');
+  for(let y = 0; y < 128; y += 8){
+    const gr = gL.createLinearGradient(0, y, 0, y + 8); gr.addColorStop(0, '#9aa2a9'); gr.addColorStop(0.5, '#6c747b'); gr.addColorStop(1, '#22272c');
+    gL.fillStyle = gr; gL.fillRect(0, y, 64, 8);
+  }
+  gL.fillStyle = '#c3c9cf'; gL.fillRect(0, 0, 3, 128);
+  const tLamel = tex(cL);
+  const lamel = std({map: tLamel, metalness: 0.6, roughness: 0.45}, 0.7);
+  // grind op de daken
+  const cG = canvas(256, 256), gG = cG.getContext('2d');
+  gG.fillStyle = '#8d8b86'; gG.fillRect(0, 0, 256, 256);
+  for(let i = 0; i < 5000; i++){ const v = 90 + r() * 110; gG.fillStyle = `rgb(${v | 0},${v * 0.98 | 0},${v * 0.94 | 0})`; gG.fillRect(r() * 256, r() * 256, 1 + r() * 3, 1 + r() * 3); }
+  const tGrind = tex(cG); tGrind.repeat.set(1 / 4, 1 / 4);
+  const grind = new THREE.MeshStandardMaterial({map: tGrind, roughness: 0.95});
+  // houten vlonder (daktuin)
+  const cV = canvas(256, 256), gV = cV.getContext('2d');
+  for(let y = 0; y < 256; y += 16){ gV.fillStyle = `hsl(28,${30 + r() * 15}%,${36 + r() * 10}%)`; gV.fillRect(0, y, 256, 15); gV.fillStyle = '#2a1d12'; gV.fillRect(0, y + 15, 256, 1);
+    for(let i = 0; i < 40; i++){ gV.fillStyle = 'rgba(0,0,0,0.08)'; gV.fillRect(r() * 256, y + r() * 15, 10 + r() * 40, 1); } }
+  const tVlonder = tex(cV); tVlonder.repeat.set(1 / 3, 1 / 3);
+  const vlonder = new THREE.MeshStandardMaterial({map: tVlonder, roughness: 0.75});
+  // plafond met inbouwspotjes (onder het overstek en in de lobby)
+  const cP = canvas(128, 128), gP = cP.getContext('2d'), cPE = canvas(128, 128), gPE = cPE.getContext('2d');
+  gP.fillStyle = '#d9dcde'; gP.fillRect(0, 0, 128, 128); gPE.fillStyle = '#000'; gPE.fillRect(0, 0, 128, 128);
+  gP.fillStyle = '#b9bdc0'; gP.fillRect(0, 0, 128, 2); gP.fillRect(0, 0, 2, 128);
+  for(const [x, y] of [[32, 32], [96, 32], [32, 96], [96, 96]]){
+    const gr = gPE.createRadialGradient(x, y, 0, x, y, 9); gr.addColorStop(0, '#fff6e0'); gr.addColorStop(0.5, '#ffe2a8'); gr.addColorStop(1, '#000');
+    gPE.fillStyle = gr; gPE.fillRect(x - 10, y - 10, 20, 20); gP.fillStyle = '#fff'; gP.beginPath(); gP.arc(x, y, 5, 0, 7); gP.fill();
+  }
+  const tPlaf = tex(cP), tPlafE = tex(cPE); tPlaf.repeat.set(1 / 3, 1 / 3); tPlafE.repeat.set(1 / 3, 1 / 3);
+  const plafond = new THREE.MeshStandardMaterial({map: tPlaf, emissiveMap: tPlafE, emissive: 0xffffff, emissiveIntensity: 1, roughness: 0.6});
+
+  // ═════ 3. HULPJES OM VORMEN TE BOUWEN ═════
+  // de afgeschuinde rechthoek (achthoek) van een laag, linksom gezien van boven
+  const punten = (h, c) => [[h - c, h], [h, h - c], [h, -(h - c)], [h - c, -h], [-(h - c), -h], [-h, -(h - c)], [-h, h - c], [-(h - c), h]];
+  // de mantel (zijkanten) + eventueel dak en bodem; uv's in meters → tegels
+  function mantel(h, c, y0, y1, o){
+    o = o || {};
+    const P = punten(h, c), pos = [], nor = [], uv = [], idx = [], groepen = [];
+    let v = 0;
+    const tb = o.tb || TEXB, th = o.th || TEXH;
+    for(let i = 0; i < 8; i++){
+      const a = P[i], b = P[(i + 1) % 8], ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
+      let nx = ez / L, nz = -ex / L;
+      if(nx * (a[0] + b[0]) + nz * (a[1] + b[1]) < 0){ nx = -nx; nz = -nz; }
+      const u0 = (i % 2 === 1) ? Math.floor(r() * MOD) * 1.5 : r() * 6;   // hoofdgevels beginnen netjes op een stijl
+      for(const [p, y, u] of [[a, y0, u0], [b, y0, u0 + L], [b, y1, u0 + L], [a, y1, u0]]){
+        pos.push(p[0], y, p[1]); nor.push(nx, 0, nz); uv.push(u / tb, y / th);
+      }
+      if((-ez * nx + ex * nz) > 0) idx.push(v, v + 1, v + 2, v, v + 2, v + 3); else idx.push(v, v + 2, v + 1, v, v + 3, v + 2);
+      v += 4;
+    }
+    groepen.push([0, idx.length, 0]);
+    const kap = (y, omhoog, mi) => {
+      const start = idx.length, c0 = v;
+      pos.push(0, y, 0); nor.push(0, omhoog ? 1 : -1, 0); uv.push(0, 0); v++;
+      for(const p of P){ pos.push(p[0], y, p[1]); nor.push(0, omhoog ? 1 : -1, 0); uv.push(p[0], p[1]); v++; }
+      for(let i = 0; i < 8; i++){
+        const a = P[i], b = P[(i + 1) % 8], cy = a[1] * b[0] - a[0] * b[1];   // y van (a × b)
+        if((cy > 0) === omhoog) idx.push(c0, c0 + 1 + i, c0 + 1 + (i + 1) % 8); else idx.push(c0, c0 + 1 + (i + 1) % 8, c0 + 1 + i);
+      }
+      groepen.push([start, idx.length - start, mi]);
+    };
+    if(o.dak) kap(y1, true, 1);
+    if(o.bodem) kap(y0, false, 2);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    for(const [s, n, m] of groepen) g.addGroup(s, n, m);
+    return g;
+  }
+  const zet = (geo, mat, x, y, z, schaduw) => { const m = new THREE.Mesh(geo, mat); m.position.set(x || 0, y || 0, z || 0); if(schaduw !== false){ m.castShadow = true; m.receiveShadow = true; } groep.add(m); return m; };
+  const doos = (bx, by, bz, mat, x, y, z) => zet(new THREE.BoxGeometry(bx, by, bz), mat, x, y + by / 2, z);
+  const cil = (r1, r2, h, mat, x, y, z, n) => zet(new THREE.CylinderGeometry(r1, r2, h, n || 12), mat, x, y + h / 2, z);
+  // een reling van glas met een aluminium leuning, rondom een achthoek
+  function reling(h, c, y, hoog){
+    zet(mantel(h, c, y, y + hoog), glasHelder, 0, 0, 0, false);
+    zet(mantel(h + 0.04, c, y + hoog, y + hoog + 0.08, {dak: true}), [alu, alu], 0, 0, 0, false);
+  }
+  // stijlen die echt uitsteken: één InstancedMesh voor alle lagen
+  const vinPlekken = [];
+  function vinnen(h, c, y0, y1, elke){
+    const P = punten(h, c);
+    for(let i = 1; i < 8; i += 2){
+      const a = P[i], b = P[(i + 1) % 8], ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
+      let nx = ez / L, nz = -ex / L; if(nx * (a[0] + b[0]) + nz * (a[1] + b[1]) < 0){ nx = -nx; nz = -nz; }
+      for(let s = 0; s <= L + 0.01; s += 1.5 * elke){
+        vinPlekken.push({x: a[0] + ex * s / L + nx * 0.14, z: a[1] + ez * s / L + nz * 0.14, y0, y1, hoek: Math.atan2(nx, nz)});
+      }
     }
   }
-  c.fillStyle = '#c9d2da';                                   // de stalen stijlen en vloerranden
-  for(let k = 0; k <= KOL; k++) c.fillRect(k * rw - 1.5, 0, 3, H);
-  for(let r = 0; r <= VER; r++) c.fillRect(0, r * rh - 2, W, 4);
-  const tKleur = new THREE.CanvasTexture(kleur), tGloei = new THREE.CanvasTexture(gloei);
-  for(const t of [tKleur, tGloei]){ t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; }
 
-  const beton = new THREE.MeshStandardMaterial({color: 0xb9bec4, roughness: 0.85});
-  const donker = new THREE.MeshStandardMaterial({color: 0x3a3f46, roughness: 0.6, metalness: 0.3});
-  const groep = new THREE.Group();
-  const doos = (b, h, d, mat, y) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(b, h, d), mat);
-    m.position.y = y + h / 2; m.castShadow = true; m.receiveShadow = true; groep.add(m); return m;
-  };
-
-  // de sokkel met de ingang (glazen deuren aan de kant van het strand, +z)
-  doos(TOREN.sokkel, SOKKEL_H, TOREN.sokkel, donker, 0);
-  const deurMat = new THREE.MeshStandardMaterial({color: 0x9fd3ff, emissive: 0xffe2a8, emissiveIntensity: 0.35, roughness: 0.1, metalness: 0.5});
-  const deur = new THREE.Mesh(new THREE.BoxGeometry(9, 4.5, 0.3), deurMat);
-  deur.position.set(0, 2.25 + 0.4, TOREN.sokkel / 2 + 0.1); groep.add(deur);
-  const luifel = doos(13, 0.5, 4, beton, 5.2); luifel.position.z = TOREN.sokkel / 2 + 2;
-
-  // de drie lagen glas, met een betonnen rand ertussen
-  let y = SOKKEL_H;
-  for(const l of TOREN.lagen){
-    const zij = new THREE.MeshStandardMaterial({
-      map: tKleur.clone(), emissiveMap: tGloei.clone(), emissive: 0xffffff, emissiveIntensity: 0.55,
-      roughness: 0.18, metalness: 0.35
-    });
-    zij.map.needsUpdate = zij.emissiveMap.needsUpdate = true;
-    zij.map.repeat.set(l.b / 24, l.h / 56); zij.emissiveMap.repeat.copy(zij.map.repeat);
-    doos(l.b, l.h, l.b, [zij, zij, beton, beton, zij, zij], y);
-    y += l.h;
-    doos(l.b + 0.8, 1.2, l.b + 0.8, beton, y - 0.6);         // de rand bovenop deze laag
+  // ═════ 4. HET PLEIN ═════
+  const HP = TOREN.plein / 2, onder = TW.pleinY - 3;
+  const PW = KLEIN ? 512 : 1024, cT = canvas(PW, PW), gT = cT.getContext('2d');
+  { // granieten tegels van 1,2 m: korrels, kleurverschil per tegel en voegen
+    const id = gT.createImageData(PW, PW), d = id.data, T = PW / 8;
+    const tegel = []; for(let i = 0; i < 64; i++) tegel.push(118 + r() * 24);
+    for(let y = 0; y < PW; y++) for(let x = 0; x < PW; x++){
+      const tx = (x / T) | 0, ty = (y / T) | 0, b = tegel[ty * 8 + tx];
+      const fx = x % T, fy = y % T, voeg = fx < 2 || fy < 2;
+      const korrel = (r() - 0.5) * 38 + (r() < 0.02 ? -60 : 0) + (r() < 0.015 ? 45 : 0);
+      const v = voeg ? 70 : b + korrel, i = (y * PW + x) * 4;
+      d[i] = kl(v * 1.04); d[i + 1] = kl(v * 0.99); d[i + 2] = kl(v * 0.93); d[i + 3] = 255;
+    }
+    gT.putImageData(id, 0, 0);
   }
-  // dakopbouw + spits met een knipperend rood lampje (voor vliegtuigen ✈️)
-  doos(7, 5, 7, beton, y);
-  const spits = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.7, 35, 8), donker);
-  spits.position.y = y + 5 + 17.5; groep.add(spits);
-  const lampMat = new THREE.MeshBasicMaterial({color: 0xff2020});
-  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8), lampMat);
-  lamp.position.y = y + 5 + 35.5; groep.add(lamp);
-  setInterval(() => lampMat.color.setHex(lampMat.color.getHex() === 0xff2020 ? 0x401010 : 0xff2020), 900);
+  const tTegel = tex(cT); tTegel.repeat.set(1 / 7.2, 1 / 7.2);
+  const tegels = new THREE.MeshStandardMaterial({map: tTegel, roughness: 0.62, metalness: 0.02});
+  const randSteen = std({color: 0x9d9a95, roughness: 0.7}, 0.3);
+  { // de plaat zelf: bovenkant van tegels, zijkant natuursteen (zakt in de grond)
+    const g = new THREE.BoxGeometry(HP * 2, 3, HP * 2);
+    const uv = g.attributes.uv, p = g.attributes.position;
+    for(let i = 0; i < uv.count; i++){ if(Math.abs(p.getY(i) - 1.5) < 0.01) uv.setXY(i, p.getX(i), p.getZ(i)); }
+    const m = zet(g, [randSteen, randSteen, tegels, randSteen, randSteen, randSteen], 0, -1.5, 0);
+    m.castShadow = false;
+  }
+  TS.push({soort: 'doos', x: 0, z: 0, hx: HP, hz: HP, y: 0});
 
-  groep.position.set(TOREN.x, torenVoetY, TOREN.z);
+  // ═════ 5. DE LOBBY: hoog glas onder een overstek met zuilen ═════
+  const LB = TOREN.lobby, LH = TOREN.lobbyH, L1 = TW.lagen[0];
+  zet(mantel(LB.h, LB.c, 0, LH), glasHelder, 0, 0, 0, false);
+  TV.push({soort: 'acht', h: LB.h, c: LB.c, y0: 0, y1: LH});
+  // marmeren vloer binnen
+  const marmer = std({color: 0xe9e4da, roughness: 0.12, metalness: 0.05}, 0.8);
+  zet(mantel(LB.h - 0.05, LB.c, 0.01, 0.02, {dak: true}), [marmer, marmer], 0, 0, 0, false);
+  // glazen stijlen van de lobby (donker staal, elke 3 m)
+  {
+    const P = punten(LB.h, LB.c), g = new THREE.BoxGeometry(0.12, LH, 0.18);
+    for(let i = 1; i < 8; i += 2){
+      const a = P[i], b = P[(i + 1) % 8], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      for(let s = 0; s <= L + 0.01; s += 3){
+        const m = zet(g, aluDonker, a[0] + (b[0] - a[0]) * s / L, LH / 2, a[1] + (b[1] - a[1]) * s / L, false);
+        m.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]);
+      }
+    }
+  }
+  // de liftkern met stalen liftdeuren
+  {
+    const c = canvas(512, 256), g = c.getContext('2d');
+    g.fillStyle = '#3a3532'; g.fillRect(0, 0, 512, 256);
+    for(let i = 0; i < 40; i++){ g.fillStyle = `rgba(255,255,255,${r() * 0.04})`; g.fillRect(0, r() * 256, 512, 1 + r() * 3); }
+    for(let k = 0; k < 4; k++){
+      const x = 40 + k * 120;
+      const gr = g.createLinearGradient(x, 0, x + 80, 0); gr.addColorStop(0, '#8d9298'); gr.addColorStop(0.5, '#d5d9dd'); gr.addColorStop(1, '#8d9298');
+      g.fillStyle = gr; g.fillRect(x, 70, 80, 186); g.fillStyle = '#4b5056'; g.fillRect(x + 39, 70, 2, 186);
+      g.fillStyle = '#ffcf6a'; g.fillRect(x + 30, 52, 20, 8);
+    }
+    const kern = std({map: tex(c, false), roughness: 0.35, metalness: 0.4}, 0.6);
+    const steen = std({color: 0x3a3532, roughness: 0.4}, 0.4);
+    doos(11, LH, 8, [steen, steen, steen, steen, kern, kern], 0, 0, -1);
+  }
+  // de balie (wit marmer met een lichtlijn) en planten in grote potten
+  doos(7, 1.1, 1.3, marmer, 0, 0, 6.2);
+  doos(7.02, 0.05, 1.32, new THREE.MeshBasicMaterial({color: 0xfff1d0}), 0, 0.85, 6.2);
+  const pot = std({color: 0x2c2c2e, roughness: 0.5}, 0.4);
+  const blad = new THREE.MeshLambertMaterial({color: 0x3f7a35});
+  for(const [x, z] of [[-9, 6], [9, 6], [-9, -6], [9, -6]]){
+    cil(0.55, 0.42, 0.9, pot, x, 0, z);
+    for(let i = 0; i < 4; i++){ const m = zet(new THREE.IcosahedronGeometry(0.6 + r() * 0.3, 1), blad, x + (r() - 0.5) * 0.6, 1.3 + i * 0.35, z + (r() - 0.5) * 0.6); m.scale.y = 1.3; }
+  }
+  // het overstek: onderkant van de eerste laag met inbouwspotjes
+  zet(mantel(L1.h, L1.c, L1.y0 - 0.01, L1.y0, {bodem: true}), [alu, alu, plafond], 0, 0, 0, false);
+  // zuilen (natuursteen) onder het overstek
+  const zuilSteen = std({color: 0xb3ada3, roughness: 0.4}, 0.5);
+  {
+    const d = L1.h - 1.1;
+    for(const s of [-10, -5, 0, 5, 10]) for(const [fx, fz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]){
+      if(fz === 1 && Math.abs(s) < 6) continue;            // vrij voor de ingang
+      const x = fx ? fx * d : s, z = fz ? fz * d : s;
+      cil(0.55, 0.55, LH, zuilSteen, x, 0, z, 20);
+      TV.push({soort: 'rond', x, z, r: 0.55, y0: 0, y1: LH});
+    }
+  }
+  // de draaideur: een glazen trommel met vier vleugels die rondgaan
+  {
+    const dd = new THREE.Group(); dd.position.set(0, 0, LB.h); groep.add(dd);
+    const trommel = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 2.8, 32, 1, true), glasHelder); trommel.position.y = 1.4; dd.add(trommel);
+    const kap = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 1.9, 0.4, 32), alu); kap.position.y = 3.0; dd.add(kap);
+    const vleugels = new THREE.Group(); dd.add(vleugels);
+    for(let i = 0; i < 4; i++){
+      const v = new THREE.Group(); v.rotation.y = i * Math.PI / 2; vleugels.add(v);
+      const ruit = new THREE.Mesh(new THREE.BoxGeometry(0.03, 2.6, 1.7), glasHelder); ruit.position.set(0, 1.35, 0.88); v.add(ruit);
+      const lat = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.6, 0.06), alu); lat.position.set(0, 1.35, 1.72); v.add(lat);
+    }
+    torenAnim.draaideur = vleugels;
+    TV.push({soort: 'rond', x: 0, z: LB.h, r: 1.9, y0: 0, y1: 3.2});
+  }
+  // de luifel boven de ingang, met trekstangen en de naam erop
+  {
+    const z0 = L1.h, diep = 6.5;
+    doos(14, 0.35, diep, alu, 0, 6.0, z0 + diep / 2);
+    const onderkant = new THREE.Mesh(new THREE.PlaneGeometry(13.6, diep - 0.3), plafond);
+    onderkant.rotation.x = Math.PI / 2; onderkant.position.set(0, 5.99, z0 + diep / 2); groep.add(onderkant);
+    for(const sx of [-6.5, 6.5]){
+      const a = new THREE.Vector3(sx, 6.3, z0 + diep - 0.3), b = new THREE.Vector3(sx, 11, z0);
+      const m = zet(new THREE.CylinderGeometry(0.05, 0.05, a.distanceTo(b), 6), alu, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, false);
+      m.lookAt(b); m.rotateX(Math.PI / 2);
+    }
+    const c = canvas(1024, 96), g = c.getContext('2d');
+    g.font = 'bold 76px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const gr = g.createLinearGradient(0, 10, 0, 86); gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.5, '#c9ced3'); gr.addColorStop(1, '#8e959c');
+    g.fillStyle = gr; g.fillText('D E L U X E   T O W E R', 512, 50);
+    const naam = new THREE.Mesh(new THREE.PlaneGeometry(12, 1.12), std({map: tex(c, false), transparent: true, metalness: 0.7, roughness: 0.25, alphaTest: 0.3}, 1));
+    naam.position.set(0, 6.95, z0 + diep + 0.01); groep.add(naam);
+  }
+
+  // ═════ 6. DE DRIE LAGEN ═════
+  const roosterH = 4;                                       // technische verdieping bovenaan elke laag
+  TW.lagen.forEach((l, n) => {
+    const boven = n === TW.lagen.length - 1;
+    zet(mantel(l.h, l.c, l.y0, l.y1 - roosterH), gevel, 0, 0, 0).receiveShadow = false;
+    zet(mantel(l.h - 0.15, l.c, l.y1 - roosterH, l.y1, {th: 4, tb: 0.5, dak: true}), [lamel, n === 0 ? vlonder : grind], 0, 0, 0).receiveShadow = false;
+    vinnen(l.h, l.c, l.y0, l.y1 - roosterH, 1);
+    // de rand (kroonlijst) boven de glazen gevel en bovenop de laag
+    zet(mantel(l.h + 0.35, l.c, l.y1 - roosterH - 0.5, l.y1 - roosterH, {dak: true, bodem: true}), [alu, alu, alu], 0, 0, 0);
+    zet(mantel(l.h + 0.2, l.c, l.y1, l.y1 + 0.35, {dak: true}), [alu, alu], 0, 0, 0);
+    TV.push({soort: 'acht', h: l.h, c: l.c, y0: l.y0, y1: l.y1});
+    TS.push({soort: 'acht', h: l.h - 0.75, c: l.c, y: l.y1 + 0.35});   // de rand houdt op vóór de glazen reling
+    if(!boven) reling(l.h - 0.3, l.c, l.y1 + 0.35, 1.15);
+  });
+  // daktuin op de eerste laag: plantenbakken met hagen en boompjes op de hoeken
+  {
+    const l = TW.lagen[0], y = l.y1 + 0.35, bak = std({color: 0x50555b, roughness: 0.5, metalness: 0.4}, 0.6);
+    const haag = new THREE.MeshLambertMaterial({color: 0x4a7a33});
+    const d = (TW.lagen[0].h + TW.lagen[1].h) / 2 + 0.2;
+    for(const [fx, fz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for(const s of [-5, 5]){
+      const x = fx ? fx * d : s, z = fz ? fz * d : s, rx = fx ? 0.9 : 4.5, rz = fx ? 4.5 : 0.9;
+      doos(rx, 0.7, rz, bak, x, y, z);
+      const h = doos(rx - 0.2, 0.6, rz - 0.2, haag, x, y + 0.7, z); h.scale.y = 1;
+    }
+    const stam = new THREE.MeshLambertMaterial({color: 0x5b4636}), kruin = new THREE.MeshLambertMaterial({color: 0x3d6e2b});
+    const P = punten(d + 0.8, TW.lagen[0].c);
+    for(let i = 0; i < 8; i += 2){
+      const x = (P[i][0] + P[i + 1][0]) / 2 * 0.93, z = (P[i][1] + P[i + 1][1]) / 2 * 0.93;
+      cil(0.12, 0.16, 2.2, stam, x, y, z, 6);
+      for(let k = 0; k < 3; k++) zet(new THREE.IcosahedronGeometry(0.9 + r() * 0.3, 1), kruin, x + (r() - 0.5) * 0.7, y + 2.6 + k * 0.45, z + (r() - 0.5) * 0.7);
+    }
+  }
+  // tweede laag: een roosterscherm rond de airco's
+  {
+    const l = TW.lagen[1], y = l.y1 + 0.35, kast = std({color: 0xb7bcc0, roughness: 0.6, metalness: 0.3}, 0.5);
+    zet(mantel(l.h - 0.25, l.c, y, y + 2.4, {th: 4, tb: 0.5}), lamel, 0, 0, 0);
+    const d = (l.h + TW.lagen[2].h) / 2;
+    for(const [fx, fz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]){
+      const x = fx * d, z = fz * d;
+      doos(fx ? 1.8 : 4, 1.7, fz ? 1.8 : 4, kast, x, y, z);
+      for(const s of [-1, 1]) cil(0.55, 0.55, 0.15, aluDonker, x + (fz ? s * 1 : 0), y + 1.7, z + (fx ? s * 1 : 0), 16);
+    }
+  }
+  // een glazen kroon boven de bovenste laag (open, je ziet de lucht erdoorheen)
+  {
+    const l = TW.lagen[2];
+    zet(mantel(l.h, l.c, l.y1 + 0.35, l.y1 + TOREN.kroon), kroonGlas, 0, 0, 0, false);
+    vinnen(l.h, l.c, l.y1 + 0.35, l.y1 + TOREN.kroon, 1);
+    zet(mantel(l.h + 0.15, l.c, l.y1 + TOREN.kroon, l.y1 + TOREN.kroon + 0.25, {dak: false}), alu, 0, 0, 0);
+  }
+  // alle uitstekende stijlen in één keer
+  {
+    const vm = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), alu, vinPlekken.length);
+    const dm = new THREE.Object3D();
+    vinPlekken.forEach((p, i) => {
+      dm.position.set(p.x, (p.y0 + p.y1) / 2, p.z); dm.rotation.set(0, p.hoek, 0); dm.scale.set(0.07, p.y1 - p.y0, 0.28);
+      dm.updateMatrix(); vm.setMatrixAt(i, dm.matrix);
+    });
+    vm.castShadow = true; groep.add(vm);
+  }
+
+  // ═════ 7. BOVENOP: helikopterplatform, antennemast, gevelkraan ═════
+  {
+    const l = TW.lagen[2], dak = l.y1 + 0.35, hy = TW.heliY;
+    // poten + vloer
+    for(const [x, z] of [[-4.2, -4.2], [4.2, -4.2], [-4.2, 4.2], [4.2, 4.2]]) cil(0.25, 0.25, hy - dak - 0.4, aluDonker, x, dak, z, 8);
+    const c = canvas(512, 512), g = c.getContext('2d');
+    g.fillStyle = '#3d4247'; g.fillRect(0, 0, 512, 512);
+    for(let i = 0; i < 3000; i++){ g.fillStyle = `rgba(255,255,255,${r() * 0.05})`; g.fillRect(r() * 512, r() * 512, 2, 2); }
+    g.strokeStyle = '#e8eef2'; g.lineWidth = 10; g.strokeRect(16, 16, 480, 480);
+    g.strokeStyle = '#f2c230'; g.lineWidth = 18; g.beginPath(); g.arc(256, 256, 170, 0, 7); g.stroke();
+    g.fillStyle = '#f4f6f7'; g.fillRect(186, 150, 40, 212); g.fillRect(286, 150, 40, 212); g.fillRect(226, 236, 60, 40);
+    const heli = new THREE.MeshStandardMaterial({map: tex(c, false), roughness: 0.8});
+    const vloer = new THREE.BoxGeometry(12, 0.4, 12);
+    const m = zet(vloer, [aluDonker, aluDonker, heli, aluDonker, aluDonker, aluDonker], 0, hy - 0.2, 0);
+    m.receiveShadow = true;
+    TV.push({soort: 'doos', x: 0, z: 0, hx: 6, hz: 6, y0: hy - 0.4, y1: hy});
+    TS.push({soort: 'doos', x: 0, z: 0, hx: 6, hz: 6, y: hy});
+    // lampjes rond het platform
+    const lampjes = new THREE.InstancedMesh(new THREE.SphereGeometry(0.12, 8, 6), new THREE.MeshBasicMaterial({color: 0xffe066}), 24);
+    const dm = new THREE.Object3D(); let i = 0;
+    for(let s = -5; s <= 5.01; s += 2.5) for(const [x, z] of [[s, -5.8], [s, 5.8], [-5.8, s], [5.8, s]]){ dm.position.set(x, hy + 0.1, z); dm.updateMatrix(); lampjes.setMatrixAt(i++, dm.matrix); }
+    lampjes.count = i; groep.add(lampjes);
+    // de antennemast op de hoek, met rode vliegtuiglichten en een witte flitser
+    const ax = -6.9, az = -6.9;
+    doos(1.4, 2.5, 1.4, beton, ax, dak, az);
+    cil(0.32, 0.45, 42, alu, ax, dak + 2.5, az, 10);
+    for(let k = 0; k < 6; k++) cil(0.7, 0.7, 0.12, aluDonker, ax, dak + 8 + k * 6, az, 10);
+    const rood = new THREE.MeshBasicMaterial({color: 0xff1a1a}), wit = new THREE.MeshBasicMaterial({color: 0xffffff});
+    const lichtjes = [];
+    for(const hh of [dak + 18, dak + 31, dak + 44.6]){ const b = zet(new THREE.SphereGeometry(0.42, 12, 8), hh > dak + 40 ? wit : rood, ax, hh, az, false); lichtjes.push(b); }
+    // ook op de hoeken van elke laag een rood lampje
+    for(const L of TW.lagen){ for(const p of punten(L.h + 0.25, L.c).filter((_, j) => j % 2 === 0)) zet(new THREE.SphereGeometry(0.28, 8, 6), rood, p[0], L.y1 + 0.6, p[1], false); }
+    torenAnim.rood = rood; torenAnim.wit = wit;
+    // gevelkraan (voor de glazenwassers) op het dak
+    doos(3, 1.4, 3, std({color: 0xd8dde1, roughness: 0.5, metalness: 0.4}, 0.5), 5, dak, -4.5);
+    cil(0.3, 0.3, 4.5, alu, 5, dak + 1.4, -4.5, 8);
+    doos(0.4, 0.4, 7, alu, 5, dak + 5.7, -6);
+  }
+
+  // ═════ 8. HET GLAZENWASSERSBAKJE (gaat langzaam op en neer) ═════
+  {
+    const l = TW.lagen[0], x = 7, z = l.h + 1.1, top = l.y1 + 0.35;
+    // de davit (kraanarm) op de daktuin
+    cil(0.15, 0.15, 2.4, alu, x, top, l.h - 0.9, 8);
+    doos(0.25, 0.25, 2.3, alu, x, top + 2.3, l.h + 0.2);
+    const bakje = new THREE.Group(); groep.add(bakje);
+    const geel = std({color: 0xd9a521, roughness: 0.5, metalness: 0.5}, 0.5);
+    const b1 = new THREE.Mesh(new THREE.BoxGeometry(5, 0.9, 0.8), geel); b1.position.y = 0.45; b1.castShadow = true; bakje.add(b1);
+    const leuning = new THREE.Mesh(new THREE.BoxGeometry(5, 0.06, 0.8), alu); leuning.position.y = 1.15; bakje.add(leuning);
+    for(const sx of [-2.45, 2.45]){ const p = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.8), alu); p.position.set(sx, 1.0, 0); bakje.add(p); }
+    // twee glazenwassers (simpel: overal, helm, emmer)
+    const overal = new THREE.MeshLambertMaterial({color: 0x2f5fa8}), helm = new THREE.MeshLambertMaterial({color: 0xf5f5f0}), huid = new THREE.MeshLambertMaterial({color: 0xd9a77f});
+    for(const sx of [-1.2, 1.1]){
+      const lijf = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.2, 1.1, 8), overal); lijf.position.set(sx, 1.45, -0.05); bakje.add(lijf);
+      const kop = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), huid); kop.position.set(sx, 2.12, -0.05); bakje.add(kop);
+      const hl = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 6, 0, 6.3, 0, 1.6), helm); hl.position.set(sx, 2.17, -0.05); bakje.add(hl);
+    }
+    const kabelMat = new THREE.MeshBasicMaterial({color: 0x222222});
+    const kabels = [-2.2, 2.2].map(sx => { const k = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1, 4), kabelMat); k.position.x = x + sx * 0.25; k.position.z = z; k.userData.beweegt = true; groep.add(k); return k; });
+    bakje.position.set(x, 60, z);
+    torenAnim.bakje = {bakje, kabels, top: top + 2.3, min: L1.y0 + 6, max: l.y1 - 10};
+  }
+
+  // ═════ 9. HET PLEIN: bomen, lantaarns, banken, vlaggen, spiegelvijver, naambord ═════
+  {
+    const stam = new THREE.MeshLambertMaterial({color: 0x5f4a3a}), bakSteen = std({color: 0x8c8780, roughness: 0.65}, 0.3);
+    const kruinen = [0x3f6f2c, 0x4b7d33, 0x365f26].map(c => new THREE.MeshLambertMaterial({color: c}));
+    // bomen in vierkante bakken langs de zijkanten
+    for(const [x, z] of [[-30, -28], [-30, -8], [-30, 12], [30, -28], [30, -8], [30, 12], [-20, -34], [0, -34], [20, -34]]){
+      doos(2.6, 0.5, 2.6, bakSteen, x, 0, z);
+      doos(2.3, 0.05, 2.3, new THREE.MeshLambertMaterial({color: 0x3b2c20}), x, 0.5, z);
+      const h = 3 + r() * 1.2;
+      cil(0.16, 0.24, h, stam, x, 0.5, z, 7);
+      for(let k = 0; k < 6; k++){
+        const m = zet(new THREE.IcosahedronGeometry(1.2 + r() * 0.6, 1), kruinen[k % 3], x + (r() - 0.5) * 2.2, 0.5 + h + (r() - 0.2) * 1.6, z + (r() - 0.5) * 2.2);
+        m.scale.y = 0.8;
+      }
+      TV.push({soort: 'rond', x, z, r: 0.3, y0: 0, y1: 6});
+    }
+    // lantaarnpalen
+    const paal = std({color: 0x2e3338, roughness: 0.45, metalness: 0.7}, 0.6);
+    const lampGlas = new THREE.MeshBasicMaterial({color: 0xfff1cf});
+    torenAnim.lampGlas = lampGlas;
+    for(const [x, z] of [[-38, -38], [0, -38], [38, -38], [-38, 0], [38, 0], [-38, 38], [-14, 38], [14, 38], [38, 38]]){
+      cil(0.09, 0.12, 6, paal, x, 0, z, 8);
+      doos(1.4, 0.18, 0.4, paal, x + 0.5, 6, z);
+      doos(1.0, 0.04, 0.3, lampGlas, x + 0.7, 5.97, z);
+      TV.push({soort: 'rond', x, z, r: 0.15, y0: 0, y1: 6});
+    }
+    // banken
+    const hout = new THREE.MeshLambertMaterial({color: 0x8a5a36});
+    for(const [x, z, rot] of [[-26, 2, 1], [26, 2, 1], [-26, -18, 1], [26, -18, 1], [-12, 30, 0], [12, 30, 0]]){
+      const b = new THREE.Group(); b.position.set(x, 0, z); b.rotation.y = rot ? Math.PI / 2 : 0; groep.add(b);
+      for(let k = 0; k < 4; k++){ const lat = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.05, 0.11), hout); lat.position.set(0, 0.45, -0.2 + k * 0.13); lat.castShadow = true; b.add(lat); }
+      for(const sx of [-0.9, 0.9]){ const poot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.45, 0.5), paal); poot.position.set(sx, 0.22, 0); b.add(poot); }
+    }
+    // spiegelvijver voor de ingang
+    {
+      const x0 = 0, z0 = 30.5, bx = 18, bz = 7;
+      doos(bx + 1, 0.45, 0.5, bakSteen, x0, 0, z0 - bz / 2 - 0.25); doos(bx + 1, 0.45, 0.5, bakSteen, x0, 0, z0 + bz / 2 + 0.25);
+      doos(0.5, 0.45, bz, bakSteen, x0 - bx / 2 - 0.25, 0, z0); doos(0.5, 0.45, bz, bakSteen, x0 + bx / 2 + 0.25, 0, z0);
+      const c = canvas(256, 256), g = c.getContext('2d');
+      g.fillStyle = 'rgb(128,128,255)'; g.fillRect(0, 0, 256, 256);
+      for(let i = 0; i < 400; i++){ const x = r() * 256, y = r() * 256, s = 6 + r() * 20;
+        const gr = g.createRadialGradient(x, y, 0, x, y, s); gr.addColorStop(0, `rgba(${128 + (r() - 0.5) * 50 | 0},${128 + (r() - 0.5) * 50 | 0},255,0.5)`); gr.addColorStop(1, 'rgba(128,128,255,0)');
+        g.fillStyle = gr; g.fillRect(x - s, y - s, s * 2, s * 2); }
+      const golfjes = tex(c); golfjes.repeat.set(3, 1.2);
+      const water = std({color: 0x0a1820, roughness: 0.12, metalness: 0.2, normalMap: golfjes, normalScale: new THREE.Vector2(0.4, 0.4)}, 0.55);
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(bx, bz), water); w.rotation.x = -Math.PI / 2; w.position.set(x0, 0.32, z0); groep.add(w);
+      torenAnim.golfjes = golfjes;
+      TV.push({soort: 'doos', x: x0, z: z0, hx: bx / 2 + 0.5, hz: bz / 2 + 0.5, y0: 0, y1: 1.0});
+    }
+    // vlaggenmasten met wapperende vlaggen (Nederland, DELUXE rood/blauw, en het eiland)
+    {
+      const vlagMaken = (teken) => { const c = canvas(192, 128); teken(c.getContext('2d')); return new THREE.MeshLambertMaterial({map: tex(c, false), side: THREE.DoubleSide}); };
+      const vlaggen = [
+        vlagMaken(g => { g.fillStyle = '#ae1c28'; g.fillRect(0, 0, 192, 43); g.fillStyle = '#fff'; g.fillRect(0, 43, 192, 42); g.fillStyle = '#21468b'; g.fillRect(0, 85, 192, 43); }),
+        vlagMaken(g => { const gr = g.createLinearGradient(0, 0, 192, 128); gr.addColorStop(0, '#e2202f'); gr.addColorStop(1, '#2457d6'); g.fillStyle = gr; g.fillRect(0, 0, 192, 128);
+          g.fillStyle = '#fff'; g.font = 'bold 30px Arial'; g.textAlign = 'center'; g.fillText('DELUXE', 96, 60); g.font = 'bold 18px Arial'; g.fillText('EDITION', 96, 88); }),
+        vlagMaken(g => { g.fillStyle = '#2a9fd6'; g.fillRect(0, 0, 192, 128); g.fillStyle = '#f2d17a'; g.beginPath(); g.ellipse(96, 96, 70, 22, 0, 0, 7); g.fill();
+          g.fillStyle = '#2f8a3a'; g.beginPath(); g.moveTo(60, 90); g.lineTo(96, 30); g.lineTo(132, 90); g.fill(); g.fillStyle = '#ff6a1a'; g.fillRect(90, 30, 12, 8); })
+      ];
+      torenAnim.vlaggen = [];
+      vlaggen.forEach((mat, i) => {
+        const x = -26 + i * 4, z = 34;
+        cil(0.07, 0.1, 11, alu, x, 0, z, 8);
+        zet(new THREE.SphereGeometry(0.14, 8, 6), alu, x, 11.05, z, false);
+        const geo = new THREE.PlaneGeometry(3, 2, 14, 6); geo.translate(1.5, 0, 0);
+        const v = new THREE.Mesh(geo, mat); v.position.set(x + 0.08, 9.9, z); v.castShadow = true; v.userData.beweegt = true; groep.add(v);
+        torenAnim.vlaggen.push({geo, basis: Float32Array.from(geo.attributes.position.array), fase: i * 1.3});
+        TV.push({soort: 'rond', x, z, r: 0.12, y0: 0, y1: 11});
+      });
+    }
+    // naambord van natuursteen bij de rand van het plein
+    {
+      const c = canvas(512, 192), g = c.getContext('2d');
+      g.fillStyle = '#5b5752'; g.fillRect(0, 0, 512, 192);
+      for(let i = 0; i < 2500; i++){ g.fillStyle = `rgba(255,255,255,${r() * 0.07})`; g.fillRect(r() * 512, r() * 192, 2, 2); }
+      g.textAlign = 'center'; g.font = 'bold 64px Georgia, serif';
+      g.fillStyle = '#2b2926'; g.fillText('DELUXE TOWER', 258, 92); g.fillStyle = '#d8d2c6'; g.fillText('DELUXE TOWER', 256, 90);
+      g.font = '26px Georgia, serif'; g.fillStyle = '#c9c2b4'; g.fillText('232 m  ·  58 verdiepingen  ·  Het Eiland', 256, 140);
+      const voor = std({map: tex(c, false), roughness: 0.55}, 0.3), zij = std({color: 0x5b5752, roughness: 0.55}, 0.3);
+      doos(6, 2.4, 0.8, [zij, zij, zij, zij, voor, voor], 22, 0, 36.5);
+      TV.push({soort: 'doos', x: 22, z: 36.5, hx: 3, hz: 0.4, y0: 0, y1: 2.4});
+    }
+  }
+
+  // ═════ SAMENVOEGEN: honderden losse stukjes → één vorm per materiaal ═════
+  // Elk los stukje kost de grafische kaart een aparte tekenopdracht. Alles wat
+  // stilstaat en hetzelfde materiaal heeft, plakken we aan elkaar.
+  {
+    const perMat = new Map();
+    for(const o of groep.children.slice()){
+      if(!o.isMesh || o.isInstancedMesh || Array.isArray(o.material) || o.userData.beweegt) continue;
+      if(!perMat.has(o.material)) perMat.set(o.material, []);
+      perMat.get(o.material).push(o);
+    }
+    for(const [mat, lijst] of perMat){
+      if(lijst.length < 2) continue;
+      const pos = [], nor = [], uv = []; let schaduw = false, ontvang = false;
+      for(const m of lijst){
+        m.updateMatrix();
+        const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()); g.applyMatrix4(m.matrix);
+        const P = g.attributes.position, N = g.attributes.normal, U = g.attributes.uv;
+        for(let i = 0; i < P.count; i++){
+          pos.push(P.getX(i), P.getY(i), P.getZ(i));
+          nor.push(N ? N.getX(i) : 0, N ? N.getY(i) : 1, N ? N.getZ(i) : 0);
+          uv.push(U ? U.getX(i) : 0, U ? U.getY(i) : 0);
+        }
+        schaduw = schaduw || m.castShadow; ontvang = ontvang || m.receiveShadow;
+        g.dispose(); groep.remove(m);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      const m = new THREE.Mesh(g, mat); m.castShadow = schaduw; m.receiveShadow = ontvang; groep.add(m);
+    }
+  }
+
+  groep.position.set(TOREN.x, TW.pleinY, TOREN.z);
   scene.add(groep);
+  torenAnim.groep = groep;
+
+  // ═════ 10. DE SPIEGELING ═════
+  // Eerst spiegelt het glas alleen de lucht. Zodra het eiland klaar is maken we
+  // één rondom-foto vanaf de toren (de toren zelf even onzichtbaar) — dan
+  // zie je de vulkaan, de palmen en de zee in het glas.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const zetEnv = (t) => { for(const m of envMats){ m.envMap = t; m.needsUpdate = true; } };
+  try {
+    const eq = luchtTex.clone(); eq.mapping = THREE.EquirectangularReflectionMapping; eq.needsUpdate = true;
+    zetEnv(pmrem.fromEquirectangular(eq).texture);
+  } catch(e){ console.warn('toren: lucht-spiegeling lukte niet', e); }
+  torenAnim.maakSpiegelFoto = () => {
+    try {
+      const rt = new THREE.WebGLCubeRenderTarget(KLEIN ? 128 : 256, {format: THREE.RGBFormat, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter});
+      const cam = new THREE.CubeCamera(1, 6000, rt);
+      cam.position.set(TOREN.x, TW.pleinY + 70, TOREN.z); cam.updateMatrixWorld(true);
+      const oudL = lucht.position.clone(), oudZ = zonBol.position.clone();
+      lucht.position.copy(cam.position); zonBol.position.copy(cam.position).add(ZON_PLEK);
+      groep.visible = false;
+      cam.update(renderer, scene);
+      groep.visible = true; lucht.position.copy(oudL); zonBol.position.copy(oudZ);
+      zetEnv(pmrem.fromCubemap(rt.texture).texture);
+      rt.dispose();
+    } catch(e){ console.warn('toren: spiegelfoto lukte niet', e); }
+  };
+  torenAnim.gevel = gevel; torenAnim.plafond = plafond;
 })();
+
+// ── alles wat beweegt aan de toren, elk beeldje ──
+let torenFrames = 0, torenSpiegelKlaar = false;
+const TOREN_DAGLICHT = zon.intensity;
+function updateToren(dt, t){
+  const a = torenAnim; if(!a.groep) return;
+  // de rondom-foto voor de spiegeling: één keer, als het eiland er helemaal staat
+  if(!torenSpiegelKlaar && gestart && ++torenFrames > 45){ torenSpiegelKlaar = true; a.maakSpiegelFoto(); }
+  // alleen de rest doen als je in de buurt bent (scheelt rekenwerk)
+  const dx = camera.position.x - TOREN.x, dz = camera.position.z - TOREN.z, ver = Math.hypot(dx, dz);
+  // donkerder buiten (onweer, as van de vulkaan) → de lampen binnen vallen meer op
+  const donker = Math.max(0, Math.min(1, 1 - zon.intensity / TOREN_DAGLICHT));
+  a.gevel.emissiveIntensity = 0.16 + donker * 1.3;
+  a.plafond.emissiveIntensity = 1 + donker;
+  // vliegtuiglichten: rood knippert, wit flitst kort
+  const fase = t % 1.6;
+  a.rood.color.setHex(fase < 0.8 ? 0xff1a1a : 0x3a0808);
+  a.wit.color.setHex((t % 1.5) < 0.08 ? 0xffffff : 0x555555);
+  if(ver > 900) return;
+  if(a.draaideur) a.draaideur.rotation.y += dt * 0.5;
+  if(a.golfjes){ a.golfjes.offset.x = t * 0.012; a.golfjes.offset.y = t * 0.007; }
+  // het bakje: 3 minuten heen en weer langs de gevel, met kleine stops
+  const b = a.bakje;
+  if(b){
+    const s = 0.5 - 0.5 * Math.cos(t * Math.PI * 2 / 180);
+    const y = b.min + (b.max - b.min) * s;
+    b.bakje.position.y = y; b.bakje.rotation.z = Math.sin(t * 0.7) * 0.012;
+    for(const k of b.kabels){ const lang = b.top - (y + 1.15); k.scale.y = Math.max(0.1, lang); k.position.y = y + 1.15 + lang / 2; }
+  }
+  // vlaggen wapperen: een golf die van de mast af naar buiten loopt
+  if(ver < 450) for(const v of a.vlaggen){
+    const p = v.geo.attributes.position, o = v.basis;
+    for(let i = 0; i < p.count; i++){
+      const x = o[i * 3], y = o[i * 3 + 1];
+      p.array[i * 3 + 2] = Math.sin(x * 2.1 - t * 6 + v.fase + y * 0.4) * 0.2 * (x / 3) + Math.sin(x * 4.3 - t * 9) * 0.04 * (x / 3);
+      p.array[i * 3 + 1] = y - (x / 3) * 0.15;
+    }
+    p.needsUpdate = true; v.geo.computeVertexNormals();
+  }
+}
 
 // ══════════════════════════════════════════════════════════════════
 // 5b. DE PALMBOMEN — helemaal opnieuw gebouwd (Brian: "10× realistischer")
@@ -2495,6 +3094,7 @@ function updateGrasVeld(){
       const r1 = celRuis(gx, gz), r2 = celRuis(gx + 7.1, gz - 3.3), r3 = celRuis(gx * 1.7, gz * 2.3);
       const x = (gx + (r1 - 0.5) * 0.95) * GRAS_CEL;
       const z = (gz + (r2 - 0.5) * 0.95) * GRAS_CEL;
+      if(opPlein(x, z)) continue;                                     // geen gras door de tegels van het plein
       const h = hoogteOp(x, z);
       if(h < GRAS_MIN_H || h > GRAS_MAX_H) continue;                  // zand of kale top
       const steil = Math.abs(hoogteOp(x + 1.6, z) - h) + Math.abs(hoogteOp(x, z + 1.6) - h);
@@ -4758,10 +5358,8 @@ function updateVliegen(dt){
   let ny = camera.position.y + (fy * -vz + vy * 0.7) * snel * dt;
   // niet door de grond of het water, niet hoger dan de wolken, niet van de kaart af
   // tegen de wolkenkrabber botsen: dan blijf je hangen waar je was (wel omhoog/omlaag)
-  const td = torenDak(nx, nz, 0.5);
-  if(td !== null && ny < td + 1.2 && camera.position.y >= td + 1.2 - 0.01){ ny = td + 1.2; }   // landen op het dak
-  else if(td !== null && ny < td + 1.2){ nx = camera.position.x; nz = camera.position.z; }
-  const grond = Math.max(hoogteOp(nx, nz), -0.55, torenDak(nx, nz, 0.5) ?? -Infinity);
+  if(torenBotst(nx, nz, ny - OOG)){ nx = camera.position.x; nz = camera.position.z; }
+  const grond = Math.max(hoogteOp(nx, nz), -0.55, torenGrond(nx, nz, Math.max(ny, camera.position.y) - OOG) ?? -Infinity);   // kijk vanaf waar je wás: snel dalen schiet er anders doorheen
   ny = Math.max(grond + 1.2, Math.min(1400, ny));
   const d = Math.hypot(nx, nz), maxR = ZEE_MAAT * 0.48;
   camera.position.set(d > maxR ? nx / d * maxR : nx, ny, d > maxR ? nz / d * maxR : nz);
@@ -4802,7 +5400,14 @@ function updateSpeler(dt){
     if(Math.abs(nx - p.voetX) < 0.6 && Math.abs(nz - p.voetZ) < 0.6 && Math.hypot(nx - p.voetX, nz - p.voetZ) < 0.5){ nx = oudX; nz = oudZ; break; }
   }
   if(muren.length && botstMuur(nx, nz)){ nx = oudX; nz = oudZ; }   // niet door je eigen muur heen
-  { const td = torenDak(nx, nz, 0.35); if(td !== null && td > spelerY + 0.6){ nx = oudX; nz = oudZ; } }   // niet door de wolkenkrabber
+  if(torenBotst(nx, nz, spelerY)){ nx = oudX; nz = oudZ; }   // niet door de wolkenkrabber (onder het overstek wel)
+  { // reling: op een dak van de toren kun je niet over de rand lopen
+    const gOud = torenGrond(oudX, oudZ, spelerY);
+    if(gOud !== null && gOud > TW.pleinY + 2){
+      const gNieuw = Math.max(hoogteOp(nx, nz), torenGrond(nx, nz, spelerY) ?? -Infinity);
+      if(gNieuw < gOud - 1.5){ nx = oudX; nz = oudZ; }
+    }
+  }
   // niet te ver de zee in — haaien! 🦈
   const d = Math.hypot(nx, nz);
   if(d > ZEE_GRENS){
@@ -4812,7 +5417,7 @@ function updateSpeler(dt){
   camera.position.x = nx; camera.position.z = nz;
 
   // hoe hoog ligt de grond hier?
-  const grondH = Math.max(hoogteOp(nx, nz), torenDak(nx, nz) ?? -Infinity);   // op het dak van de toren sta je gewoon
+  const grondH = Math.max(hoogteOp(nx, nz), torenGrond(nx, nz, spelerY) ?? -Infinity);   // het plein en de daken van de toren
   zwemt = grondH < -0.55;
 
   if(zwemt){
@@ -6795,6 +7400,7 @@ function loop(nu){
     updateWeerLucht(dt);
     updateCrafterSpook();
   }
+  updateToren(dt, t);   // 🏙️ draaideur, vlaggen, glazenwassers, lichten
   golfZee(t);
   updateWolkenV2(dt, t);   // ☁️ v2: stapelwolken + wolkenlaag reizen mee en drijven
   updateWind(t);      _m.wind     += performance.now() - _t; _t = performance.now();
