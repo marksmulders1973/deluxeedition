@@ -2661,13 +2661,149 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
     const t = tex(c);
     return new THREE.MeshStandardMaterial({map: t, transparent: true, depthWrite: false, side: THREE.BackSide, roughness: 0.3, metalness: 0.4});
   })();
-  // beeldschermen: vier soorten inhoud
-  const schermen = [
-    (g) => { g.fillStyle = '#f3f4f6'; g.fillRect(0, 0, 256, 144); g.fillStyle = '#2b5797'; g.fillRect(0, 0, 256, 14); g.fillStyle = '#9aa0a8'; for(let y = 24; y < 140; y += 7) g.fillRect(30, y, 60 + r() * 150, 3); },
-    (g) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, 256, 144); g.fillStyle = '#1f4f8f'; g.fillRect(0, 0, 70, 144); g.fillStyle = '#d8dde4'; for(let y = 8; y < 140; y += 18) g.fillRect(76, y, 176, 14); g.fillStyle = '#6a7380'; for(let y = 12; y < 140; y += 18) g.fillRect(80, y, 60 + r() * 80, 3); },
-    (g) => { g.fillStyle = '#1e1f24'; g.fillRect(0, 0, 256, 144); for(let y = 6; y < 140; y += 7){ g.fillStyle = ['#7fc4f0', '#e8a35a', '#9ad27a', '#c792ea'][(r() * 4) | 0]; g.fillRect(10 + ((r() * 4) | 0) * 10, y, 30 + r() * 150, 3); } },
-    (g) => { g.fillStyle = '#fbfbfb'; g.fillRect(0, 0, 256, 144); g.strokeStyle = '#d0d4d8'; for(let x = 0; x < 256; x += 32){ g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 144); g.stroke(); } for(let y = 0; y < 144; y += 16){ g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke(); } g.fillStyle = '#3a8f5a'; for(let x = 150; x < 250; x += 14) g.fillRect(x, 130 - r() * 90, 9, 200); }
-  ].map(t => { const c = canvas(256, 144); t(c.getContext('2d')); return new THREE.MeshBasicMaterial({map: tex(c, false)}); });
+  // beeldschermen: iedereen speelt een spel van deluxeedition.nl — en het BEWEEGT echt
+  // (Brian 22 okt: "maak dat ze allemaal deluxeedition aan het spelen zijn, dat je het balletje
+  // ziet bewegen"). Zes schermen worden elk beeldje opnieuw getekend op een canvas:
+  // OBLITERATOR, Blokwereld ∞, Adventure Craft, de homepage, Smiles en het Eiland.
+  const SW = 320, SH = 180;
+  const spelSchermen = []; torenAnim.spelSchermen = spelSchermen;
+  function spelScherm(teken){
+    const c = canvas(SW, SH), g = c.getContext('2d');
+    const t = new THREE.CanvasTexture(c); t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
+    const s = {g, tex: t, teken, mat: new THREE.MeshBasicMaterial({map: t})};
+    spelSchermen.push(s); return s;
+  }
+  // ── OBLITERATOR: blokje springt en draait over spikes, de wereld schuift voorbij ──
+  spelScherm((g, t) => {
+    const snel = 140, x0 = (t * snel) % 400;
+    const bg = g.createLinearGradient(0, 0, 0, SH); bg.addColorStop(0, '#1a1040'); bg.addColorStop(1, '#0d1b2e'); g.fillStyle = bg; g.fillRect(0, 0, SW, SH);
+    g.strokeStyle = 'rgba(168,85,247,0.25)'; g.lineWidth = 1;
+    for(let x = -((t * snel * 0.3) % 40); x < SW; x += 40){ g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 132); g.stroke(); }
+    for(let y = 12; y < 132; y += 40){ g.beginPath(); g.moveTo(0, y); g.lineTo(SW, y); g.stroke(); }
+    const grond = 132;
+    g.fillStyle = '#2a1a5e'; g.fillRect(0, grond, SW, SH - grond); g.fillStyle = '#a855f7'; g.fillRect(0, grond, SW, 3);
+    // spikes en blokken die voorbij schuiven
+    const spikes = [120, 210, 260, 340, 380];
+    g.fillStyle = '#ff3b5c';
+    for(const sp of spikes){ const x = ((sp - x0 + 400) % 400) - 40; g.beginPath(); g.moveTo(x, grond); g.lineTo(x + 9, grond - 18); g.lineTo(x + 18, grond); g.fill(); }
+    g.fillStyle = '#4f7dff'; for(const bp of [170, 300]){ const x = ((bp - x0 + 400) % 400) - 40; g.fillRect(x, grond - 26, 26, 26); g.strokeStyle = '#9db8ff'; g.strokeRect(x + 0.5, grond - 25.5, 25, 25); }
+    // de speler springt vlak vóór elke spike
+    const px = 70; let py = 0, hoek = 0;
+    for(const sp of spikes.concat([170, 300])){ const x = ((sp - x0 + 400) % 400) - 40; const d = x - px; if(d > -30 && d < 50){ const f = (50 - d) / 80; py = Math.max(py, Math.sin(f * Math.PI) * 46); hoek = f * Math.PI; } }
+    g.save(); g.translate(px + 11, grond - 11 - py); g.rotate(hoek);
+    const pg = g.createLinearGradient(-11, -11, 11, 11); pg.addColorStop(0, '#ff2a4a'); pg.addColorStop(1, '#3b6dff'); g.fillStyle = pg; g.fillRect(-11, -11, 22, 22);
+    g.fillStyle = '#fff'; g.fillRect(-6, -5, 4, 4); g.fillRect(2, -5, 4, 4); g.restore();
+    // vonkjes achter de speler
+    for(let i = 0; i < 6; i++){ g.fillStyle = `rgba(168,85,247,${0.6 - i * 0.1})`; g.fillRect(px - 6 - i * 7, grond - 6 - py * 0.6 + Math.sin(t * 20 + i) * 2, 4, 4); }
+    g.fillStyle = '#fff'; g.font = 'bold 13px Arial'; g.fillText('OBLITERATOR', 8, 18);
+    g.fillStyle = 'rgba(255,255,255,0.2)'; g.fillRect(110, 9, 150, 7); g.fillStyle = '#a855f7'; g.fillRect(110, 9, 150 * ((t * 0.05) % 1), 7);
+    g.fillStyle = '#ddd'; g.font = '10px Arial'; g.fillText('Poging ' + (1 + Math.floor(t / 20) % 37), 268, 16);
+  });
+  // ── Blokwereld ∞: blokkenlandschap, zon, zombie, hotbar ──
+  spelScherm((g, t) => {
+    const lucht = g.createLinearGradient(0, 0, 0, SH); lucht.addColorStop(0, '#5aa8ff'); lucht.addColorStop(1, '#bfe3ff'); g.fillStyle = lucht; g.fillRect(0, 0, SW, SH);
+    g.fillStyle = '#fff3a0'; g.fillRect(250 - (t * 3) % 60, 22, 22, 22);
+    g.fillStyle = 'rgba(255,255,255,0.85)'; for(const [cx, cy] of [[40, 30], [150, 18], [230, 40]]){ const x = (cx + t * 6) % (SW + 60) - 40; g.fillRect(x, cy, 48, 10); g.fillRect(x + 10, cy - 6, 26, 8); }
+    const B = 16, schuif = (t * 10) % B, kol = Math.floor(t * 10 / B);
+    for(let i = -1; i < SW / B + 2; i++){
+      const wx = i + kol, h = 5 + Math.round(2 * Math.sin(wx * 0.5) + Math.sin(wx * 0.23) * 2);
+      for(let j = 0; j < h; j++){
+        const y = SH - 26 - (j + 1) * B * 0.62, x = i * B - schuif;
+        g.fillStyle = j === h - 1 ? '#5cbf3f' : (j > h - 4 ? '#8a5a32' : '#7d7d7d'); g.fillRect(x, y, B, B * 0.62);
+        g.fillStyle = 'rgba(0,0,0,0.15)'; g.fillRect(x, y + B * 0.62 - 2, B, 2); g.fillRect(x + B - 1, y, 1, B * 0.62);
+        if(j < 2 && (wx * 7 + j) % 11 === 0){ g.fillStyle = '#5ff0ff'; g.fillRect(x + 5, y + 3, 5, 4); }
+      }
+      if(wx % 9 === 0){ const yt = SH - 26 - (h + 1) * B * 0.62; g.fillStyle = '#6b4a2a'; g.fillRect(i * B - schuif + 6, yt - 10, 5, 22); g.fillStyle = '#3f9a34'; g.fillRect(i * B - schuif - 4, yt - 24, 26, 18); }
+    }
+    // de zombie loopt heen en weer
+    const zx = 150 + Math.sin(t * 0.6) * 60, zy = 92, stap = Math.sin(t * 6) * 3;
+    g.fillStyle = '#3d8a3a'; g.fillRect(zx, zy, 10, 10); g.fillStyle = '#2f5fa8'; g.fillRect(zx, zy + 10, 10, 12); g.fillStyle = '#3d8a3a'; g.fillRect(zx + 10, zy + 11, 10, 4);
+    g.fillStyle = '#3a2f6a'; g.fillRect(zx + stap * 0.4, zy + 22, 4, 9); g.fillRect(zx + 6 - stap * 0.4, zy + 22, 4, 9); g.fillStyle = '#000'; g.fillRect(zx + 6, zy + 3, 2, 2);
+    // hotbar + kruisje + hartjes
+    g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(84, SH - 22, 152, 18);
+    const kleuren = ['#7d7d7d', '#8a5a32', '#c8a165', '#5cbf3f', '#5ff0ff', '#ff4d4d', '#ffd23f', '#9b59b6'];
+    kleuren.forEach((k, i) => { g.fillStyle = k; g.fillRect(88 + i * 18, SH - 19, 12, 12); });
+    g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(87 + (Math.floor(t * 0.7) % 8) * 18, SH - 20, 14, 14);
+    g.fillStyle = '#fff'; g.fillRect(SW / 2 - 6, SH / 2 - 1, 12, 2); g.fillRect(SW / 2 - 1, SH / 2 - 6, 2, 12);
+    for(let i = 0; i < 8; i++){ g.fillStyle = '#e8263a'; g.fillRect(84 + i * 10, SH - 32, 7, 6); }
+    g.fillStyle = '#fff'; g.font = 'bold 11px Arial'; g.fillText('BLOKWERELD ∞', 6, 14);
+  });
+  // ── Adventure Craft: poppetje graaft naar diamanten ──
+  spelScherm((g, t) => {
+    g.fillStyle = '#87c8ff'; g.fillRect(0, 0, SW, 60);
+    const B = 20, kolom = Math.floor((t * 1.5) % 14);
+    for(let y = 3; y < 9; y++) for(let x = 0; x < 16; x++){
+      const weg = y >= 3 && x === 7 && y - 3 < (t * 1.5) % 7;
+      if(weg) continue;
+      const diepte = y - 3, r1 = Math.sin(x * 12.9 + y * 78.2) * 43758.5 % 1;
+      g.fillStyle = diepte === 0 ? '#5cbf3f' : diepte < 2 ? '#8a5a32' : '#6f6f6f'; g.fillRect(x * B, y * B, B, B);
+      if(diepte > 2 && Math.abs(r1) > 0.85){ g.fillStyle = Math.abs(r1) > 0.95 ? '#5ff0ff' : '#ffd23f'; g.fillRect(x * B + 6, y * B + 6, 8, 8); }
+      g.strokeStyle = 'rgba(0,0,0,0.18)'; g.strokeRect(x * B + 0.5, y * B + 0.5, B - 1, B - 1);
+    }
+    const py = 60 + Math.min(6, (t * 1.5) % 7) * B - 30;
+    g.fillStyle = '#f1c7a8'; g.fillRect(7 * B + 5, py, 10, 9); g.fillStyle = '#e8263a'; g.fillRect(7 * B + 4, py + 9, 12, 11); g.fillStyle = '#2b3a8f'; g.fillRect(7 * B + 4, py + 20, 12, 8);
+    const zwaai = Math.sin(t * 12) * 0.8;
+    g.save(); g.translate(7 * B + 16, py + 12); g.rotate(zwaai); g.fillStyle = '#6b4a2a'; g.fillRect(0, -1, 12, 3); g.fillStyle = '#9aa0a8'; g.fillRect(9, -5, 4, 11); g.restore();
+    for(let i = 0; i < 4; i++){ const f = (t * 3 + i * 0.25) % 1; g.fillStyle = `rgba(110,110,110,${1 - f})`; g.fillRect(7 * B + 10 + Math.cos(i * 1.7) * f * 16, py + 30 + f * 10, 3, 3); }
+    g.fillStyle = 'rgba(0,0,0,0.45)'; g.fillRect(SW - 92, 6, 86, 18); g.fillStyle = '#5ff0ff'; g.fillRect(SW - 86, 10, 9, 9); g.fillStyle = '#fff'; g.font = 'bold 11px Arial'; g.fillText('× ' + (3 + Math.floor(t / 4) % 20) + '   🔑 ' + (12 + Math.floor(t / 2) % 90), SW - 72, 19);
+    g.fillStyle = '#fff'; g.fillText('ADVENTURE CRAFT', 6, 14);
+  });
+  // ── deluxeedition.nl: logo, speltegels, muis die beweegt ──
+  spelScherm((g, t) => {
+    g.fillStyle = '#0b0f1e'; g.fillRect(0, 0, SW, SH);
+    const lg = g.createLinearGradient(80, 0, 240, 0); lg.addColorStop(0, '#ff2a4a'); lg.addColorStop(1, '#3b6dff');
+    g.fillStyle = lg; g.font = 'bold 22px Arial'; g.textAlign = 'center'; g.fillText('DELUXE EDITION', SW / 2, 30); g.textAlign = 'left';
+    const tegels = [['OBLITERATOR', '#7c3aed'], ['BLOKWERELD ∞', '#2f9a4a'], ['ADVENTURE CRAFT', '#3b6dff'], ['EILAND', '#0ea5c6'], ['SMILES', '#e0b020'], ['CREATE A GAME', '#ff2a4a']];
+    const mx = 160 + Math.sin(t * 0.8) * 120, my = 110 + Math.sin(t * 1.3) * 40;
+    tegels.forEach(([naam, kleur], i) => {
+      const x = 14 + (i % 3) * 100, y = 48 + Math.floor(i / 3) * 62, boven = mx > x && mx < x + 92 && my > y && my < y + 54;
+      g.fillStyle = kleur; g.globalAlpha = boven ? 1 : 0.8; g.fillRect(x, y - (boven ? 3 : 0), 92, 54); g.globalAlpha = 1;
+      g.fillStyle = '#fff'; g.font = 'bold 9px Arial'; g.fillText(naam, x + 6, y + 47 - (boven ? 3 : 0));
+      g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(x + 30, y + 8 - (boven ? 3 : 0), 32, 24);
+    });
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(mx, my); g.lineTo(mx, my + 14); g.lineTo(mx + 4, my + 10); g.lineTo(mx + 10, my + 10); g.closePath(); g.fill();
+  });
+  // ── Smiles: de smiley praat, chatberichtjes verschijnen ──
+  spelScherm((g, t) => {
+    g.fillStyle = '#1b1b2e'; g.fillRect(0, 0, SW, SH);
+    const kx = 70, ky = 90, r0 = 46 + Math.sin(t * 2) * 2;
+    g.fillStyle = '#ffd21f'; g.beginPath(); g.arc(kx, ky, r0, 0, 7); g.fill();
+    const knip = (t % 3) < 0.15 ? 1 : 7;
+    g.fillStyle = '#222'; g.fillRect(kx - 18, ky - 14, 8, knip); g.fillRect(kx + 10, ky - 14, 8, knip);
+    g.strokeStyle = '#222'; g.lineWidth = 4; g.beginPath(); g.arc(kx, ky + 4, 22, 0.2, Math.PI - 0.2); g.stroke();
+    const praat = Math.abs(Math.sin(t * 9)) * 8; g.fillStyle = '#7a1a1a'; g.beginPath(); g.ellipse(kx, ky + 22, 10, 2 + praat * 0.5, 0, 0, 7); g.fill();
+    const zinnen = ['HELLLOOOOO!', "I'm Smiles 😄", 'your assistant', 'want a joke?', "I'm ALWAYS right"];
+    const n = Math.floor(t / 1.6) % zinnen.length;
+    for(let i = 0; i <= Math.min(3, n); i++){
+      const z = zinnen[(n - i + zinnen.length) % zinnen.length], y = 140 - i * 30;
+      g.fillStyle = i === 0 ? '#ffd21f' : '#3a3a5a'; g.fillRect(140, y - 16, 170, 22);
+      g.fillStyle = i === 0 ? '#222' : '#ddd'; g.font = '12px Arial'; g.fillText(z, 148, y - 1);
+    }
+    g.fillStyle = '#fff'; g.font = 'bold 11px Arial'; g.fillText('SMILES', 6, 14);
+  });
+  // ── Eiland: zee met golven, vulkaan met rook, de Kraken duikt op ──
+  spelScherm((g, t) => {
+    const lucht = g.createLinearGradient(0, 0, 0, 100); lucht.addColorStop(0, '#2b67ad'); lucht.addColorStop(1, '#c6e0f0'); g.fillStyle = lucht; g.fillRect(0, 0, SW, 100);
+    g.fillStyle = '#6b6a52'; g.beginPath(); g.moveTo(120, 100); g.lineTo(190, 38); g.lineTo(206, 38); g.lineTo(280, 100); g.fill();
+    g.fillStyle = '#4f8f3a'; g.beginPath(); g.moveTo(90, 100); g.quadraticCurveTo(200, 70, 310, 100); g.fill();
+    for(let i = 0; i < 6; i++){ const f = (t * 0.25 + i / 6) % 1; g.fillStyle = `rgba(200,200,200,${0.6 * (1 - f)})`; g.beginPath(); g.arc(198 + Math.sin(f * 6 + i) * 6 + f * 20, 36 - f * 40, 6 + f * 14, 0, 7); g.fill(); }
+    const zee = g.createLinearGradient(0, 100, 0, SH); zee.addColorStop(0, '#1fa3c9'); zee.addColorStop(1, '#0b4f7a'); g.fillStyle = zee; g.fillRect(0, 100, SW, SH - 100);
+    g.strokeStyle = 'rgba(255,255,255,0.5)'; g.lineWidth = 2;
+    for(let r1 = 0; r1 < 4; r1++){ g.beginPath(); for(let x = 0; x <= SW; x += 8) g.lineTo(x, 108 + r1 * 18 + Math.sin(x * 0.05 + t * 2 + r1) * 3); g.stroke(); }
+    // de Kraken: tentakels die uit het water komen en weer zakken
+    const op = Math.max(0, Math.sin(t * 0.5)) * 40;
+    g.strokeStyle = '#8a2a2a'; g.lineCap = 'round';
+    for(let k = 0; k < 4; k++){ g.lineWidth = 9 - k; g.beginPath(); const bx = 40 + k * 22; g.moveTo(bx, 150); for(let s = 0; s < 8; s++) g.lineTo(bx + Math.sin(t * 2 + s * 0.6 + k) * (4 + s * 1.5), 150 - s * op / 7); g.stroke(); }
+    g.fillStyle = '#fff'; g.font = 'bold 11px Arial'; g.fillText('EILAND', 6, 14);
+  });
+  // alle schermen bijwerken (alleen als je op een verdieping bent, ~25 keer per seconde)
+  let _schermTijd = 0;
+  torenAnim.schermenBewegen = (t) => {
+    if(Math.abs(t - _schermTijd) < 0.04) return; _schermTijd = t;
+    for(const s of spelSchermen){ s.teken(s.g, t); s.tex.needsUpdate = true; }
+  };
+  for(const sc of spelSchermen){ sc.teken(sc.g, 0); sc.tex.needsUpdate = true; }
+
   // materialen voor meubels en mensen (een vast palet, zodat alles samengevoegd kan worden)
   const M = {
     blad: std({color: 0xe6e4df, roughness: 0.45}, 0.4), poot: std({color: 0x8c9196, metalness: 0.3, roughness: 0.45}, 0.3),
@@ -2923,7 +3059,7 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
     add(new THREE.BoxGeometry(1.58, 0.03, 0.78), M.blad, 0, 0.735, 0);
     for(const sx of [-0.76, 0.76]) add(new THREE.BoxGeometry(0.05, 0.72, 0.7), M.poot, sx, 0.36, 0);
     add(new THREE.BoxGeometry(1.5, 0.35, 0.02), M.poot, 0, 0.47, -0.36);
-    const inhoud = kies(schermen);
+    const inhoud = kies(spelSchermen).mat;   // dit bureau speelt een spel van deluxeedition.nl
     for(const sx of [-0.28, 0.28]){
       const sch = add(new THREE.BoxGeometry(0.54, 0.32, 0.025), M.scherm, sx, 1.03, -0.2); sch.rotation.y = -sx * 0.25;
       const vlak = new THREE.Mesh(new THREE.PlaneGeometry(0.51, 0.29), inhoud); vlak.position.set(sx, 1.03, -0.186); vlak.rotation.y = -sx * 0.25; w.add(vlak);
@@ -3424,6 +3560,7 @@ function updateLift(){
   inLiftZone = gestart && voorDeur && opVloer && !adminVlieg;
   liftHint.style.display = (inLiftZone && !liftOpen && !liftBezig) ? 'block' : 'none';
   if(KANTOOR.actief && KANTOOR.data.anim) torenAnim.mensenBewegen(KANTOOR.data.anim, performance.now() / 1000);
+  if(KANTOOR.actief && torenAnim.schermenBewegen) torenAnim.schermenBewegen(performance.now() / 1000);   // de spellen op de schermen bewegen
   if(KANTOOR.actief && (Math.abs(ly - KANTOOR.vloer) > 3.5 || !inAchthoek(dx, dz, KANTOOR.data.h + 1, KANTOOR.data.c))) zetKantoor(0);
 }
 
