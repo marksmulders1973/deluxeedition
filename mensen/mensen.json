@@ -1,0 +1,178 @@
+{
+ "bv01": {
+  "naam": "Business_Female_01",
+  "materialen": [
+   "f014_body",
+   "f014_head",
+   "f014_opacity"
+  ],
+  "vrouw": true,
+  "kb": 950
+ },
+ "bv02": {
+  "naam": "Business_Female_02",
+  "materialen": [
+   "f015_body",
+   "f015_head",
+   "f015_opacity",
+   "f015_glasses"
+  ],
+  "vrouw": true,
+  "kb": 990
+ },
+ "bv03": {
+  "naam": "Business_Female_03",
+  "materialen": [
+   "f016_body",
+   "f016_head",
+   "f016_opacity"
+  ],
+  "vrouw": true,
+  "kb": 874
+ },
+ "bv04": {
+  "naam": "Business_Female_04",
+  "materialen": [
+   "f020_body",
+   "f020_head",
+   "f020_opacity"
+  ],
+  "vrouw": true,
+  "kb": 855
+ },
+ "bm01": {
+  "naam": "Business_Male_01",
+  "materialen": [
+   "m005_body",
+   "m005_head",
+   "m005_opacity"
+  ],
+  "vrouw": false,
+  "kb": 701
+ },
+ "bm02": {
+  "naam": "Business_Male_02",
+  "materialen": [
+   "m008_body",
+   "m008_head",
+   "m008_opacity"
+  ],
+  "vrouw": false,
+  "kb": 687
+ },
+ "bm03": {
+  "naam": "Business_Male_03",
+  "materialen": [
+   "m020_body",
+   "m020_head",
+   "m020_opacity"
+  ],
+  "vrouw": false,
+  "kb": 768
+ },
+ "bm04": {
+  "naam": "Business_Male_04",
+  "materialen": [
+   "m015_body",
+   "m015_head"
+  ],
+  "vrouw": false,
+  "kb": 644
+ },
+ "bm05": {
+  "naam": "Business_Male_05",
+  "materialen": [
+   "m016_body",
+   "m016_head"
+  ],
+  "vrouw": false,
+  "kb": 715
+ },
+ "bm06": {
+  "naam": "Business_Male_06",
+  "materialen": [
+   "m025_body",
+   "m025_head"
+  ],
+  "vrouw": false,
+  "kb": 734
+ },
+ "bm07": {
+  "naam": "Business_Male_07",
+  "materialen": [
+   "m018_body",
+   "m018_head"
+  ],
+  "vrouw": false,
+  "kb": 705
+ },
+ "m02": {
+  "naam": "Male_Adult_02",
+  "materialen": [
+   "m003_body",
+   "m003_head",
+   "m003_opacity"
+  ],
+  "vrouw": false,
+  "kb": 818
+ },
+ "m08": {
+  "naam": "Male_Adult_08",
+  "materialen": [
+   "m014_body",
+   "m014_head",
+   "m014_opacity"
+  ],
+  "vrouw": false,
+  "kb": 752
+ },
+ "m14": {
+  "naam": "Male_Adult_14",
+  "materialen": [
+   "m012_head",
+   "m012_body"
+  ],
+  "vrouw": false,
+  "kb": 704
+ },
+ "v02": {
+  "naam": "Female_Adult_02",
+  "materialen": [
+   "f002_body",
+   "f002_head",
+   "f002_opacity"
+  ],
+  "vrouw": true,
+  "kb": 895
+ },
+ "v08": {
+  "naam": "Female_Adult_08",
+  "materialen": [
+   "f008_body",
+   "f008_head",
+   "f008_opacity"
+  ],
+  "vrouw": true,
+  "kb": 966
+ },
+ "v09": {
+  "naam": "Female_Adult_09",
+  "materialen": [
+   "f009_body",
+   "f009_head",
+   "f009_opacity"
+  ],
+  "vrouw": true,
+  "kb": 962
+ },
+ "v14": {
+  "naam": "Female_Adult_14",
+  "materialen": [
+   "f017_body",
+   "f017_head",
+   "f017_opacity"
+  ],
+  "vrouw": true,
+  "kb": 1054
+ }
+}

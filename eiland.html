@@ -152,6 +152,8 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
 <script src="spel-basis.js"></script>
 <script>
 // ══════════════════════════════════════════════════════════════════
@@ -2694,584 +2696,223 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
     s.traverse(o => { if(o.isMesh) o.castShadow = true; });
     return s;
   }
-  // ═════ MENSEN v2 (Brian 22 okt: "maak de mensen nog 10x realistischer, ze zien er niet al te best uit") ═════
-  // Wat er anders is dan v1 (dat waren losse bollen en buizen met een helm als haar):
-  //  • ÉÉN VLOEIEND LICHAAM — we "kneden" het lijf als klei: elk lichaamsdeel is een
-  //    vorm met een afstand-functie, en die smelten zacht in elkaar over (smooth
-  //    minimum). Een slim algoritme (surface nets) maakt daar één huid van. Geen
-  //    naden meer: schouders lopen over in armen, borst in taille, heupen in benen.
-  //  • SCHADUW IN PLOOIEN EN HOEKJES (ambient occlusion): voor elk puntje meten we
-  //    hoe ingesloten het zit (oksel, kraag, knieholte, tussen de vingers) en
-  //    maken we het daar donkerder. Dat is wat een vorm écht laat lijken.
-  //  • ECHT HAAR — honderden haarlokken (kaartjes vol losse haren met doorzichtige
-  //    punten) die over de schedel naar beneden vallen, in plaats van een helm.
-  //  • GLANZENDE OGEN met een eigen, spiegelend materiaal.
-  //  • VLOEIENDE HANDEN — vingers die in de hand overlopen, ook geboetseerd.
-  //  • Een gezicht met meer detail: lachplooien, gootje, vollere lippen.
-  // Lijven en handen hebben maar een paar vormen (per houding, man/vrouw, colbert,
-  // rok); die worden één keer gekneed en daarna voor iedereen hergebruikt en elk
-  // anders ingekleurd. Dat scheelt heel veel rekenwerk.
-  const mensMat = {
-    huid: new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.55, metalness: 0}),
-    stof: new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.9, metalness: 0}),
-    haar: new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.5, metalness: 0}),
-    oog: std({vertexColors: true, roughness: 0.06, metalness: 0}, 1.2)
-  };
-  // haarlok-plaatje: veel losse haren, dicht bij de wortel, dunne doorzichtige punten
-  const haarTex = (() => {
-    const c = canvas(128, 256), g = c.getContext('2d');
-    for(let i = 0; i < 260; i++){
-      const x = 4 + r() * 120, lang = 140 + r() * 116, b = 0.6 + r() * 1.3, licht = 150 + r() * 105;
-      const gr = g.createLinearGradient(0, 0, 0, lang);
-      gr.addColorStop(0, `rgba(${licht | 0},${licht | 0},${licht | 0},0.95)`); gr.addColorStop(0.75, `rgba(${licht | 0},${licht | 0},${licht | 0},0.8)`); gr.addColorStop(1, 'rgba(255,255,255,0)');
-      g.strokeStyle = gr; g.lineWidth = b; g.beginPath(); g.moveTo(x, 0); g.bezierCurveTo(x + (r() - 0.5) * 10, lang * 0.35, x + (r() - 0.5) * 14, lang * 0.7, x + (r() - 0.5) * 18, lang); g.stroke();
-    }
-    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
-  })();
-  mensMat.lok = new THREE.MeshStandardMaterial({map: haarTex, vertexColors: true, alphaTest: 0.35, side: THREE.DoubleSide, roughness: 0.45, metalness: 0});
-  const C = (h) => new THREE.Color(h), V3 = (x, y, z) => new THREE.Vector3(x, y, z);
-  // verzamelt vormen (met kleur per hoekpunt) tot één geometrie
-  class Bouwer {
-    // alles meteen in getal-rijen voor de grafische kaart (typed arrays), die groeien als het nodig is
-    constructor(){ this.np = 0; this.ni = 0; this.P = new Float32Array(6144); this.N = new Float32Array(6144); this.K = new Float32Array(6144); this.U = new Float32Array(4096); this.I = new Uint32Array(8192); }
-    _ruimte(nv, ni){
-      const groei = (a, n) => { let m = a.length; while(m < n) m *= 2; if(m === a.length) return a; const b = new a.constructor(m); b.set(a); return b; };
-      const v = (this.np + nv) * 3;
-      if(v > this.P.length){ this.P = groei(this.P, v); this.N = groei(this.N, v); this.K = groei(this.K, v); }
-      if((this.np + nv) * 2 > this.U.length) this.U = groei(this.U, (this.np + nv) * 2);
-      if(this.ni + ni > this.I.length) this.I = groei(this.I, this.ni + ni);
-    }
-    // losse punten + driehoekjes direct toevoegen (zonder tussen-geometrie: veel sneller)
-    ruw(pos, nor, uv, idx, kl, m){
-      const nv = pos.length / 3; this._ruimte(nv, idx.length);
-      const start = this.np, e = m.elements, nm = new THREE.Matrix3().getNormalMatrix(m).elements;
-      for(let k = 0; k < nv; k++){
-        const x = pos[k * 3], y = pos[k * 3 + 1], z = pos[k * 3 + 2], o = (start + k) * 3;
-        this.P[o] = e[0] * x + e[4] * y + e[8] * z + e[12]; this.P[o + 1] = e[1] * x + e[5] * y + e[9] * z + e[13]; this.P[o + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
-        const a = nor[k * 3], b = nor[k * 3 + 1], c = nor[k * 3 + 2];
-        let nx = nm[0] * a + nm[3] * b + nm[6] * c, ny = nm[1] * a + nm[4] * b + nm[7] * c, nz = nm[2] * a + nm[5] * b + nm[8] * c; const L = Math.hypot(nx, ny, nz) || 1;
-        this.N[o] = nx / L; this.N[o + 1] = ny / L; this.N[o + 2] = nz / L;
-        this.K[o] = kl.r; this.K[o + 1] = kl.g; this.K[o + 2] = kl.b;
-        this.U[(start + k) * 2] = uv[k * 2]; this.U[(start + k) * 2 + 1] = uv[k * 2 + 1];
-      }
-      for(let k = 0; k < idx.length; k++) this.I[this.ni + k] = start + idx[k];
-      this.np += nv; this.ni += idx.length;
-    }
-    voeg(geo, m, kleur){
-      const P = geo.attributes.position.array, Nn = geo.attributes.normal.array, Ua = geo.attributes.uv ? geo.attributes.uv.array : null, Ka = geo.attributes.color ? geo.attributes.color.array : null;
-      const nv = P.length / 3, I = geo.index ? geo.index.array : null, nidx = I ? I.length : nv;
-      this._ruimte(nv, nidx);
-      const start = this.np, e = m ? m.elements : null, nm = m ? new THREE.Matrix3().getNormalMatrix(m).elements : null;
-      const spiegel = m ? m.determinant() < 0 : false, fn = typeof kleur === 'function';
-      for(let k = 0; k < nv; k++){
-        const x = P[k * 3], y = P[k * 3 + 1], z = P[k * 3 + 2], o = (start + k) * 3;
-        const kl = fn ? kleur(x, y, z, k) : kleur;
-        if(kl){ this.K[o] = kl.r; this.K[o + 1] = kl.g; this.K[o + 2] = kl.b; } else { this.K[o] = Ka[k * 3]; this.K[o + 1] = Ka[k * 3 + 1]; this.K[o + 2] = Ka[k * 3 + 2]; }
-        if(e){ this.P[o] = e[0] * x + e[4] * y + e[8] * z + e[12]; this.P[o + 1] = e[1] * x + e[5] * y + e[9] * z + e[13]; this.P[o + 2] = e[2] * x + e[6] * y + e[10] * z + e[14]; }
-        else { this.P[o] = x; this.P[o + 1] = y; this.P[o + 2] = z; }
-        const a = Nn[k * 3], b = Nn[k * 3 + 1], c = Nn[k * 3 + 2];
-        if(nm){ let nx = nm[0] * a + nm[3] * b + nm[6] * c, ny = nm[1] * a + nm[4] * b + nm[7] * c, nz = nm[2] * a + nm[5] * b + nm[8] * c; const L = Math.hypot(nx, ny, nz) || 1; this.N[o] = nx / L; this.N[o + 1] = ny / L; this.N[o + 2] = nz / L; }
-        else { this.N[o] = a; this.N[o + 1] = b; this.N[o + 2] = c; }
-        if(Ua){ this.U[(start + k) * 2] = Ua[k * 2]; this.U[(start + k) * 2 + 1] = Ua[k * 2 + 1]; }
-      }
-      for(let k = 0; k < nidx; k += 3){
-        const a = I ? I[k] : k, b = I ? I[k + 1] : k + 1, c2 = I ? I[k + 2] : k + 2, o = this.ni + k;
-        this.I[o] = start + a;
-        if(spiegel){ this.I[o + 1] = start + c2; this.I[o + 2] = start + b; } else { this.I[o + 1] = start + b; this.I[o + 2] = start + c2; }
-      }
-      this.np += nv; this.ni += nidx;
-    }
-    mesh(mat){
-      if(!this.np) return null;
-      const g = new THREE.BufferGeometry(), n = this.np;
-      g.setAttribute('position', new THREE.BufferAttribute(this.P.slice(0, n * 3), 3)); g.setAttribute('normal', new THREE.BufferAttribute(this.N.slice(0, n * 3), 3));
-      g.setAttribute('color', new THREE.BufferAttribute(this.K.slice(0, n * 3), 3)); g.setAttribute('uv', new THREE.BufferAttribute(this.U.slice(0, n * 2), 2));
-      g.setIndex(new THREE.BufferAttribute(n < 65535 ? Uint16Array.from(this.I.subarray(0, this.ni)) : this.I.slice(0, this.ni), 1));
-      const m = new THREE.Mesh(g, mat); m.castShadow = true; m.receiveShadow = true; return m;
-    }
+  // ═════ MENSEN v3 — ECHTE 3D-MENSEN (Brian 22 okt: "ik wil veel veel realistischer, neem je tijd") ═════
+  // Zelfgemaakte mensen uit code blijven poppen. Echte mensen in games worden door
+  // 3D-kunstenaars gemaakt, met huid, ogen, haar en kleren van foto's. Deze komen
+  // uit de Microsoft Rocketbox Avatar Library (MIT-licentie, vrij te gebruiken met
+  // vermelding): 11 kantoormensen in pak/mantelpakje + 7 in nette vrijetijdskleding.
+  // Ze zijn omgezet naar het webformaat GLB, de plaatjes verkleind (van ~60 MB naar
+  // ~0,7 MB per persoon), en ze worden pas geladen als je bij de toren komt.
+  // Elk mens heeft een echt skelet (80 botten, ook in het gezicht). Wij buigen die
+  // botten zodat ze ZITTEN en TYPEN, achterover leunen, bellen of met hun hand onder
+  // de kin zitten — met "inverse kinematica": we zeggen waar de pols/enkel moet
+  // komen, en rekenen uit hoe de elleboog/knie dan buigt. Daarna draaien we de
+  // onderarm zodat de handpalm naar beneden wijst (duim naar binnen) en buigen we
+  // de vingers. Tijdens het spelen kijken ze af en toe rond en tikken ze.
+  const MENS_MAP = 'mensen/';
+  let mensModellen = null, mensLaden = null;
+  const _tl = new THREE.TextureLoader();
+  const _tex = (u) => { const t = _tl.load(u); t.flipY = false; t.anisotropy = 4; return t; };
+  const _wp = (o) => o.getWorldPosition(new THREE.Vector3());
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+  // draai een bot zodat de lijn naar zijn kind in richting 'dir' wijst (wereld-coördinaten)
+  function richt(bot, kind, dir){
+    bot.updateMatrixWorld(true);
+    const nu = _wp(kind).sub(_wp(bot)).normalize();
+    const draai = new THREE.Quaternion().setFromUnitVectors(nu, dir.clone().normalize());
+    const wq = bot.getWorldQuaternion(new THREE.Quaternion()), pq = bot.parent.getWorldQuaternion(new THREE.Quaternion());
+    bot.quaternion.copy(pq.invert().multiply(draai.multiply(wq)));
+    bot.updateMatrixWorld(true);
   }
-
-  // ── KLEI: afstand-functies en "surface nets" ──
-  function smin(a, b, k){ if(k <= 0) return Math.min(a, b); const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; }
-  // een vorm-lijst: capsules (c) en ellipsoïden (e), elk met een zone (welk kledingstuk/huid) en hoe zacht hij overloopt (k)
-  function sdfVan(vormen){
-    return (x, y, z, uit) => {
-      let d = 1e9, best = 1e9, zone = 0;
-      for(const v of vormen){
-        let e;
-        if(v.t === 'c'){
-          const ax = v.a[0], ay = v.a[1], az = v.a[2], bx = v.b[0] - ax, by = v.b[1] - ay, bz = v.b[2] - az;
-          const px = x - ax, py = y - ay, pz = z - az;
-          const h = Math.max(0, Math.min(1, (px * bx + py * by + pz * bz) / (bx * bx + by * by + bz * bz)));
-          const dx = px - bx * h, dy = py - by * h, dz = pz - bz * h;
-          e = Math.sqrt(dx * dx + dy * dy + dz * dz) - (v.ra + (v.rb - v.ra) * h);
-        } else {
-          const qx = (x - v.c[0]) / v.r[0], qy = (y - v.c[1]) / v.r[1], qz = (z - v.c[2]) / v.r[2];
-          const k0 = Math.sqrt(qx * qx + qy * qy + qz * qz), k1 = Math.sqrt(qx * qx / (v.r[0] * v.r[0]) + qy * qy / (v.r[1] * v.r[1]) + qz * qz / (v.r[2] * v.r[2]));
-          e = k1 > 1e-6 ? k0 * (k0 - 1) / k1 : -Math.min(v.r[0], v.r[1], v.r[2]);
-        }
-        const eff = e - (v.voorrang || 0);              // voorrang: dit kledingstuk 'wint' net iets eerder
-        if(eff < best){ best = eff; zone = v.zone; }
-        d = smin(d, e, v.k || 0);
+  // draai een bot om zijn eigen lengte-as, zodat de richting naar 'punt' zo goed mogelijk 'doel' volgt
+  function rol(bot, kind, punt, doel){
+    bot.updateMatrixWorld(true);
+    const as = _wp(kind).sub(_wp(bot)).normalize();
+    const a = _wp(punt).sub(_wp(kind)); a.sub(as.clone().multiplyScalar(a.dot(as))).normalize();
+    const d = doel.clone(); d.sub(as.clone().multiplyScalar(d.dot(as))).normalize();
+    const hoek = Math.atan2(new THREE.Vector3().crossVectors(a, d).dot(as), a.dot(d));
+    const wq = bot.getWorldQuaternion(new THREE.Quaternion()), pq = bot.parent.getWorldQuaternion(new THREE.Quaternion());
+    bot.quaternion.copy(pq.invert().multiply(new THREE.Quaternion().setFromAxisAngle(as, hoek).multiply(wq)));
+    bot.updateMatrixWorld(true);
+  }
+  // twee botten (bovenarm+onderarm of dij+scheen): het eind moet op 'doel' komen, de knik wijst naar 'pool'
+  function ik(b1, b2, b3, doel, pool){
+    b1.updateMatrixWorld(true);
+    const S = _wp(b1), a = _wp(b2).distanceTo(S), b = _wp(b3).distanceTo(_wp(b2));
+    const naar = doel.clone().sub(S); let d = naar.length(); d = Math.min(d, (a + b) * 0.999); naar.normalize();
+    const cosA = Math.max(-1, Math.min(1, (a * a + d * d - b * b) / (2 * a * d))), sinA = Math.sqrt(1 - cosA * cosA);
+    const loodrecht = pool.clone().sub(naar.clone().multiplyScalar(pool.dot(naar))).normalize();
+    const knik = S.clone().add(naar.clone().multiplyScalar(a * cosA)).add(loodrecht.multiplyScalar(a * sinA));
+    richt(b1, b2, knik.clone().sub(S));
+    richt(b2, b3, doel.clone().sub(knik));
+  }
+  // ── de houdingen (in stoel-coördinaten: stoel in de oorsprong, kijkt naar +z, links = +x) ──
+  function zetHouding(B, houd){
+    const zij = [['L', 1], ['R', -1]];
+    // bekken op de stoel
+    const bekken = B['Bip01_Pelvis'];
+    for(const [s, sx] of zij){
+      ik(B[`Bip01_${s}_Thigh`], B[`Bip01_${s}_Calf`], B[`Bip01_${s}_Foot`], V3(sx * 0.13, 0.11, houd === 'achterover' ? 0.58 : 0.5), V3(0, 0.5, 1));
+      richt(B[`Bip01_${s}_Foot`], B[`Bip01_${s}_Toe0`], V3(sx * 0.1, -0.2, 1));
+    }
+    if(houd === 'achterover'){ richt(B['Bip01_Spine1'], B['Bip01_Spine2'], V3(0, 1, -0.28)); richt(B['Bip01_Spine2'], B['Bip01_Neck'], V3(0, 1, -0.12)); }
+    else { richt(B['Bip01_Spine1'], B['Bip01_Spine2'], V3(0, 1, 0.08)); }
+    // armen
+    const pols = {
+      typen: {L: V3(0.15, 0.775, 0.43), R: V3(-0.15, 0.775, 0.43)},          // handen op het toetsenbord
+      muis: {L: V3(0.13, 0.775, 0.43), R: V3(-0.34, 0.77, 0.42)},            // rechterhand op de muis
+      achterover: {L: V3(0.14, 0.625, 0.33), R: V3(-0.14, 0.625, 0.33)},     // handen ontspannen op schoot
+      vergader: {L: V3(0.19, 0.765, 0.37), R: V3(-0.19, 0.765, 0.37)}        // handen op de tafelrand
+    }[houd];
+    const hoofd = _wp(B['Bip01_Head']);
+    for(const [s, sx] of zij){
+      const bo = B[`Bip01_${s}_UpperArm`], on = B[`Bip01_${s}_Forearm`], ha = B[`Bip01_${s}_Hand`];
+      let doel = pols[s], pool = V3(sx * 0.7, -1, -0.25), handDir, duim;
+      handDir = houd === 'achterover' ? V3(-sx * 0.25, -0.35, 1) : V3(-sx * 0.06, houd === 'vergader' ? -0.15 : -0.3, 1);
+      duim = V3(-sx, -0.35, 0);
+      ik(bo, on, ha, doel, pool);
+      rol(on, ha, B[`Bip01_${s}_Finger0`], duim);
+      richt(ha, B[`Bip01_${s}_Finger2`], handDir);
+      rol(ha, B[`Bip01_${s}_Finger2`], B[`Bip01_${s}_Finger0`], duim);
+      // vingers: bij typen licht gekromd, anders ontspannen
+      const voor = _wp(B[`Bip01_${s}_Finger2`]).sub(_wp(ha)).normalize();
+      const omlaag = new THREE.Vector3().crossVectors(voor, new THREE.Vector3().crossVectors(V3(0, 1, 0), voor)).normalize().negate();
+      const krom = (houd === 'typen' || houd === 'muis') ? [0.45, 1.1] : [0.25, 0.55];
+      for(const f of [1, 2, 3, 4]){
+        const k = [`Bip01_${s}_Finger${f}`, `Bip01_${s}_Finger${f}1`, `Bip01_${s}_Finger${f}2`];
+        if(!B[k[1]] || !B[k[2]]) continue;
+        richt(B[k[0]], B[k[1]], voor.clone().add(omlaag.clone().multiplyScalar(krom[0])));
+        richt(B[k[1]], B[k[2]], voor.clone().add(omlaag.clone().multiplyScalar(krom[1])));
       }
-      if(uit) uit.zone = zone;
-      return d;
-    };
+    }
+    // hoofd: kijkt naar het scherm (iets omlaag), of iets schuin bij bellen
+    if(B['Bip01_Neck'] && B['Bip01_Head']) richt(B['Bip01_Neck'], B['Bip01_Head'], V3(0, 1, houd === 'achterover' ? 0.03 : 0.16));
   }
-  // surface nets: per cel één punt op de huid, buren worden vierhoekjes
-  // (kneedKern gebruikt alleen gewone rekenkunde, zodat hij ook in de rekenhulp (Web Worker) kan draaien)
-  function kneedKern(vormen, lo, hi, h){
-    const sdf = sdfVan(vormen);
-    const nx = Math.ceil((hi[0] - lo[0]) / h) + 1, ny = Math.ceil((hi[1] - lo[1]) / h) + 1, nz = Math.ceil((hi[2] - lo[2]) / h) + 1;
-    const val = new Float32Array(nx * ny * nz), id = (i, j, k) => (k * ny + j) * nx + i;
-    // eerst grof (elke 4e punt); ver van de huid hoeven we niet precies te rekenen
-    const G = 4, gx = Math.ceil((nx - 1) / G) + 1, gy = Math.ceil((ny - 1) / G) + 1, gz = Math.ceil((nz - 1) / G) + 1;
-    const grof = new Float32Array(gx * gy * gz), gid = (i, j, k) => (k * gy + j) * gx + i;
-    for(let k = 0; k < gz; k++) for(let j = 0; j < gy; j++) for(let i = 0; i < gx; i++) grof[gid(i, j, k)] = sdf(lo[0] + i * G * h, lo[1] + j * G * h, lo[2] + k * G * h);
-    const marge = G * h * 1.8;
-    for(let k = 0; k < nz; k++){
-      const fk = k / G, k0 = Math.min(gz - 2, Math.floor(fk)), tk = fk - k0;
-      for(let j = 0; j < ny; j++){
-        const fj = j / G, j0 = Math.min(gy - 2, Math.floor(fj)), tj = fj - j0;
-        for(let i = 0; i < nx; i++){
-          const fi = i / G, i0 = Math.min(gx - 2, Math.floor(fi)), ti = fi - i0;
-          const c00 = grof[gid(i0, j0, k0)] * (1 - ti) + grof[gid(i0 + 1, j0, k0)] * ti, c10 = grof[gid(i0, j0 + 1, k0)] * (1 - ti) + grof[gid(i0 + 1, j0 + 1, k0)] * ti;
-          const c01 = grof[gid(i0, j0, k0 + 1)] * (1 - ti) + grof[gid(i0 + 1, j0, k0 + 1)] * ti, c11 = grof[gid(i0, j0 + 1, k0 + 1)] * (1 - ti) + grof[gid(i0 + 1, j0 + 1, k0 + 1)] * ti;
-          const schat = (c00 * (1 - tj) + c10 * tj) * (1 - tk) + (c01 * (1 - tj) + c11 * tj) * tk;
-          val[id(i, j, k)] = Math.abs(schat) > marge ? schat : sdf(lo[0] + i * h, lo[1] + j * h, lo[2] + k * h);
-        }
-      }
-    }
-    const cel = new Int32Array((nx - 1) * (ny - 1) * (nz - 1)).fill(-1), cid = (i, j, k) => (k * (ny - 1) + j) * (nx - 1) + i;
-    const pos = [];
-    const E = [[0, 0, 0, 1, 0, 0], [0, 1, 0, 1, 1, 0], [0, 0, 1, 1, 0, 1], [0, 1, 1, 1, 1, 1], [0, 0, 0, 0, 1, 0], [1, 0, 0, 1, 1, 0], [0, 0, 1, 0, 1, 1], [1, 0, 1, 1, 1, 1], [0, 0, 0, 0, 0, 1], [1, 0, 0, 1, 0, 1], [0, 1, 0, 0, 1, 1], [1, 1, 0, 1, 1, 1]];
-    for(let k = 0; k < nz - 1; k++) for(let j = 0; j < ny - 1; j++) for(let i = 0; i < nx - 1; i++){
-      let sx = 0, sy = 0, sz = 0, n = 0;
-      for(const e of E){
-        const a = val[id(i + e[0], j + e[1], k + e[2])], b = val[id(i + e[3], j + e[4], k + e[5])];
-        if((a < 0) === (b < 0)) continue;
-        const t = a / (a - b);
-        sx += e[0] + (e[3] - e[0]) * t; sy += e[1] + (e[4] - e[1]) * t; sz += e[2] + (e[5] - e[2]) * t; n++;
-      }
-      if(!n) continue;
-      cel[cid(i, j, k)] = pos.length / 3;
-      pos.push(lo[0] + (i + sx / n) * h, lo[1] + (j + sy / n) * h, lo[2] + (k + sz / n) * h);
-    }
-    const idx = [];
-    const quad = (a, b, c, d, binnen) => { if(a < 0 || b < 0 || c < 0 || d < 0) return; if(binnen) idx.push(a, b, c, a, c, d); else idx.push(a, c, b, a, d, c); };
-    for(let k = 1; k < nz - 1; k++) for(let j = 1; j < ny - 1; j++) for(let i = 0; i < nx - 1; i++){
-      const a = val[id(i, j, k)], b = val[id(i + 1, j, k)]; if((a < 0) === (b < 0)) continue;
-      quad(cel[cid(i, j - 1, k - 1)], cel[cid(i, j, k - 1)], cel[cid(i, j, k)], cel[cid(i, j - 1, k)], a < 0);
-    }
-    for(let k = 1; k < nz - 1; k++) for(let j = 0; j < ny - 1; j++) for(let i = 1; i < nx - 1; i++){
-      const a = val[id(i, j, k)], b = val[id(i, j + 1, k)]; if((a < 0) === (b < 0)) continue;
-      quad(cel[cid(i - 1, j, k - 1)], cel[cid(i - 1, j, k)], cel[cid(i, j, k)], cel[cid(i, j, k - 1)], a < 0);
-    }
-    for(let k = 0; k < nz - 1; k++) for(let j = 1; j < ny - 1; j++) for(let i = 1; i < nx - 1; i++){
-      const a = val[id(i, j, k)], b = val[id(i, j, k + 1)]; if((a < 0) === (b < 0)) continue;
-      quad(cel[cid(i - 1, j - 1, k)], cel[cid(i, j - 1, k)], cel[cid(i, j, k)], cel[cid(i - 1, j, k)], a < 0);
-    }
-    // normalen uit de afstand-functie (heel glad), schaduw in de hoekjes, en de zone per punt
-    const nor = [], ao = [], zones = [], uit = {}, e = h * 0.5;
-    for(let v = 0; v < pos.length; v += 3){
-      const x = pos[v], y = pos[v + 1], z = pos[v + 2];
-      const a1 = sdf(x + e, y - e, z - e), a2 = sdf(x - e, y - e, z + e), a3 = sdf(x - e, y + e, z - e), a4 = sdf(x + e, y + e, z + e);
-      let gx = a1 - a2 - a3 + a4, gy = -a1 - a2 + a3 + a4, gz = -a1 + a2 - a3 + a4;
-      const L = Math.hypot(gx, gy, gz) || 1; gx /= L; gy /= L; gz /= L;
-      nor.push(gx, gy, gz);
-      let occ = 0, w = 1;
-      for(let s = 1; s <= 3; s++){ const st = s * 0.02; occ += w * (st - sdf(x + gx * st, y + gy * st, z + gz * st)); w *= 0.5; }
-      ao.push(Math.max(0.35, Math.min(1, 1 - occ * 7)));
-      sdf(x - gx * h * 0.3, y - gy * h * 0.3, z - gz * h * 0.3, uit); zones.push(uit.zone);
-    }
-    // de driehoekjes de goede kant op (naar buiten)
-    for(let t = 0; t < idx.length; t += 3){
-      const a = idx[t] * 3, b = idx[t + 1] * 3, c2 = idx[t + 2] * 3;
-      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2], wx = pos[c2] - pos[a], wy = pos[c2 + 1] - pos[a + 1], wz = pos[c2 + 2] - pos[a + 2];
-      const fx = uy * wz - uz * wy, fy = uz * wx - ux * wz, fz = ux * wy - uy * wx;
-      if(fx * (nor[a] + nor[b] + nor[c2]) + fy * (nor[a + 1] + nor[b + 1] + nor[c2 + 1]) + fz * (nor[a + 2] + nor[b + 2] + nor[c2 + 2]) < 0){ const s = idx[t + 1]; idx[t + 1] = idx[t + 2]; idx[t + 2] = s; }
-    }
-    return {pos: new Float32Array(pos), nor: new Float32Array(nor), ao: new Float32Array(ao), zones: new Uint8Array(zones), idx: new Uint32Array(idx)};
-  }
-  function kernNaarVorm(r){
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(r.pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(r.nor, 3)); g.setIndex(new THREE.BufferAttribute(r.idx, 1));
-    return {geo: g, ao: r.ao, zones: r.zones};
-  }
-
-  // ── HET LIJF: per houding / man-vrouw / colbert / rok één keer gekneed ──
-  const Z = {top: 0, broek: 1, huid: 2, schoen: 3, rok: 4, mouw: 5};
-  const lijfCache = {};
-  const ARM = {   // ellebogen per houding (links = -x); de onderarm hoort bij de hand
-    typen: [[-0.225, 0.85, 0.11], [0.225, 0.85, 0.11]], achterover: [[-0.27, 0.75, -0.08], [0.27, 0.75, -0.08]],
-    telefoon: [[-0.225, 0.85, 0.11], [0.235, 0.9, 0.05]], kin: [[-0.13, 0.79, 0.33], [0.225, 0.85, 0.11]]
-  };
-  const maakR = (leun) => (x, y, z) => { const c = Math.cos(leun), s = Math.sin(leun), yy = y - 0.55, zz = z; return [x, 0.55 + yy * c - zz * s, yy * s + zz * c]; };   // romp leunt om de heup
-  function lijfVorm(vrouw, houd, colbert, rok, tshirt, alleenKlus){
-    const key = [vrouw, houd, colbert, rok, tshirt].join('|');
-    if(lijfCache[key]) return lijfCache[key];
-    const leun = houd === 'achterover' ? -0.12 : 0.03;
-    const R = maakR(leun);
-    const dik = colbert ? 0.012 : 0;
-    const vormen = [];
-    const ell = (c, r, zone, k, voorrang) => vormen.push({t: 'e', c, r, zone, k, voorrang});
-    const cap = (a, b, ra, rb, zone, k, voorrang) => vormen.push({t: 'c', a, b, ra, rb, zone, k, voorrang});
-    const W = vrouw ? {heup: 0.185, taille: 0.128, borst: 0.158, schouder: 0.165} : {heup: 0.168, taille: 0.15, borst: 0.18, schouder: 0.19};
-    ell(R(0, 0.57, -0.03), [W.heup, 0.1, 0.13], Z.broek, 0);
-    ell(R(0, 0.72, -0.045), [W.taille + dik, 0.12, 0.098 + dik], Z.top, 0.09);
-    ell(R(0, 0.915, -0.05), [W.borst + dik, 0.15, 0.112 + dik], Z.top, 0.09);
-    cap(R(-W.schouder + 0.04, 1.035, -0.065), R(W.schouder - 0.04, 1.035, -0.065), 0.062 + dik, 0.062 + dik, Z.top, 0.07);
-    if(vrouw) for(const s of [-1, 1]) ell(R(s * 0.072, 0.925, 0.045), [0.066, 0.062, 0.056], Z.top, 0.05);
-    cap(R(0, 1.06, -0.05), R(0, 1.17, -0.035), 0.054, 0.05, Z.huid, 0.05, 0.004);        // nek
-    const ellb = ARM[houd];
-    for(const s of [0, 1]){
-      const sx = s ? 1 : -1, schouder = R(sx * (W.schouder + 0.005), 1.025, -0.06), elle = ellb[s];
-      ell(schouder, [0.068 + dik, 0.06 + dik, 0.07 + dik], Z.top, 0.05);                  // deltaspier
-      if(tshirt){
-        const half = [schouder[0] + (elle[0] - schouder[0]) * 0.45, schouder[1] + (elle[1] - schouder[1]) * 0.45, schouder[2] + (elle[2] - schouder[2]) * 0.45];
-        cap(schouder, half, 0.056, 0.052, Z.top, 0.03, -0.003);
-        cap(schouder, elle, 0.046, 0.038, Z.huid, 0.04);
-      } else cap(schouder, elle, 0.049 + dik, 0.041 + dik, Z.mouw, 0.04);
-      // benen
-      const heup = [sx * 0.095, 0.55, 0.0], knie = [sx * 0.105, 0.535, 0.43], enkel = [sx * 0.118, 0.1, 0.47];
-      cap(heup, knie, 0.09, 0.062, rok ? Z.rok : Z.broek, 0.06);
-      ell([sx * 0.105, 0.54, 0.425], [0.06, 0.058, 0.062], rok ? Z.huid : Z.broek, 0.03);     // knie
-      cap(knie, enkel, 0.055, 0.037, rok ? Z.huid : Z.broek, 0.03);
-      ell([sx * 0.112, 0.31, 0.425], [0.05, 0.12, 0.048], rok ? Z.huid : Z.broek, 0.05);      // kuit
-      ell([sx * 0.12, 0.05, 0.545], [0.048, 0.042, 0.13], Z.schoen, 0.025, 0.004);           // schoen
-    }
-    if(rok) cap([0, 0.57, -0.02], [0, 0.56, 0.37], 0.2, 0.175, Z.rok, 0.02, 0.006);
-    const klus = {key: 'lijf|' + key, vormen, lo: [-0.37, -0.01, -0.31], hi: [0.37, 1.24, 0.72], h: IS_TOUCH ? 0.032 : 0.024, leun};
-    if(alleenKlus) return klus;
-    const res = kernNaarVorm(kneedKern(klus.vormen, klus.lo, klus.hi, klus.h));
-    res.R = R;
-    return (lijfCache[key] = res);
-  }
-  // ── DE ONDERARM + HAND (gekneed, per houding van de hand), pols in de oorsprong, vingers naar +z ──
-  const handCache = {};
-  function handVorm(soort, tshirt, alleenKlus){
-    const key = soort + '|' + tshirt;
-    if(handCache[key]) return handCache[key];
-    const kr = soort === 'typen' ? 1 : (soort === 'kin' ? 0.35 : 0.55), vormen = [];
-    const cap = (a, b, ra, rb, zone, k) => vormen.push({t: 'c', a, b, ra, rb, zone, k});
-    const ell = (c, r, zone, k) => vormen.push({t: 'e', c, r, zone, k});
-    // onderarm: van de elleboog (z = -0.26) naar de pols
-    cap([0, 0.006, -0.26], [0, 0, -0.03], 0.041, 0.03, tshirt ? Z.huid : Z.mouw, 0);
-    if(!tshirt) cap([0, 0, -0.06], [0, 0, -0.035], 0.036, 0.036, Z.mouw, 0.01);                       // manchet
-    cap([0, 0, -0.05], [0, 0, 0.005], 0.028, 0.027, Z.huid, 0.02);
-    ell([0, 0.002, 0.045], [0.04, 0.016, 0.05], Z.huid, 0.03);                                         // handpalm
-    const lang = [0.044, 0.05, 0.047, 0.037];
-    for(let f = 0; f < 4; f++){
-      const x = -0.026 + f * 0.0175, L = lang[f];
-      const a = [x, 0, 0.088], b = [x * 1.03, -0.013 * kr, 0.088 + L * 0.52], c = [x * 1.05, -0.03 * kr, 0.088 + L * (0.98 - 0.22 * kr)];
-      cap(a, b, 0.0088, 0.0078, Z.huid, 0.012); cap(b, c, 0.0078, 0.0066, Z.huid, 0.008);
-    }
-    cap([0.03, -0.004, 0.025], [0.052, -0.012, 0.068], 0.0115, 0.009, Z.huid, 0.015);
-    cap([0.052, -0.012, 0.068], [0.058, -0.022, 0.096], 0.009, 0.0075, Z.huid, 0.008);
-    const klus = {key: 'hand|' + key, vormen, lo: [-0.06, -0.06, -0.31], hi: [0.08, 0.05, 0.16], h: IS_TOUCH ? 0.009 : 0.0068};
-    if(alleenKlus) return klus;
-    return (handCache[key] = kernNaarVorm(kneedKern(klus.vormen, klus.lo, klus.hi, klus.h)));
-  }
-
-  // ── HET HOOFD (geboetseerd uit een bol; maat in meters, middelpunt = 0,0,0) ──
-  const HK = {x: 0.074, y: 0.112, z: 0.094};
-  const schedel = (x, y, z) => { if(y > 0){ y *= 0.9; x *= 1 + 0.07 * y; z *= 1 + 0.04 * y; } if(z < 0){ z *= 1.1; } return [x, y, z]; };
-  const hoofdBasis = (() => {
-    const g = IS_TOUCH ? new THREE.SphereGeometry(1, 30, 24) : new THREE.SphereGeometry(1, 56, 44), p = g.attributes.position;
-    const G = (x, y, z, cx, cy, cz, s) => Math.exp(-((x - cx) ** 2 + (y - cy) ** 2 + (z - cz) ** 2) / (s * s));
-    for(let i = 0; i < p.count; i++){
-      let [x, y, z] = schedel(p.getX(i), p.getY(i), p.getZ(i));
-      const onder = Math.max(0, -y);
-      x *= 1 - 0.3 * onder * onder;
-      z *= 1 - 0.1 * onder;
-      if(z > 0) z += 0.16 * G(x, y, z, 0, -0.86, 0.55, 0.3);
-      if(z > 0) z += 0.05 * G(x, y, z, 0, 0.42, 0.9, 0.4) + 0.065 * (G(x, y, z, 0.33, 0.27, 0.92, 0.17) + G(x, y, z, -0.33, 0.27, 0.92, 0.17));
-      z -= 0.13 * (G(x, y, z, 0.36, 0.1, 0.92, 0.17) + G(x, y, z, -0.36, 0.1, 0.92, 0.17));
-      z += 0.075 * (G(x, y, z, 0.55, -0.1, 0.75, 0.2) + G(x, y, z, -0.55, -0.1, 0.75, 0.2));
-      z -= 0.04 * (G(x, y, z, 0.5, -0.45, 0.78, 0.2) + G(x, y, z, -0.5, -0.45, 0.78, 0.2));
-      if(z > 0.5 && y > -0.42 && y < 0.2){
-        const t = (0.2 - y) / 0.62;
-        z += 0.44 * Math.exp(-(x * x) / (0.005 + 0.014 * t)) * Math.min(1, t * 1.3) * (1 - 0.35 * Math.max(0, t - 0.85) / 0.15);
-      }
-      z += 0.09 * (G(x, y, z, 0.13, -0.37, 0.92, 0.085) + G(x, y, z, -0.13, -0.37, 0.92, 0.085));
-      z += 0.03 * Math.exp(-(x * x) / 0.004) * G(0, y, z, 0, -0.47, 0.93, 0.06);
-      z -= 0.03 * (G(x, y, z, 0.24, -0.46, 0.88, 0.07) + G(x, y, z, -0.24, -0.46, 0.88, 0.07));   // lachplooien
-      z += 0.08 * G(x * 0.65, y, z, 0, -0.57, 0.94, 0.13);
-      if(z > 0.5) z -= 0.03 * Math.exp(-((y + 0.585) ** 2) / 0.0009) * Math.exp(-x * x / 0.05);
-      z -= 0.025 * G(x, y, z, 0, -0.72, 0.9, 0.08);                                               // kuiltje onder de lip
-      x -= 0.04 * Math.sign(x) * G(Math.abs(x), y, z, 0.95, 0.22, 0.2, 0.3);
-      p.setXYZ(i, x * HK.x, y * HK.y, z * HK.z);
-    }
-    g.computeVertexNormals();
-    return g;
-  })();
-  function hoofdKleur(huid, vrouw, baardKl){
-    const lip = huid.clone().lerp(C(vrouw ? 0xa84a4c : 0x9c5a52), vrouw ? 0.55 : 0.4), wang = huid.clone().lerp(C(0xd86a62), 0.22), t = new THREE.Color();
-    return (X, Y, Z) => {
-      const x = X / HK.x, y = Y / HK.y, z = Z / HK.z;
-      t.copy(huid);
-      t.lerp(wang, Math.exp(-(((Math.abs(x) - 0.5) ** 2) + (y + 0.22) ** 2 + (z - 0.72) ** 2) / 0.05));
-      if(z > 0.55 && Math.abs(x) < 0.34 && y < -0.47 && y > -0.7) t.lerp(lip, 0.9 * Math.pow(1 - Math.abs(x) / 0.34, 0.6));
-      let schaduw = 0;
-      if(z > 0.55) schaduw += 0.16 * Math.exp(-(((Math.abs(x) - 0.36) ** 2) + (y - 0.04) ** 2) / 0.016);                 // oogkassen
-      if(z > 0.7 && y < -0.38 && y > -0.46 && Math.abs(x) > 0.04 && Math.abs(x) < 0.16) schaduw += 0.4;                   // neusgaten
-      schaduw += 0.12 * Math.exp(-(((Math.abs(x) - 0.24) ** 2) + (y + 0.46) ** 2) / 0.004) * (z > 0.6 ? 1 : 0);          // lachplooien
-      schaduw += 0.1 * Math.exp(-((x * x) + (y + 0.72) ** 2) / 0.006) * (z > 0.6 ? 1 : 0);                             // onder de lip
-      schaduw += 0.12 * Math.max(0, -y - 0.8) * 3;                                                                      // onder de kin
-      t.multiplyScalar(1 - schaduw);
-      t.multiplyScalar(0.97 + 0.06 * Math.sin(X * 2300) * Math.sin(Y * 1900) * Math.sin(Z * 2100));                   // huid is nooit egaal
-      if(baardKl && y < -0.2 && z > -0.3 && !(z > 0.55 && Math.abs(x) < 0.3 && y > -0.7 && y < -0.47)) t.lerp(baardKl, Math.min(0.75, (-0.2 - y) * 2.2));
-      return t;
-    };
-  }
-  // haarlokken: kaartjes die vanaf de schedel naar beneden en naar achteren vallen
-  function haarlokken(B, basis, stijl, kl, aantal){
-    if(stijl === 'kaal') return;
-    const tk = new THREE.Color();
-    const lengte = {kort: [0.05, 0.075], lang: [0.22, 0.34], staart: [0.07, 0.1], knot: [0.07, 0.1], krul: [0.035, 0.05]}[stijl];
-    for(let n = 0; n < aantal; n++){
-      // een plek op de schedel binnen de haargrens
-      let dx, dy, dz, l;
-      do { dx = r() * 2 - 1; dy = r() * 2 - 1; dz = r() * 2 - 1; l = Math.hypot(dx, dy, dz); } while(l > 1 || l < 0.2);
-      dx /= l; dy /= l; dz /= l;
-      const grens = dz > 0.3 ? 0.42 - 0.25 * Math.abs(dx) : (dz > -0.2 ? 0.0 : -0.45);   // voorhoofd vrij, zijkant tot de oren, achter laag
-      if(dy < grens) { n--; continue; }
-      const [sx0, sy0, sz0] = schedel(dx, dy, dz);
-      let p = V3(sx0 * HK.x * 1.035, sy0 * HK.y * 1.035, sz0 * HK.z * 1.035);
-      const nrm = V3(dx, dy, dz).normalize();
-      // richting: naar beneden over de schedel, een beetje naar achteren
-      // voorop en bovenop naar achteren gekamd (nooit over het gezicht), opzij en achter naar beneden
-      let dir = V3(dx * 0.35, -1 + Math.max(0, dy) * 0.9 + Math.max(0, dz) * 0.9, -0.35 - Math.max(0, dz) * 1.6 - Math.max(0, dy) * 0.6);
-      if(stijl === 'lang' && dz > 0.3 && Math.abs(dx) > 0.25) dir = V3(Math.sign(dx) * 0.6, -1, -0.2);   // lang haar: opzij langs het gezicht
-      if(stijl === 'staart' || stijl === 'knot') dir = V3(0, 0.12, -0.12).sub(p).normalize();
-      if(stijl === 'krul') dir = V3(r() - 0.5, -0.6, r() - 0.5);
-      dir.sub(nrm.clone().multiplyScalar(dir.dot(nrm))).normalize();
-      const L = lengte[0] + r() * (lengte[1] - lengte[0]), breed = (stijl === 'krul' ? 0.022 : 0.03) + r() * 0.012;
-      const pts = [p.clone()];
-      for(let s = 1; s <= 4; s++){
-        const stap = dir.clone().multiplyScalar(L / 4);
-        p = p.clone().add(stap);
-        // buiten het hoofd blijven
-        const q = V3(p.x / (HK.x * 1.04), p.y / (HK.y * 1.04), p.z / (HK.z * 1.08)), ql = q.length();
-        if(ql < 1) p.multiplyScalar(1 / ql);
-        if(p.y < 0.0) dir.lerp(V3(0, -1, -0.05), 0.5).normalize();     // onder de schedel valt het recht naar beneden
-        if(stijl === 'krul') dir.applyAxisAngle(V3(0, 1, 0), 1.2).normalize();
-        pts.push(p.clone());
-      }
-      const pos = [], nor = [], uv = [], idx = [];
-      for(let s = 0; s <= 4; s++){
-        const a = pts[s], richting = (s < 4 ? pts[s + 1].clone().sub(a) : a.clone().sub(pts[s - 1])).normalize();
-        const buiten = V3(a.x / HK.x, a.y / HK.y, a.z / HK.z).normalize();
-        const zij = new THREE.Vector3().crossVectors(richting, buiten).normalize().multiplyScalar(breed * (1 - s * 0.12) / 2);
-        for(const k of [-1, 1]){ const q = a.clone().add(zij.clone().multiplyScalar(k)); pos.push(q.x, q.y, q.z); nor.push(buiten.x, buiten.y, buiten.z); uv.push(k < 0 ? 0 : 1, 1 - s / 4); }
-      }
-      for(let s = 0; s < 4; s++){ const a = s * 2; idx.push(a, a + 1, a + 3, a, a + 3, a + 2); }
-      const tint = 0.8 + r() * 0.4;
-      B.ruw(pos, nor, uv, idx, tk.copy(kl).multiplyScalar(tint), basis);
-    }
-  }
-  function maakHoofd(o){
-    const hB = new THREE.Group();
-    const Bh = new Bouwer(), Bk = new Bouwer(), Bl = new Bouwer(), Bo = new Bouwer();
-    const basis = new THREE.Matrix4().makeTranslation(0, 0.115, 0.035);
-    Bh.voeg(hoofdBasis, new THREE.Matrix4().multiplyMatrices(basis, new THREE.Matrix4().makeScale(o.hoofdBreed, 1, 1)), hoofdKleur(o.huid, o.vrouw, o.baard ? o.haar.clone().lerp(o.huid, 0.4) : null));
-    const wit = C(0xe8e2da), iris = o.iris, rood = C(0xd9a8a0);
-    for(const s of [-1, 1]){
-      const oc = V3(s * 0.0265 * o.hoofdBreed, 0.0125, 0.0745);
-      const oogG = new THREE.SphereGeometry(0.0118, 18, 14);
-      Bo.voeg(oogG, new THREE.Matrix4().multiplyMatrices(basis, new THREE.Matrix4().makeTranslation(oc.x, oc.y, oc.z)), (X, Y, Z) => {
-        const voor = Z / 0.0118, opzij = Math.hypot(X, Y) / 0.0118;
-        if(voor > 0.88 && Math.hypot(X, Y) < 0.0023) return {r: 0.02, g: 0.02, b: 0.02};
-        if(voor > 0.82 && Math.hypot(X, Y) < 0.0057){ const k = 0.75 + 0.5 * (Math.hypot(X, Y) / 0.0057); return {r: iris.r * k, g: iris.g * k, b: iris.b * k}; }
-        return voor < 0.3 && opzij > 0.6 ? rood : wit;
+  // één model inladen, aankleden en alle houdingen vastleggen
+  function laadEen(kort, info){
+    return new Promise((klaar, fout) => new THREE.GLTFLoader().load(MENS_MAP + kort + '/model.glb', g => {
+      const d = MENS_MAP + kort + '/';
+      const heeftHaar = (info.materialen || []).some(n => /_opacity$/i.test(n));   // niet iedereen heeft een apart haar-plaatje
+      const heeftBril = (info.materialen || []).some(n => /glasses/i.test(n));
+      const T = {body: _tex(d + 'body.jpg'), bodyN: _tex(d + 'body_n.jpg'), head: _tex(d + 'head.jpg'), headN: _tex(d + 'head_n.jpg'), op: heeftHaar ? _tex(d + 'opacity.png') : null};
+      const M = {
+        body: std({map: T.body, normalMap: T.bodyN, roughness: 0.78}, 0.35),
+        head: std({map: T.head, normalMap: T.headN, roughness: 0.58}, 0.45),
+        op: new THREE.MeshStandardMaterial({map: T.op, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.55}),
+        bril: heeftBril ? std({map: _tex(d + 'bril.png'), alphaTest: 0.3, side: THREE.DoubleSide, roughness: 0.2, metalness: 0.3}, 1) : null
+      };
+      g.scene.traverse(o => {
+        if(!o.isMesh) return;
+        const kiesMat = (m) => /glasses/i.test(m.name) && M.bril ? M.bril : (/opacity|hair|lash/i.test(m.name) ? M.op : (/head|face/i.test(m.name) ? M.head : M.body));
+        o.material = Array.isArray(o.material) ? o.material.map(kiesMat) : kiesMat(o.material);
+        o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
       });
-      const lidG = new THREE.SphereGeometry(0.0128, 16, 6, 0, Math.PI * 2, 0, 0.95);
-      Bh.voeg(lidG, new THREE.Matrix4().multiplyMatrices(basis, new THREE.Matrix4().compose(oc, new THREE.Quaternion().setFromEuler(new THREE.Euler(0.3, 0, 0)), V3(1, 1, 1))), o.huid.clone().multiplyScalar(0.9));
-      const onderLid = new THREE.SphereGeometry(0.0124, 16, 4, 0, Math.PI * 2, 2.4, 0.74);
-      Bh.voeg(onderLid, new THREE.Matrix4().multiplyMatrices(basis, new THREE.Matrix4().makeTranslation(oc.x, oc.y, oc.z)), o.huid.clone().multiplyScalar(0.95));
-      Bk.voeg(new THREE.TorusGeometry(0.0118, 0.0008, 4, 18, Math.PI), new THREE.Matrix4().multiplyMatrices(basis, new THREE.Matrix4().compose(oc.clone().add(V3(0, 0.0012, 0.0035)), new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.25, 0, 0)), V3(1, 0.62, 1))), o.haar.clone().multiplyScalar(0.35));
-      for(let k = 0; k < 7; k++){
-        const f = k / 6, bx = s * (0.011 + f * 0.027) * o.hoofdBreed, by = 0.029 + 0.006 * Math.sin(f * Math.PI) - f * 0.002;
-        const g = new THREE.SphereGeometry(1, 6, 4);
-        Bk.voeg(g, new THREE.Matrix4().multiplyMatrices(basis, new THREE.Matrix4().compose(V3(bx, by, 0.085 - f * 0.007), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, s * (0.3 - f * 0.5))), V3(0.006, 0.0028 - f * 0.0008, 0.0035))), o.haar.clone().multiplyScalar(0.9));
+      // de houdingen vastleggen: per houding de draaiing van elk bot + waar het model moet staan
+      const B = {}; g.scene.traverse(o => { if(o.isBone) B[o.name] = o; });
+      const rust = {}; for(const n in B) rust[n] = B[n].quaternion.clone();
+      g.scene.updateMatrixWorld(true);
+      const bekkenY = _wp(B['Bip01_Pelvis']).y;
+      const poses = {};
+      for(const houd of ['typen', 'muis', 'achterover', 'vergader']){
+        for(const n in B) B[n].quaternion.copy(rust[n]);
+        g.scene.position.set(0, 0.56 - bekkenY, houd === 'achterover' ? 0.03 : 0.08);
+        g.scene.updateMatrixWorld(true);
+        try { zetHouding(B, houd); } catch(e){ console.warn('houding', kort, houd, e); }
+        const q = {}; for(const n in B) q[n] = B[n].quaternion.clone();
+        poses[houd] = {q, pos: g.scene.position.clone()};
       }
-      // oor: schelp met een rand
-      const oorM = new THREE.Matrix4().compose(V3(s * 0.073 * o.hoofdBreed, 0.0, -0.006), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, s * 0.35, 0)), V3(1, 1, 1));
-      Bh.voeg(new THREE.SphereGeometry(1, 12, 10).scale(0.01, 0.03, 0.02), new THREE.Matrix4().multiplyMatrices(basis, oorM), o.huid.clone().multiplyScalar(0.93));
-      Bh.voeg(new THREE.TorusGeometry(0.022, 0.0035, 6, 16, Math.PI * 1.4).rotateZ(-0.5).scale(0.6, 1.25, 1).rotateY(s * Math.PI / 2), new THREE.Matrix4().multiplyMatrices(basis, oorM.clone().multiply(new THREE.Matrix4().makeTranslation(s * 0.004, 0.002, 0))), o.huid.clone().multiplyScalar(0.97));
-    }
-    // nek (draait mee met het hoofd)
-    { const pts = [[0.054, -0.07], [0.051, 0.0], [0.05, 0.07]].map(([a, b]) => new THREE.Vector2(a, b)); const g = new THREE.LatheGeometry(pts, 18); g.scale(1, 1, 0.92); Bh.voeg(g, new THREE.Matrix4().makeTranslation(0, 0, 0.004), o.huid.clone().multiplyScalar(0.92)); }
-    // een strakke kap onder de lokken (zodat je nooit de hoofdhuid ziet), dan de lokken zelf
-    if(o.stijl !== 'kaal'){
-      const kapG = new THREE.SphereGeometry(1, 30, 16, 0, Math.PI * 2, 0, 1.9);
-      const p = kapG.attributes.position;
-      for(let i = 0; i < p.count; i++){ const [x, y, z] = schedel(p.getX(i), p.getY(i), p.getZ(i)); p.setXYZ(i, x * HK.x * 1.025, y * HK.y * 1.025, z * HK.z * 1.025); }
-      kapG.computeVertexNormals();
-      Bk.voeg(kapG, new THREE.Matrix4().multiplyMatrices(basis, new THREE.Matrix4().makeRotationX(-0.66)), o.haar.clone().multiplyScalar(0.75));
-      haarlokken(Bl, basis, o.stijl, o.haar, IS_TOUCH ? 90 : (o.stijl === 'lang' ? 260 : 190));
-      if(o.stijl === 'knot'){ const g = new THREE.SphereGeometry(1, 14, 10); Bk.voeg(g, new THREE.Matrix4().multiplyMatrices(basis, new THREE.Matrix4().compose(V3(0, 0.075, -0.1), new THREE.Quaternion(), V3(0.04, 0.036, 0.035))), o.haar.clone().multiplyScalar(0.85)); }
-      if(o.stijl === 'staart'){
-        for(let k = 0; k < 40; k++){
-          const a = V3((r() - 0.5) * 0.02, 0.05 + (r() - 0.5) * 0.02, -0.105), b = a.clone().add(V3((r() - 0.5) * 0.04, -0.17 - r() * 0.06, -0.03 - r() * 0.03));
-          const g = new THREE.PlaneGeometry(0.03, a.distanceTo(b)); g.translate(0, -a.distanceTo(b) / 2, 0);
-          const q = new THREE.Quaternion().setFromUnitVectors(V3(0, -1, 0), b.clone().sub(a).normalize());
-          Bl.voeg(g, new THREE.Matrix4().multiplyMatrices(basis, new THREE.Matrix4().compose(a, q.multiply(new THREE.Quaternion().setFromAxisAngle(V3(0, 1, 0), r() * 3)), V3(1, 1, 1))), o.haar.clone().multiplyScalar(0.8 + r() * 0.4));
-        }
-      }
-    }
-    if(o.bril){
-      const mont = o.brilKl;
-      for(const s of [-1, 1]){
-        Bk.voeg(new THREE.TorusGeometry(0.0165, 0.0018, 6, 22), new THREE.Matrix4().multiplyMatrices(basis, new THREE.Matrix4().compose(V3(s * 0.029 * o.hoofdBreed, 0.012, 0.093), new THREE.Quaternion(), V3(1, 0.78, 1))), mont);
-        const t = new THREE.CylinderGeometry(0.0015, 0.0015, 0.075, 5); t.rotateX(Math.PI / 2);
-        Bk.voeg(t, new THREE.Matrix4().multiplyMatrices(basis, new THREE.Matrix4().makeTranslation(s * 0.062, 0.014, 0.055)), mont);
-      }
-      const brug = new THREE.CylinderGeometry(0.0015, 0.0015, 0.024, 5); brug.rotateZ(Math.PI / 2);
-      Bk.voeg(brug, new THREE.Matrix4().multiplyMatrices(basis, new THREE.Matrix4().makeTranslation(0, 0.016, 0.094)), mont);
-    }
-    for(const [B, mat] of [[Bh, mensMat.huid], [Bk, mensMat.haar], [Bl, mensMat.lok], [Bo, mensMat.oog]]){ const m = B.mesh(mat); if(m){ if(mat === mensMat.oog || mat === mensMat.lok) m.castShadow = false; hB.add(m); } }
-    return hB;
+      for(const n in B) B[n].quaternion.copy(rust[n]);
+      g.scene.position.set(0, 0, 0);
+      klaar({kort, vrouw: info.vrouw, scene: g.scene, poses, B, rust, gebakken: {}});
+    }, undefined, fout));
   }
-
-  // kleur van het lijf per punt: kledingstuk, details (revers, das, knoopjes, riem) en schaduw in de hoekjes
-  function lijfKleur(o, vorm){
-    const t = new THREE.Color(), R = vorm.R;
-    return (X, Y, Z, k) => {
-      const zone = vorm.zones[k], ao = vorm.ao[k];
-      if(zone === Z_.huid) t.copy(o.huid);
-      else if(zone === Z_.schoen) t.copy(o.schoen).multiplyScalar(Y < 0.03 ? 0.4 : 1);
-      else if(zone === Z_.broek) t.copy(o.broek);
-      else if(zone === Z_.rok) t.copy(o.rokKl);
-      else t.copy(o.top);
-      if(zone === Z_.top || zone === Z_.mouw){
-        // romp-coördinaten terugrekenen (zonder het leunen) voor de details voorop
-        const yy = Y, zz = Z;
-        if(Z > 0.0 && Y > 0.62){
-          const hoogte = Y - 0.78;
-          if(o.kleding === 'colbert'){
-            const v = 0.012 + Math.max(0, hoogte) * 0.32;
-            if(Math.abs(X) < v) t.copy(o.shirt); else if(Math.abs(X) < v + 0.02 && hoogte > 0) t.copy(o.top).multiplyScalar(0.72);
-          }
-          if(o.das && Math.abs(X) < 0.017 - Math.max(0, 1.05 - Y) * 0.01 && Y < 1.08 && Y > 0.68) t.copy(o.das).multiplyScalar(0.85 + 0.15 * (Math.sin(Y * 160) > 0 ? 1 : 0));
-          if(o.kleding === 'overhemd' && Math.abs(X) < 0.004) t.multiplyScalar(0.85);
-          if(o.kleding === 'overhemd' && Math.abs(X) < 0.006 && Math.abs(((Y - 0.7) / 0.09) % 1) < 0.08) t.multiplyScalar(0.7);
-        }
-        if(Y > 1.05 && Math.abs(X) < 0.075 && Z > -0.07 && (o.kleding === 'overhemd' || o.kleding === 'colbert' || o.kleding === 'blouse')) t.copy(o.shirt);    // kraag, alleen rond de nek
-        if(Y < 0.66 && Y > 0.63 && o.kleding !== 'trui' && o.kleding !== 'colbert') t.set(0x241a12);                        // riem
-        if(o.kleding === 'trui' && Y < 0.66) t.multiplyScalar(0.85 + 0.15 * (Math.sin(X * 300) > 0 ? 1 : 0));               // boord
-      }
-      // stofstructuur + schaduw in de hoekjes
-      t.multiplyScalar((0.94 + 0.08 * Math.sin(X * 700 + Y * 300) * Math.sin(Z * 650)) * ao);
-      return t;
-    };
-  }
-  const Z_ = Z;
+  torenAnim.laadMensen = () => {
+    if(mensLaden) return mensLaden;
+    mensLaden = fetch(MENS_MAP + 'mensen.json').then(r => r.json())
+      .then(lijst => Promise.all(Object.entries(lijst).map(([kort, info]) => laadEen(kort, info).catch(e => { console.warn('mens niet geladen', kort, e); return null; }))))
+      .then(m => (mensModellen = m.filter(Boolean)))
+      .catch(e => { console.warn('mensen niet geladen', e); return (mensModellen = []); });
+    return mensLaden;
+  };
   const _nieuweAnim = [];
-  // een zittend mens; kijkt naar +z, zit op een stoel in de oorsprong (zithoogte 0,47 m)
+  let _mensTeller = 0;
+  // een skelet-model in een houding 'bevriezen' tot gewone vormen (een standbeeld): dan hoeft de
+  // grafische kaart geen 80 botten per persoon per beeld door te rekenen — veel sneller.
+  function bevries(model, houd){
+    const sleutel = houd;
+    if(model.gebakken[sleutel]) return model.gebakken[sleutel];
+    const pose = model.poses[houd];
+    for(const n in model.B) model.B[n].quaternion.copy(pose.q[n] || model.rust[n]);
+    model.scene.position.copy(pose.pos);
+    model.scene.updateMatrixWorld(true);
+    const uit = [];
+    model.scene.traverse(m => {
+      if(!m.isSkinnedMesh) return;
+      m.skeleton.update();
+      const g = m.geometry, P = g.attributes.position, N = g.attributes.normal, SI = g.attributes.skinIndex, SW = g.attributes.skinWeight;
+      const bm = m.skeleton.boneMatrices, bd = m.bindMatrix.elements, n = P.count;
+      const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), M = new Float32Array(16);
+      for(let i = 0; i < n; i++){
+        M.fill(0);
+        for(let j = 0; j < 4; j++){
+          const w = j === 0 ? SW.getX(i) : j === 1 ? SW.getY(i) : j === 2 ? SW.getZ(i) : SW.getW(i);
+          if(!w) continue;
+          const k = (j === 0 ? SI.getX(i) : j === 1 ? SI.getY(i) : j === 2 ? SI.getZ(i) : SI.getW(i)) * 16;
+          for(let e = 0; e < 16; e++) M[e] += w * bm[k + e];
+        }
+        const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+        const bx = bd[0] * x + bd[4] * y + bd[8] * z + bd[12], by = bd[1] * x + bd[5] * y + bd[9] * z + bd[13], bz = bd[2] * x + bd[6] * y + bd[10] * z + bd[14];
+        pos[i * 3] = M[0] * bx + M[4] * by + M[8] * bz + M[12]; pos[i * 3 + 1] = M[1] * bx + M[5] * by + M[9] * bz + M[13]; pos[i * 3 + 2] = M[2] * bx + M[6] * by + M[10] * bz + M[14];
+        const nx = N.getX(i), ny = N.getY(i), nz = N.getZ(i);
+        const ax = bd[0] * nx + bd[4] * ny + bd[8] * nz, ay = bd[1] * nx + bd[5] * ny + bd[9] * nz, az = bd[2] * nx + bd[6] * ny + bd[10] * nz;
+        let ox = M[0] * ax + M[4] * ay + M[8] * az, oy = M[1] * ax + M[5] * ay + M[9] * az, oz = M[2] * ax + M[6] * ay + M[10] * az; const L = Math.hypot(ox, oy, oz) || 1;
+        nor[i * 3] = ox / L; nor[i * 3 + 1] = oy / L; nor[i * 3 + 2] = oz / L;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+      if(g.attributes.uv) geo.setAttribute('uv', g.attributes.uv);
+      if(g.index) geo.setIndex(g.index);
+      for(const gr of g.groups) geo.addGroup(gr.start, gr.count, gr.materialIndex);
+      uit.push({geo, mat: m.material});
+    });
+    for(const n in model.B) model.B[n].quaternion.copy(model.rust[n]);
+    model.scene.position.set(0, 0, 0);
+    return (model.gebakken[sleutel] = uit);
+  }
+  // een zittend mens op de stoel in de oorsprong (kijkt naar +z)
   function zittendMens(ouder, houding){
     const p = new THREE.Group(); ouder.add(p);
-    const vrouw = r() < 0.48;
-    const o = {
-      vrouw, huid: C(kies([0xf1c7a8, 0xe3b08d, 0xc98f68, 0xa66d48, 0x7a4b30, 0x553322])).offsetHSL(0, 0, (r() - 0.5) * 0.04),
-      haar: C(kies([0x15100c, 0x2b1d13, 0x4a3220, 0x7a5532, 0xb98d5a, 0xd8c08a, 0x8a8a86, 0x5a1f12])),
-      iris: C(kies([0x3b2614, 0x5a3a1c, 0x2f5f8f, 0x4a6b3a, 0x6b5a3a])),
-      stijl: vrouw ? kies(['lang', 'lang', 'staart', 'knot', 'kort', 'krul']) : kies(['kort', 'kort', 'kort', 'kaal', 'krul', 'kort']),
-      kleding: kies(vrouw ? ['blouse', 'colbert', 'trui', 'overhemd'] : ['overhemd', 'colbert', 'trui', 'tshirt', 'overhemd']),
-      bril: r() < 0.28, brilKl: C(kies([0x111111, 0x3a2a1a, 0x8a8f96])),
-      hoofdBreed: (vrouw ? 0.95 : 1.02) * (0.96 + r() * 0.08), maat: (vrouw ? 0.95 : 1.02) * (0.96 + r() * 0.08)
-    };
-    o.baard = !vrouw && r() < 0.3;
-    o.shirt = C(kies([0xf4f4f2, 0xdfe8f2, 0xf2e9e0, 0xc9d8e8]));
-    o.top = o.kleding === 'colbert' ? C(kies([0x1f2533, 0x2b2b2e, 0x4a4f57, 0x3a2f28])) :
-            o.kleding === 'trui' ? C(kies([0x6b2a2a, 0x2f4f6f, 0x3d5a3d, 0x8a7a5a, 0x5a5a62, 0xb88a4a])) :
-            o.kleding === 'tshirt' ? C(kies([0x222428, 0xf0f0ee, 0x2f5f9f, 0x7a2a3a, 0x4a6a4a])) :
-            o.kleding === 'blouse' ? C(kies([0xf3eee8, 0xe8c8d0, 0xbfd3e0, 0x2a2a30, 0xa83a3a])) : o.shirt.clone();
-    o.das = (!vrouw && (o.kleding === 'overhemd' || o.kleding === 'colbert') && r() < 0.45) ? C(kies([0x7a1a24, 0x1f3a6a, 0x2a2a2a, 0x5a4a1a])) : null;
-    o.broek = C(kies([0x1f2633, 0x2b2b2b, 0x4a4036, 0x3a4a5a, 0x5a5a5a]));
-    o.rok = vrouw && r() < 0.35; o.rokKl = o.broek.clone().lerp(o.top, 0.3);
-    o.schoen = C(kies([0x141414, 0x3a2414, 0x1a1a22]));
-    if(o.rok) o.huidBeen = o.huid.clone().lerp(C(0x2a2222), 0.3);
-    const houd = houding || kies(['typen', 'typen', 'typen', 'typen', 'achterover', 'telefoon', 'kin']);
-    const S = o.maat, tshirt = o.kleding === 'tshirt';
-    const vorm = lijfVorm(vrouw, houd, o.kleding === 'colbert', o.rok, tshirt);
-    const Bl = new Bouwer();
-    Bl.voeg(vorm.geo, new THREE.Matrix4().makeScale(S, S, S), lijfKleur(o, vorm));
-    const lijf = Bl.mesh(mensMat.stof); p.add(lijf);
-    // onderarmen + handen (bewegen mee met het tikken)
-    const H = new THREE.Group(); p.add(H); H.userData.anim = true;
-    const Bh = new Bouwer();
-    const armKleur = (hv) => { const t = new THREE.Color(); return (X, Y, Z, k) => { const zone = hv.zones[k]; t.copy(zone === Z_.huid ? o.huid : (o.kleding === 'colbert' && Z > -0.07 ? o.shirt : o.top)); return t.multiplyScalar(hv.ao[k]); }; };
-    const zet = (ell, pols, handSoort, links) => {
-      const hv = handVorm(handSoort, tshirt);
-      // de hand-vorm loopt van z=-0.26 (elleboog) naar 0 (pols): leg hem van elleboog naar pols
-      const e = V3(...ell).multiplyScalar(S), w = V3(...pols).multiplyScalar(S);
-      const f = w.clone().sub(e).normalize(), up0 = Math.abs(f.y) > 0.9 ? V3(0, 0, -1) : V3(0, 1, 0);
-      const x = new THREE.Vector3().crossVectors(up0, f).normalize(), y = new THREE.Vector3().crossVectors(f, x);
-      const m = new THREE.Matrix4().makeBasis(x, y, f).setPosition(w);
-      m.multiply(new THREE.Matrix4().makeScale(links ? -S : S, S, S * w.distanceTo(e) / 0.26 / S));
-      Bh.voeg(hv.geo, m, armKleur(hv));
-    };
-    const ellb = ARM[houd];
-    if(houd === 'achterover'){ zet(ellb[0], [-0.25, 0.67, 0.18], 'rust', true); zet(ellb[1], [0.25, 0.67, 0.18], 'rust', false); }
-    else {
-      if(houd === 'kin') zet(ellb[0], [-0.035, 1.08, 0.23], 'kin', true); else zet(ellb[0], [-0.12, 0.785, 0.37], 'typen', true);
-      if(houd === 'telefoon'){ zet(ellb[1], [0.11, 1.15, 0.03], 'kin', false); const tel = new THREE.BoxGeometry(0.008, 0.14, 0.07); Bh.voeg(tel, new THREE.Matrix4().makeTranslation(0.095 * S, 1.24 * S, 0.035 * S), C(0x0e0e10)); }
-      else zet(ellb[1], [0.12, 0.785, 0.37], 'typen', false);
+    if(!mensModellen || !mensModellen.length) return p;
+    const model = mensModellen[(_mensTeller++ * 7 + Math.floor(r() * 3)) % mensModellen.length];
+    const houd = houding || kies(['typen', 'typen', 'typen', 'muis', 'muis', 'achterover']);
+    for(const d of bevries(model, houd)){
+      // per materiaal-groep een eigen vorm (dan kan alles daarna per materiaal samengevoegd worden)
+      const mats = Array.isArray(d.mat) ? d.mat : [d.mat];
+      if(d.geo.groups.length && Array.isArray(d.mat)){
+        for(const gr of d.geo.groups){
+          const sub = new THREE.BufferGeometry();
+          for(const k in d.geo.attributes) sub.setAttribute(k, d.geo.attributes[k]);
+          sub.setIndex(new THREE.BufferAttribute(d.geo.index.array.slice(gr.start, gr.start + gr.count), 1));
+          const m = new THREE.Mesh(sub, mats[gr.materialIndex]); m.castShadow = true; m.receiveShadow = true; p.add(m);
+        }
+      } else { const m = new THREE.Mesh(d.geo, mats[0]); m.castShadow = true; m.receiveShadow = true; p.add(m); }
     }
-    H.add(Bh.mesh(mensMat.huid));
-    // het hoofd draait op de nek
-    const hoofd = maakHoofd(o); hoofd.userData.anim = true;
-    const nek = V3(...vorm.R(0, 1.17, -0.035)).multiplyScalar(S);
-    hoofd.position.copy(nek); hoofd.scale.setScalar(S);
-    hoofd.rotation.x = houd === 'kin' ? 0.12 : (houd === 'achterover' ? -0.1 : 0.05);
-    if(houd === 'kin') hoofd.rotation.z = -0.1;
-    p.add(hoofd);
-    const a = {hoofd, handen: H, houd, fase: r() * 100, rx: hoofd.rotation.x, ry: (r() - 0.5) * 0.3};
-    hoofd.rotation.y = a.ry;
-    _nieuweAnim.push(a);
     return p;
   }
-  // vooruit werken: alle lichaamsvormen alvast kneden zodra je bij de toren komt. Dat gebeurt in een
-  // Web Worker — een rekenhulp náást het spel — zodat het spel geen moment hapert. Lukt dat niet
-  // (oude browser), dan kneden we één vorm per keer.
-  const _klussen = [];
-  for(const houd of ['typen', 'achterover', 'telefoon', 'kin']){
-    for(const [colbert, tshirt] of [[false, false], [true, false], [false, true]]) _klussen.push(lijfVorm(false, houd, colbert, false, tshirt, true));
-    for(const colbert of [false, true]) for(const rok of [false, true]) _klussen.push(lijfVorm(true, houd, colbert, rok, false, true));
-  }
-  for(const soort of ['typen', 'rust', 'kin']) for(const ts of [false, true]) _klussen.push(handVorm(soort, ts, true));
-  const _klusInfo = {}; for(const k of _klussen) if(k && k.vormen) _klusInfo[k.key] = k;
-  const bewaar = (key, r) => {
-    const res = kernNaarVorm(r);
-    if(key.startsWith('lijf|')){ res.R = maakR(_klusInfo[key].leun); lijfCache[key.slice(5)] = res; }
-    else handCache[key.slice(5)] = res;
-  };
-  let werker = null;
-  try {
-    const src = [smin, sdfVan, kneedKern].map(f => f.toString()).join('\n') +
-      '\nonmessage = (e) => { const k = e.data; const r = kneedKern(k.vormen, k.lo, k.hi, k.h); postMessage({key: k.key, r}, [r.pos.buffer, r.nor.buffer, r.ao.buffer, r.zones.buffer, r.idx.buffer]); };';
-    werker = new Worker(URL.createObjectURL(new Blob([src], {type: 'text/javascript'})));
-    werker.onmessage = (e) => bewaar(e.data.key, e.data.r);
-    werker.onerror = () => { werker = null; };
-  } catch(e){ werker = null; }
-  torenAnim.voorbereiden = () => {
-    if(werker){
-      for(const k of _klussen) if(k && k.vormen) werker.postMessage({key: k.key, vormen: k.vormen, lo: k.lo, hi: k.hi, h: k.h});
-      _klussen.length = 0; return 0;
-    }
-    const k = _klussen.shift();
-    if(k && k.vormen && !(k.key.startsWith('lijf|') ? lijfCache[k.key.slice(5)] : handCache[k.key.slice(5)])) bewaar(k.key, kneedKern(k.vormen, k.lo, k.hi, k.h));
-    return _klussen.length;
-  };
-  // elk beeldje (alleen als je op die verdieping bent): tikken, rondkijken, knikken
+  // elk beeldje (alleen op de verdieping waar je bent): rondkijken, knikken, tikken
+  const _qa = new THREE.Quaternion(), _as = new THREE.Vector3();
   torenAnim.mensenBewegen = (lijst, t) => {
     for(const a of lijst){
       const f = a.fase;
-      const kijk = Math.sin(t * 0.21 + f) > 0.85 ? 0.45 * Math.sin(f) : 0;
-      a.hoofd.rotation.y += ((a.ry + kijk + 0.05 * Math.sin(t * 0.7 + f)) - a.hoofd.rotation.y) * 0.05;
-      a.hoofd.rotation.x = a.rx + 0.025 * Math.sin(t * 0.9 + f * 2);
-      if(a.houd === 'typen'){ const tik = Math.max(0, Math.sin(t * 11 + f * 7)) * Math.max(0, Math.sin(t * 1.3 + f)); a.handen.position.y = 0.006 * tik; }
+      if(a.nek){
+        const kijk = (Math.sin(t * 0.19 + f) > 0.8 ? 0.35 * Math.sin(f * 3) : 0) + 0.04 * Math.sin(t * 0.6 + f);
+        a.nek.clone && a.B['Bip01_Neck'].quaternion.copy(a.nek).multiply(_qa.setFromAxisAngle(_as.set(1, 0, 0), kijk));
+      }
+      if((a.houd === 'typen' || a.houd === 'muis') && a.handL){
+        const tik = (k) => 0.06 * Math.max(0, Math.sin(t * 10 + f * 3 + k)) * Math.max(0, Math.sin(t * 1.1 + f));
+        a.B['Bip01_L_Hand'].quaternion.copy(a.handL).multiply(_qa.setFromAxisAngle(_as.set(0, 0, 1), tik(0)));
+        a.B['Bip01_R_Hand'].quaternion.copy(a.handR).multiply(_qa.setFromAxisAngle(_as.set(0, 0, 1), tik(2)));
+      }
     }
   };
 
@@ -3289,8 +2930,8 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
       add(new THREE.BoxGeometry(0.04, 0.16, 0.03), M.scherm, sx, 0.82, -0.22);
       add(new THREE.BoxGeometry(0.2, 0.012, 0.14), M.scherm, sx, 0.756, -0.22);
     }
-    add(new THREE.BoxGeometry(0.44, 0.02, 0.14), M.toets, -0.05, 0.76, 0.17);
-    add(new THREE.BoxGeometry(0.06, 0.025, 0.1), M.toets, 0.3, 0.76, 0.18);
+    add(new THREE.BoxGeometry(0.44, 0.02, 0.14), M.toets, 0.0, 0.76, 0.28);
+    add(new THREE.BoxGeometry(0.06, 0.025, 0.1), M.toets, 0.33, 0.76, 0.28);
     if(r() < 0.4) add(new THREE.CylinderGeometry(0.04, 0.035, 0.1, 10), M.mok, 0.55, 0.8, 0.05);
     return w;
   }
@@ -3323,7 +2964,7 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
         for(let i = 0; i < 4; i++){
           const a = i * Math.PI / 2 + 0.4, sx = gx + Math.sin(a) * 1.35, sz = gz + Math.cos(a) * 1.35;
           const st = bureaustoel(kg); st.position.set(sx, 0, sz); st.rotation.y = a + Math.PI;
-          if(r() < 0.45){ const p = zittendMens(kg); p.position.set(sx, 0, sz); p.rotation.y = a + Math.PI; }
+          if(r() < 0.6){ const p = zittendMens(kg, r() < 0.7 ? 'vergader' : 'achterover'); p.position.set(sx, 0, sz); p.rotation.y = a + Math.PI; }
         }
         kv.push({soort: 'rond', x: gx, z: gz, r: 1.0});
         continue;
@@ -3332,9 +2973,9 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichte
       for(const zk of [-1, 1]) for(const xk of [-0.8, 0.8]){
         const w = werkplek(kg); w.position.set(gx + xk, 0, gz + zk * 0.4); w.rotation.y = zk > 0 ? 0 : Math.PI;
         // de stoel en soms iemand aan het werk (kijkt naar het bureau)
-        const sx = gx + xk, sz = gz + zk * 1.25;
+        const sx = gx + xk, sz = gz + zk * 1.12;
         const st = bureaustoel(kg); st.position.set(sx, 0, sz); st.rotation.y = zk > 0 ? Math.PI : 0;
-        if(r() < 0.5){ const p = zittendMens(kg); p.position.set(sx, 0, sz - zk * 0.08); p.rotation.y = zk > 0 ? Math.PI : 0; }
+        if(r() < 0.5){ const p = zittendMens(kg); p.position.set(sx, 0, sz); p.rotation.y = zk > 0 ? Math.PI : 0; }
       }
       kv.push({soort: 'doos', x: gx, z: gz, hx: 1.6, hz: 0.8});
     }
@@ -3692,7 +3333,8 @@ const liftPaneel = document.createElement('div');
 liftPaneel.style.cssText = 'position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:60;font-family:system-ui,sans-serif';
 liftPaneel.innerHTML = '<div style="background:linear-gradient(#2b3036,#1c1f23);border:2px solid #8d959c;border-radius:16px;padding:18px;max-width:560px;width:92%;max-height:86vh;overflow:auto;color:#fff;box-shadow:0 10px 40px rgba(0,0,0,0.6)">' +
   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b style="font-size:20px">🛗 DELUXE TOWER — kies een verdieping</b><button id="liftDicht" style="background:#444;color:#fff;border:0;border-radius:8px;padding:6px 12px;font-size:16px;cursor:pointer">✕</button></div>' +
-  '<div id="liftKnoppen" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:8px"></div></div>';
+  '<div id="liftKnoppen" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:8px"></div>' +
+  '<div style="margin-top:12px;font-size:11px;opacity:0.6">Mensen: Microsoft Rocketbox Avatar Library (MIT-licentie)</div></div>';
 document.body.appendChild(liftPaneel);
 const liftZwart = document.createElement('div');
 liftZwart.style.cssText = 'position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity 0.45s;z-index:70;display:flex;align-items:center;justify-content:center;color:#ffcf6a;font:700 64px system-ui,sans-serif;letter-spacing:4px';
@@ -3751,6 +3393,13 @@ function rijLift(doelK){
     const nu = Math.round(vanK + (doelK - vanK) * f);
     liftZwart.textContent = (omhoog ? '▲ ' : '▼ ') + (nu === 0 ? 'BG' : nu);
     if(f < 1){ requestAnimationFrame(tel); return; }
+    // de mensen moeten geladen zijn voordat we een verdieping bouwen (meestal al gebeurd onderweg naar de toren)
+    if(doelK !== 0 && torenAnim.laadMensen && !tel.wachtte){
+      tel.wachtte = true; liftZwart.textContent = '⏳';
+      const verder = () => tel();
+      Promise.race([torenAnim.laadMensen(), new Promise(r => setTimeout(r, 25000))]).then(verder, verder);
+      return;
+    }
     zetKantoor(doelK);
     // je stapt uit vóór de liftdeuren, met je gezicht van de lift af
     const ly = KANTOOR.actief ? KANTOOR.vloer : 0;
@@ -3766,9 +3415,8 @@ function rijLift(doelK){
 // elk beeldje: sta je voor de lift? ben je de kantoorverdieping uit (vliegen)?
 let _voorbereidTijd = 0;
 function updateLift(){
-  if(gestart && torenAnim.voorbereiden && performance.now() > _voorbereidTijd && Math.hypot(camera.position.x - TOREN.x, camera.position.z - TOREN.z) < 160){
-    _voorbereidTijd = performance.now() + 300;
-    if(torenAnim.voorbereiden() === 0) torenAnim.voorbereiden = null;
+  if(gestart && !_voorbereidTijd && torenAnim.laadMensen && Math.hypot(camera.position.x - TOREN.x, camera.position.z - TOREN.z) < 250){
+    _voorbereidTijd = 1; torenAnim.laadMensen();            // de echte mensen alvast downloaden als je bij de toren komt
   }
   const dx = camera.position.x - TOREN.x, dz = camera.position.z - TOREN.z, ly = spelerY - TW.pleinY, K = torenAnim.KERN;
   const voorDeur = Math.abs(dx - K.x) < 4.5 && dz > K.z + K.hz && dz < K.z + K.hz + 2.4;
