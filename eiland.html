@@ -1293,7 +1293,7 @@ function zoekPlek(minH, maxH, maxD, rond){
 //  • BENEDEN: een hoge glazen lobby onder een overstek met zuilen, een
 //    draaideur die draait, een luifel met de naam, en een plein van graniet
 //    met bomen, lantaarns, vlaggen en een spiegelvijver.
-//  • LEVEN: een glazenwassersbakje dat op en neer gaat, knipperende
+//  • LEVEN: knipperende
 //    vliegtuiglichten, en bij onweer gaan de kantoorlampen feller schijnen.
 // Je kunt er niet doorheen lopen; onder het overstek wel. Met vliegen kun je
 // op de daken en het helikopterplatform landen (er staat een reling omheen).
@@ -1344,7 +1344,7 @@ function torenGrond(x, z, y){
 }
 function opPlein(x, z){ return Math.abs(x - TOREN.x) < TOREN.plein / 2 + 0.6 && Math.abs(z - TOREN.z) < TOREN.plein / 2 + 0.6; }
 
-const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje, lichten)
+const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, lichten)
 (function bouwToren(){
   const KLEIN = IS_TOUCH;
   const groep = new THREE.Group();
@@ -1606,63 +1606,355 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
   // Er staan geen echte kamers in de toren — dat zou véél te zwaar zijn. In
   // plaats daarvan rekent de grafische kaart voor elk beeldpunt van het glas uit:
   // "als je hier naar binnen kijkt, welke muur, vloer of welk plafond raak je
-  // dan?" De toren is in gedachten verdeeld in kamers van 3 × 4 × 3 m. Elke kamer
-  // krijgt zijn eigen toevalsgetal: licht aan of uit, kleur van de muren, wel of
-  // geen bureaus, iemand aan het werk. Loop je langs, dan schuift alles mee alsof
-  // er écht diepte achter zit.
+  // dan?" Achter elke gevel liggen in gedachten kamers van 6 m breed (4 ramen,
+  // de wanden precies achter een raamstijl) en 8 m diep, met een vloer en een
+  // plafond op echte hoogte. Elke kamer krijgt zijn eigen toevalsgetal: wat voor
+  // kamer (kantoortuin, vergaderzaal, directiekamer, pantry of leeg), licht aan
+  // of uit, vloer, meubels en mensen.
+  // v2 (Brian 22 okt: "alles wat je door het raam ziet 100x realistischer"):
+  // lichtvlekken onder de lampen, donkere hoeken, daglicht dat dieper de kamer
+  // in zwakker wordt, zonnevlekken op de vloer met de schaduw van de raamstijlen,
+  // bureaus met schermen (document, mail, code, grafiek), stoelen, mensen
+  // (kleren, huid, haar, voor- of achterkant), vergadertafels, planten, een
+  // boekenkast, een keukentje, deuren, een whiteboard en een presentatiescherm.
+  // Loop je langs, dan schuift alles mee alsof er écht diepte achter zit.
   // Daarna het glas zelf: recht ervoor kijk je naar binnen, schuin erlangs zie
   // je vooral de spiegeling (dat heet het Fresnel-effect — zo werkt echt glas).
   const KAMER_GLSL = `
-    float tHash(vec3 p){ p = fract(p * 0.1031); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }
-    vec3 tKamer(vec3 pos, vec3 d, vec3 nrm, float donker){
-      vec3 R = vec3(3.0, 4.0, 3.0);
-      vec3 p = pos - nrm * 0.03;
-      vec3 cel = floor(p / R);
-      vec3 lo = cel * R, hi = lo + R;
-      d.x = abs(d.x) < 1e-4 ? 1e-4 : d.x; d.y = abs(d.y) < 1e-4 ? 1e-4 : d.y; d.z = abs(d.z) < 1e-4 ? 1e-4 : d.z;
-      vec3 tt = (mix(lo, hi, step(0.0, d)) - p) / d;
-      float t = min(tt.x, min(tt.y, tt.z));
-      vec3 h = p + d * t;
-      vec3 f = (h - lo) / R;
-      float id = tHash(cel + 17.0), id2 = tHash(cel * 1.7 + 3.0), id3 = tHash(cel * 2.3 + 11.0);
-      float aan = step(0.52 - donker * 0.2, id);
-      vec3 lamp = mix(vec3(1.0, 0.9, 0.74), vec3(0.86, 0.93, 1.0), step(0.7, id2));
-      float dagIn = (1.0 - donker) * 0.32;
-      bool zijX = abs(nrm.x) > abs(nrm.z);
-      vec3 kleur; float gloei = 0.0;
-      if(t == tt.y){
-        if(d.y < 0.0){
-          vec2 tg = step(0.94, fract(h.xz / 0.6));
-          kleur = mix(vec3(0.09, 0.1, 0.12), vec3(0.17, 0.15, 0.13), id3) * (1.0 - 0.25 * max(tg.x, tg.y));
-        } else {
-          vec2 pl = abs(fract(h.xz / 1.5) - 0.5);
-          float paneel = step(pl.x, 0.2) * step(pl.y, 0.3);
-          vec2 rs = step(0.96, fract(h.xz / 0.75));
-          kleur = mix(vec3(0.62) * (1.0 - 0.15 * max(rs.x, rs.y)), vec3(0.8), paneel);
-          gloei = paneel * aan * 2.2;
-        }
-      } else {
-        bool achter = zijX ? (t == tt.x) : (t == tt.z);
-        kleur = achter ? mix(vec3(0.55, 0.52, 0.47), vec3(0.3, 0.35, 0.4), step(0.6, id3)) : vec3(0.66, 0.64, 0.6);
-        kleur *= 1.0 - 0.45 * step(f.y, 0.025);
-        if(achter && id2 > 0.45 && f.y < 0.32) kleur = vec3(0.42, 0.36, 0.3) * (0.85 + 0.15 * step(0.5, fract((zijX ? h.z : h.x) / 0.9)));
+    // ── toevalsgetal per plek (zelfde plek = altijd hetzelfde getal) ──
+    float kH(vec3 p){ p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }
+    // afstand tot een rechthoek met ronde hoeken (< 0 = erbinnen)
+    float rDoos(vec2 p, vec2 b, float r){ return length(max(abs(p) - b, 0.0)) - r; }
+    // valt hier zonlicht naar binnen? (lijn naar de zon moet door het raam, niet door vloer/plafond)
+    float zonBinnen(vec3 h, vec3 Ls, float y0, float y1){
+      if(Ls.z > -0.02) return 0.0;
+      float s = h.z / -Ls.z;
+      float yc = h.y + Ls.y * s, xc = h.x + Ls.x * s;
+      float raam = step(y0 + 0.03, yc) * step(yc, y1 - 0.03);
+      float stijl = step(0.04, abs(fract(xc / 1.5 + 0.5) - 0.5) * 1.5);      // schaduw van de raamstijlen
+      return raam * stijl;
+    }
+    // ── een mens (zittend of staand), van voren of van achteren ──
+    vec4 mens(float sx, float hq, float pid, bool voorkant, bool zit){
+      float hoofdY = zit ? 1.3 : 1.66;
+      float romp = zit ? rDoos(vec2(sx * (1.0 + 0.6 * smoothstep(0.95, 1.12, hq)), hq - 0.86), vec2(0.15, 0.24), 0.06)
+                       : rDoos(vec2(sx * (1.0 + 0.6 * smoothstep(1.32, 1.48, hq)), hq - 1.2), vec2(0.15, 0.27), 0.06);
+      float nek = rDoos(vec2(sx, hq - (hoofdY - 0.15)), vec2(0.04, 0.05), 0.0);
+      float hoofd = length(vec2(sx, (hq - hoofdY) * 0.9)) - 0.1;
+      float benen = zit ? 1.0 : rDoos(vec2(abs(sx) - 0.075, hq - 0.46), vec2(0.05, 0.44), 0.015);
+      float armen = zit ? rDoos(vec2(abs(sx) - 0.2, hq - 0.86), vec2(0.04, 0.2), 0.02) : rDoos(vec2(abs(sx) - 0.21, hq - 1.1), vec2(0.04, 0.26), 0.02);
+      vec3 shirt = vec3(kH(vec3(pid, 1.0, 2.0)), kH(vec3(pid, 3.0, 1.0)), kH(vec3(pid, 2.0, 5.0)));
+      shirt = mix(vec3(0.5), shirt, 0.55) * mix(0.35, 0.95, kH(vec3(pid, 8.0, 8.0)));
+      if(kH(vec3(pid, 4.0, 4.0)) > 0.65) shirt = vec3(0.86, 0.87, 0.88);   // wit overhemd
+      if(kH(vec3(pid, 5.0, 2.0)) > 0.75) shirt = vec3(0.12, 0.14, 0.2);    // donker colbert
+      vec3 huid = mix(vec3(0.93, 0.74, 0.6), vec3(0.36, 0.23, 0.15), kH(vec3(pid, 9.0, 4.0)));
+      vec3 haar = mix(vec3(0.04, 0.03, 0.025), vec3(0.6, 0.45, 0.28), kH(vec3(pid, 6.0, 7.0)) * kH(vec3(pid, 2.0, 2.0)));
+      if(hoofd < 0.0){
+        bool isHaar = !voorkant || hq > hoofdY + 0.035 || abs(sx) > 0.082;
+        return vec4(isHaar ? haar : huid, 1.0);
       }
-      vec3 naarBinnen = -nrm;
-      float diep = dot(d, naarBinnen);
-      if(diep > 0.02){
-        float tp = 1.3 / diep;
-        if(tp < t){
-          vec3 q = p + d * tp; vec3 fq = (q - lo) / R;
-          float lat = zijX ? fq.z : fq.x;
-          if(id3 > 0.25 && lat > 0.12 && lat < 0.88){
-            if(fq.y < 0.185){ kleur = vec3(0.07, 0.07, 0.08) + vec3(0.05) * step(0.17, fq.y); t = tp; gloei = 0.0; }
-            else if(fq.y < 0.3 && abs(fract(lat * 2.0) - 0.5) < 0.17){ kleur = vec3(0.02); gloei = aan * 0.9; lamp = vec3(0.45, 0.62, 0.9); t = tp; }
+      if(nek < 0.0) return vec4(huid * 0.8, 1.0);
+      if(romp < 0.0) return vec4(shirt, 1.0);
+      if(armen < 0.0) return vec4(hq < (zit ? 0.7 : 0.88) ? huid : shirt * 0.9, 1.0);
+      if(benen < 0.0) return vec4(hq < 0.06 ? vec3(0.05) : vec3(0.11, 0.12, 0.16), 1.0);
+      return vec4(0.0);
+    }
+    // ── een bureaustoel ──
+    vec4 stoel(float sx, float hq){
+      if(rDoos(vec2(sx, hq - 0.82), vec2(0.19, 0.22), 0.05) < 0.0) return vec4(vec3(0.05, 0.05, 0.06), 1.0);
+      if(abs(sx) < 0.25 && hq > 0.42 && hq < 0.5) return vec4(vec3(0.07), 1.0);
+      if(abs(sx) < 0.022 && hq < 0.44) return vec4(vec3(0.22), 1.0);
+      if(hq < 0.07 && abs(sx) < 0.3) return vec4(vec3(0.09), 1.0);
+      return vec4(0.0);
+    }
+    // ── een werkplek: bureau met twee beeldschermen ──
+    vec4 bureau(float sx, float hq, bool schermVoor, float sid, float aanS, out vec3 gl){
+      gl = vec3(0.0);
+      float mx = abs(sx) - 0.27;
+      if(abs(mx) < 0.245 && hq > 0.86 && hq < 1.2){
+        bool rand = abs(mx) > 0.228 || hq < 0.878 || hq > 1.185;
+        if(schermVoor && !rand && aanS > 0.5){
+          float lx = (mx + 0.228) / 0.456, ly = (hq - 0.878) / 0.307;
+          vec3 sc;
+          if(sid < 0.35){        // een document: wit met regels tekst
+            sc = vec3(0.86, 0.88, 0.9) * (1.0 - 0.45 * step(0.55, fract(ly * 14.0)) * step(0.1, lx) * step(lx, 0.25 + 0.7 * kH(vec3(floor(ly * 14.0), sid, 1.0))));
+            if(ly > 0.9) sc = vec3(0.2, 0.4, 0.75);
+          } else if(sid < 0.6){  // mail: blauwe balk links
+            sc = lx < 0.28 ? vec3(0.16, 0.34, 0.62) : vec3(0.92) * (1.0 - 0.3 * step(0.7, fract(ly * 9.0)));
+          } else if(sid < 0.8){  // code: donker met gekleurde regels
+            float rgl = step(0.45, fract(ly * 16.0)) * step(lx, 0.15 + 0.75 * kH(vec3(floor(ly * 16.0), sid, 3.0)));
+            sc = mix(vec3(0.08, 0.09, 0.11), mix(vec3(0.4, 0.75, 0.95), vec3(0.95, 0.65, 0.35), step(0.5, kH(vec3(floor(ly * 16.0), 2.0, sid)))), rgl * 0.8);
+          } else {               // spreadsheet / grafiek
+            sc = vec3(0.93) * (1.0 - 0.25 * max(step(0.9, fract(lx * 8.0)), step(0.85, fract(ly * 12.0))));
+            if(ly < 0.45 && lx > 0.55 && ly < 0.1 + 0.35 * kH(vec3(floor(lx * 10.0), sid, 7.0))) sc = vec3(0.25, 0.6, 0.35);
           }
-          if(id2 > 0.62 && abs(lat - 0.3 - id * 0.4) < 0.045 && fq.y < 0.42){ kleur = vec3(0.05, 0.05, 0.06); t = tp; gloei = 0.0; }
+          gl = sc * 0.85;
+          return vec4(sc * 0.15, 1.0);
+        }
+        return vec4(vec3(0.04, 0.04, 0.045), 1.0);
+      }
+      if(abs(mx) < 0.025 && hq > 0.74 && hq <= 0.86) return vec4(vec3(0.16), 1.0);
+      if(abs(sx) < 0.79 && hq < 0.75){
+        if(hq > 0.72) return vec4(mix(vec3(0.82, 0.8, 0.76), vec3(0.55, 0.4, 0.26), step(0.6, sid)), 1.0);
+        if(abs(abs(sx) - 0.74) < 0.03) return vec4(vec3(0.3), 1.0);
+        if(hq > 0.25) return vec4(mix(vec3(0.8, 0.79, 0.76), vec3(0.28, 0.29, 0.31), step(0.5, fract(sid * 7.0))), 1.0);
+      }
+      // soms een bureaulampje of een plantje op het bureau
+      if(fract(sid * 13.0) > 0.7 && length(vec2(sx - 0.66, hq - 0.86)) < 0.09) return vec4(vec3(0.15, 0.4, 0.12), 1.0);
+      return vec4(0.0);
+    }
+    // ── een kamerplant in een pot ──
+    vec4 plant(vec2 p, float pid){
+      if(p.y < 0.5 && abs(p.x) < 0.2 - p.y * 0.06) return vec4(vec3(0.85, 0.84, 0.8) * (0.8 + 0.2 * step(0.45, p.y)), 1.0);
+      float d = 1.0;
+      for(int i = 0; i < 8; i++){
+        float fi = float(i) + pid;
+        vec2 c = vec2((kH(vec3(fi, 1.0, 2.0)) - 0.5) * 0.55, 0.62 + kH(vec3(fi, 4.0, 1.0)) * 0.95);
+        d = min(d, length((p - c) * vec2(1.0, 0.8)) - (0.1 + 0.08 * kH(vec3(fi, 7.0, 3.0))));
+      }
+      if(d < 0.0) return vec4(mix(vec3(0.05, 0.16, 0.04), vec3(0.22, 0.42, 0.13), kH(vec3(floor(p * 28.0), pid))), 1.0);
+      if(abs(p.x) < 0.015 && p.y > 0.45 && p.y < 0.9) return vec4(vec3(0.2, 0.15, 0.08), 1.0);
+      return vec4(0.0);
+    }
+
+    vec3 tKamer(vec3 pos, vec3 V, vec3 N, float donker){
+      // We rekenen in "gevel-ruimte": x = langs de gevel, y = hoogte, z = diepte de kamer in.
+      vec3 Tn = normalize(vec3(-N.z, 0.0, N.x)), Bn = -N;
+      vec3 o = vec3(dot(pos, Tn), pos.y, 0.0);
+      vec3 r = vec3(dot(V, Tn), V.y, max(dot(V, Bn), 0.03));
+      const float W = 6.0, D = 8.0;                         // kamers van 6 m breed (4 ramen) en 8 m diep
+      float cx = floor(o.x / W), cy = floor(o.y / 4.0);
+      float x0 = cx * W, x1 = x0 + W, y0 = cy * 4.0 + 0.72, y1 = cy * 4.0 + 3.92;   // vloer en plafond
+      float KH = y1 - y0;
+      float vlak = floor(atan(N.z, N.x) * 1.2732 + 0.5);    // welke gevelkant (8 richtingen)
+      vec3 kid = vec3(cx, cy, vlak);
+      float id = kH(kid + 0.5), id2 = kH(kid * 1.37 + 4.1), id3 = kH(kid * 2.11 + 9.7);
+      float vid = kH(vec3(cy, 3.3, 1.9));                   // per verdieping
+      float soort = id;           // < .55 kantoortuin · < .72 vergaderzaal · < .85 directiekamer · < .93 pantry · leeg
+      bool leeg = soort >= 0.93 || vid < 0.06;
+      float aan = leeg ? 0.0 : step(0.42 - donker * 0.3, id2);
+      vec3 lamp = vid > 0.62 ? vec3(1.0, 0.97, 0.92) : (vid > 0.3 ? vec3(1.0, 0.89, 0.74) : vec3(0.9, 0.95, 1.0));
+      float dag = 1.0 - donker * 0.85;
+      vec3 ZON = normalize(vec3(70.0, 95.0, 45.0));
+      vec3 Ls = vec3(dot(ZON, Tn), ZON.y, dot(ZON, Bn));
+      vec3 zonKl = vec3(1.55, 1.38, 1.12) * (1.0 - donker);
+
+      // ── wat raak je: wand, vloer of plafond? ──
+      float tx = r.x > 0.0 ? (x1 - o.x) / r.x : (x0 - o.x) / min(r.x, -1e-4);
+      float ty = r.y > 0.0 ? (y1 - o.y) / r.y : (y0 - o.y) / min(r.y, -1e-4);
+      float tz = D / r.z;
+      float t = min(tx, min(ty, tz));
+      vec3 h = o + r * t;
+      float u = h.x - x0, hq = h.y - y0;
+      vec3 alb = vec3(0.6); vec3 em = vec3(0.0); float ao = 1.0;
+      float nl = 0.0;            // hoe het vlak naar het licht kijkt (0 vloer, 1 plafond, 2 wand)
+      float zonCos = 0.0;
+      // lichtvlekken onder de plafondlampen (om de 2,4 m)
+      vec2 lp = (fract(vec2(h.x, h.z) / 2.4) - 0.5) * 2.4;
+      float pool = exp(-dot(lp, lp) / 1.3);
+
+      if(t == ty && r.y < 0.0){
+        // ════ VLOER ════
+        nl = 0.0; zonCos = Ls.y;
+        float korrel = kH(vec3(floor(h.xz * 45.0), 1.0));
+        if(leeg){
+          alb = vec3(0.42, 0.41, 0.39) * (0.85 + 0.25 * kH(vec3(floor(h.xz / 1.7), 2.0))) * (0.92 + 0.12 * korrel);
+        } else if(soort < 0.55 || (soort >= 0.72 && soort < 0.85 && id3 < 0.5)){
+          // tapijttegels van 50 cm, om en om gedraaid (je ziet het verschil in glans)
+          float tegel = mod(floor(h.x / 0.5) + floor(h.z / 0.5), 2.0);
+          alb = mix(vec3(0.1, 0.11, 0.13), vec3(0.2, 0.18, 0.15), id3) * (0.9 + 0.1 * tegel) * (0.85 + 0.25 * korrel);
+        } else if(soort < 0.85){
+          // houten planken
+          float plank = floor(h.z / 0.19);
+          float kop = floor(h.x / 1.6 + kH(vec3(plank, 1.0, 1.0)) * 3.0);
+          alb = vec3(0.45, 0.3, 0.18) * (0.75 + 0.45 * kH(vec3(plank, kop, 4.0))) * (0.92 + 0.12 * korrel);
+          alb *= 1.0 - 0.35 * step(0.92, fract(h.z / 0.19));
+        } else {
+          // lichte tegels met voegen (pantry)
+          vec2 tg = step(0.95, fract(h.xz / 0.6));
+          alb = vec3(0.7, 0.68, 0.64) * (1.0 - 0.35 * max(tg.x, tg.y)) * (0.95 + 0.08 * korrel);
+        }
+        float dw = min(min(u, W - u), D - h.z);
+        ao = 0.55 + 0.45 * smoothstep(0.0, 0.8, dw);
+      } else if(t == ty){
+        // ════ PLAFOND ════
+        nl = 1.0;
+        if(leeg){
+          // kaal beton met leidingen
+          alb = vec3(0.2, 0.2, 0.21) * (0.9 + 0.2 * kH(vec3(floor(h.xz / 1.1), 6.0)));
+          if(abs(fract(h.z / 2.0) - 0.5) < 0.08) alb = vec3(0.32, 0.33, 0.34);
+        } else {
+          // systeemplafond: plaatjes van 60 cm, lichtpanelen van 60 × 120 cm
+          vec2 rs = step(0.965, fract(h.xz / 0.6));
+          alb = vec3(0.7, 0.7, 0.68) * (1.0 - 0.18 * max(rs.x, rs.y));
+          float paneel = step(abs(lp.x), 0.3) * step(abs(lp.y), 0.6);
+          if(paneel > 0.5){ alb = vec3(0.85); em = lamp * aan * 2.3 * (0.92 + 0.08 * step(0.5, fract(lp.x * 8.0))); }
+          if(soort >= 0.72 && soort < 0.85 && length(lp) < 0.09){ em = lamp * aan * 3.0; }   // spotjes
+        }
+        float dw = min(min(u, W - u), D - h.z);
+        ao = 0.65 + 0.35 * smoothstep(0.0, 0.7, dw);
+      } else if(t == tx){
+        // ════ ZIJWAND ════
+        nl = 2.0; zonCos = (r.x > 0.0 ? -Ls.x : Ls.x);
+        alb = vec3(0.74, 0.72, 0.68) * (0.88 + 0.12 * id3);
+        if(soort >= 0.55 && soort < 0.72 && hq > 0.95 && hq < 1.55) alb = vec3(0.86, 0.88, 0.88);   // matglazen band (vergaderzaal)
+        if(leeg) alb = vec3(0.45, 0.44, 0.42) * (0.9 + 0.2 * kH(vec3(floor(vec2(h.z, hq) / 1.3), 3.0)));
+        if(hq < 0.09) alb *= 0.35;                                                              // plint
+        // schilderij aan de zijwand
+        if(!leeg && id3 > 0.6 && abs(h.z - 4.0) < 0.7 && hq > 1.2 && hq < 2.1){
+          alb = abs(h.z - 4.0) > 0.64 || hq < 1.25 || hq > 2.05 ? vec3(0.08) : vec3(kH(vec3(floor(h.z * 3.0), floor(hq * 3.0), id3)), kH(vec3(floor(hq * 4.0), id, 2.0)), 0.5) * 0.8;
+        }
+        float dw = min(min(hq, KH - hq), D - h.z);
+        ao = 0.55 + 0.45 * smoothstep(0.0, 0.7, dw);
+      } else {
+        // ════ ACHTERWAND (naar de gang) ════
+        nl = 2.0; zonCos = -Ls.z;
+        alb = vec3(0.72, 0.7, 0.66);
+        if(leeg) alb = vec3(0.43, 0.42, 0.4) * (0.9 + 0.2 * kH(vec3(floor(vec2(u, hq) / 1.3), 9.0)));
+        if(!leeg){
+          // een deur met kozijn en klink
+          float du = u - 4.6;
+          if(abs(du) < 0.5 && hq < 2.15){
+            alb = (abs(du) > 0.45 || hq > 2.1) ? vec3(0.85) : vec3(0.5, 0.34, 0.22) * (0.9 + 0.1 * kH(vec3(floor(hq * 30.0), 1.0, 1.0)));
+            if(abs(du + 0.36) < 0.05 && abs(hq - 1.05) < 0.02) alb = vec3(0.75);
+          }
+          if(soort < 0.55){
+            // whiteboard
+            if(u > 0.8 && u < 3.2 && hq > 0.95 && hq < 2.0){
+              alb = (u < 0.84 || u > 3.16 || hq < 0.99 || hq > 1.96) ? vec3(0.6) : vec3(0.9);
+              if(kH(vec3(floor(u * 6.0), floor(hq * 8.0), id)) > 0.82) alb = vec3(0.2, 0.3, 0.6);
+            }
+          } else if(soort < 0.72){
+            // groot scherm voor presentaties
+            if(u > 1.4 && u < 3.8 && hq > 0.95 && hq < 2.3){
+              bool rand = u < 1.45 || u > 3.75 || hq < 1.0 || hq > 2.25;
+              alb = vec3(0.03);
+              if(!rand && aan > 0.5){
+                float lx = (u - 1.45) / 2.3, ly = (hq - 1.0) / 1.25;
+                vec3 dia = vec3(0.92);
+                if(ly > 0.8) dia = vec3(0.12, 0.25, 0.55);
+                else if(lx > 0.55 && ly < 0.65 && ly > 0.1) dia = mix(vec3(0.85, 0.35, 0.2), vec3(0.2, 0.5, 0.8), step(0.5, fract(lx * 5.0))) * step(ly, 0.15 + 0.5 * kH(vec3(floor(lx * 10.0), id, 1.0)));
+                else if(lx < 0.5) dia = vec3(0.92) * (1.0 - 0.5 * step(0.6, fract(ly * 8.0)) * step(lx, 0.45));
+                em = dia * 0.75;
+              }
+            }
+          } else if(soort < 0.85){
+            // boekenkast vol boeken
+            if(u > 0.4 && u < 3.4 && hq < 2.2){
+              float plank = floor(hq / 0.4);
+              float boek = floor(u / 0.045 + plank * 7.0);
+              float bh = 0.25 + 0.1 * kH(vec3(boek, plank, 3.0));
+              alb = vec3(0.33, 0.22, 0.14);
+              if(fract(hq / 0.4) * 0.4 < bh && fract(hq / 0.4) > 0.06 && kH(vec3(boek, plank, 9.0)) > 0.12)
+                alb = vec3(kH(vec3(boek, 1.0, plank)), kH(vec3(boek, 2.0, plank)), kH(vec3(boek, 3.0, plank))) * 0.55 + 0.08;
+            }
+          } else {
+            // keukentje: kastjes, aanrecht, koelkast, koffiezetapparaat
+            if(u > 0.4 && u < 4.0){
+              if(hq < 0.9) alb = (hq > 0.86 ? vec3(0.2) : vec3(0.88) * (1.0 - 0.3 * step(0.97, fract(u / 0.6))));
+              else if(hq > 1.5 && hq < 2.2) alb = vec3(0.86) * (1.0 - 0.3 * step(0.97, fract(u / 0.6)));
+              else if(hq < 1.5) alb = vec3(0.6, 0.62, 0.62);
+              if(abs(u - 2.6) < 0.16 && hq > 0.9 && hq < 1.3) alb = vec3(0.08);
+            }
+            if(u > 5.0 && u < 5.75 && hq < 1.9) alb = abs(u - 5.06) < 0.02 ? vec3(0.5) : vec3(0.78, 0.8, 0.82);
+          }
+        }
+        if(hq < 0.09) alb *= 0.35;
+        float dw = min(min(u, W - u), min(hq, KH - hq));
+        ao = 0.55 + 0.45 * smoothstep(0.0, 0.7, dw);
+      }
+
+      // ── licht op het vlak ──
+      vec3 kunst = lamp * aan * (nl == 0.0 ? 0.45 + 0.55 * pool : (nl == 1.0 ? 0.25 : 0.3 + 0.35 * clamp(hq / KH, 0.0, 1.0)));
+      vec3 dagL = vec3(0.82, 0.88, 1.0) * dag * exp(-h.z * 0.28) * (nl == 0.0 ? 0.75 : (nl == 1.0 ? 0.42 : 0.6));
+      float zon = (nl == 1.0) ? 0.0 : zonBinnen(h, Ls, y0, y1) * max(zonCos, 0.0);
+      vec3 kleur = alb * (kunst + dagL + zonKl * zon + 0.025) * ao + em;
+      // het plafond vangt wat licht van de zonnevlek op de vloer
+      if(nl == 1.0) kleur += alb * zonKl * 0.08 * step(-0.02, -Ls.z) * dag;
+
+      // ════ MEUBELS EN MENSEN (losse lagen evenwijdig aan het raam) ════
+      vec3 pKleur = vec3(0.0), pGloed = vec3(0.0); float pT = 1e9, pDiep = 0.0;
+      if(!leeg){
+        for(int j = 0; j < 6; j++){
+          float zp = -1.0, sp = 0.0, rij = 0.0; bool voor = true;
+          if(soort < 0.55){                   // kantoortuin: drie rijen bureaus
+            float k = floor(float(j) / 2.0), ver = mod(float(j), 2.0);
+            float naarRaam = mod(k + cy + cx, 2.0);
+            zp = 1.5 + k * 2.3 + ver * 0.62;
+            bool bureauEerst = naarRaam < 0.5;
+            sp = ((ver < 0.5) == bureauEerst) ? 1.0 : 2.0;
+            voor = naarRaam < 0.5; rij = k;
+          } else if(soort < 0.72){            // vergaderzaal
+            if(j == 0){ zp = 2.5; sp = 2.0; voor = false; rij = 7.0; }
+            else if(j == 1){ zp = 3.4; sp = 3.0; }
+            else if(j == 2){ zp = 4.3; sp = 2.0; voor = true; rij = 8.0; }
+          } else if(soort < 0.85){            // directiekamer
+            if(j == 0){ zp = 0.7; sp = 4.0; }
+            else if(j == 1){ zp = 4.2; sp = 7.0; }
+            else if(j == 2){ zp = 4.9; sp = 9.0; }
+          } else {                            // pantry / lounge
+            if(j == 0){ zp = 1.1; sp = 8.0; }
+            else if(j == 1){ zp = 1.9; sp = 5.0; }
+            else if(j == 2){ zp = 6.7; sp = 6.0; }
+            else if(j == 3){ zp = 0.6; sp = 4.0; }
+          }
+          if(zp < 0.0) continue;
+          float s = zp / r.z;
+          if(s >= t || s >= pT) continue;
+          vec3 q = o + r * s; float qu = q.x - x0, qh = q.y - y0;
+          if(qu < 0.25 || qu > W - 0.25 || qh < 0.0 || qh > 2.6) continue;
+          vec4 c = vec4(0.0); vec3 gl = vec3(0.0);
+          float sid = floor((qu - 0.2) / 1.6), sx = mod(qu - 0.2, 1.6) - 0.8;
+          if(sp == 1.0){
+            if(qu > 0.2 && qu < W - 0.2) c = bureau(sx, qh, voor, kH(kid + vec3(sid, rij, 3.0)), max(aan, step(0.5, kH(kid + vec3(sid, rij, 6.0))) * dag), gl);
+          } else if(sp == 2.0){
+            float bezet = step(0.4, kH(kid + vec3(sid, rij, 1.7))) * step(0.5, aan + 0.6 * dag * step(0.5, kH(kid + vec3(sid, 2.0, 2.0))));
+            if(bezet > 0.5) c = mens(sx, qh, kH(kid + vec3(sid, rij, 5.1)) * 97.0, voor, true);
+            if(c.a < 0.5) c = stoel(sx, qh);
+          } else if(sp == 3.0){               // vergadertafel
+            if(qu > 0.9 && qu < W - 0.9 && qh < 0.76){
+              c = vec4(qh > 0.72 ? vec3(0.3, 0.2, 0.13) : vec3(0.22, 0.15, 0.1), 1.0);
+              if(qh < 0.7 && qu > 1.1 && qu < W - 1.1 && abs(qu - 3.0) > 0.12) c = vec4(0.0);   // open onder het blad, één poot
+            }
+          } else if(sp == 4.0){
+            c = plant(vec2(qu - 0.75, qh), id3 * 10.0);
+          } else if(sp == 7.0){               // groot bureau van hout + scherm (achterkant)
+            if(qu > 1.4 && qu < 4.6 && qh < 0.77) c = vec4(qh > 0.73 ? vec3(0.32, 0.2, 0.12) : vec3(0.24, 0.15, 0.09), 1.0);
+            if(abs(qu - 3.0) < 0.3 && qh > 0.84 && qh < 1.22) c = vec4(vec3(0.05), 1.0);
+            if(abs(qu - 3.0) < 0.03 && qh >= 0.77 && qh <= 0.84) c = vec4(vec3(0.15), 1.0);
+          } else if(sp == 9.0){               // de directeur zelf, achter het bureau
+            if(aan > 0.5 && id2 > 0.55) c = mens(qu - 3.0, qh, id * 61.0, true, true);
+            if(c.a < 0.5){ vec4 st = stoel(qu - 3.0, qh * 0.92); if(st.a > 0.5) c = vec4(vec3(0.12, 0.07, 0.05), 1.0); }
+          } else if(sp == 5.0){               // bank
+            float bu = abs(qu - 3.0);
+            vec3 stof = mix(vec3(0.25, 0.3, 0.38), vec3(0.45, 0.38, 0.3), step(0.5, id3));
+            if(bu < 1.4 && qh < 0.86 && (qh > 0.12 || bu > 1.3)) c = vec4(stof * (qh > 0.45 && bu < 1.25 ? 0.85 : 1.0) * (bu > 1.25 ? 0.9 : 1.0), 1.0);
+            if(bu > 1.25 && bu < 1.4 && qh > 0.62) c = vec4(0.0);
+          } else if(sp == 8.0){               // salontafel
+            float bu = abs(qu - 3.0);
+            if(bu < 0.6 && qh > 0.36 && qh < 0.41) c = vec4(vec3(0.25, 0.18, 0.12), 1.0);
+            if(abs(bu - 0.55) < 0.025 && qh < 0.36) c = vec4(vec3(0.1), 1.0);
+          } else if(sp == 6.0){               // twee mensen bij de koffie
+            if(aan > 0.5){
+              vec4 a1 = (id2 > 0.6) ? mens(qu - 2.0, qh, id * 31.0, false, false) : vec4(0.0);
+              vec4 a2 = (id3 > 0.45) ? mens(qu - 2.55, qh, id * 47.0, true, false) : vec4(0.0);
+              c = a1.a > 0.5 ? a1 : a2;
+            }
+          }
+          if(c.a > 0.5){ pKleur = c.rgb; pGloed = gl; pT = s; pDiep = zp; }
         }
       }
-      float licht = aan * 0.8 + dagIn * exp(-t * 0.35) + 0.03;
-      return kleur * licht * lamp + gloei * lamp;
+      if(pT < t){
+        vec3 q = o + r * pT;
+        vec2 qp = (fract(vec2(q.x, q.z) / 2.4) - 0.5) * 2.4;
+        float qpool = exp(-dot(qp, qp) / 1.3);
+        float qh = q.y - y0;
+        vec3 lk = lamp * aan * (0.4 + 0.35 * qpool) * (0.75 + 0.25 * clamp(qh / 1.5, 0.0, 1.0));
+        vec3 dl = vec3(0.82, 0.88, 1.0) * dag * exp(-pDiep * 0.28) * 0.62;
+        float zn = zonBinnen(q, Ls, y0, y1) * max(-Ls.z, 0.0);
+        kleur = pKleur * (lk + dl + zonKl * zn + 0.025) + pGloed;
+      }
+      return kleur;
     }
   `;
   const GLAS_GLSL = `
@@ -1899,30 +2191,6 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
     doos(3, 1.4, 3, std({color: 0xd8dde1, roughness: 0.5, metalness: 0.4}, 0.5), 5, dak, -4.5);
     cil(0.3, 0.3, 4.5, alu, 5, dak + 1.4, -4.5, 8);
     doos(0.4, 0.4, 7, alu, 5, dak + 5.7, -6);
-  }
-
-  // ═════ 8. HET GLAZENWASSERSBAKJE (gaat langzaam op en neer) ═════
-  {
-    const l = TW.lagen[0], x = 7, z = l.h + 1.1, top = l.y1 + 0.35;
-    // de davit (kraanarm) op de daktuin
-    cil(0.15, 0.15, 2.4, alu, x, top, l.h - 0.9, 8);
-    doos(0.25, 0.25, 2.3, alu, x, top + 2.3, l.h + 0.2);
-    const bakje = new THREE.Group(); groep.add(bakje);
-    const geel = std({color: 0xd9a521, roughness: 0.5, metalness: 0.5}, 0.5);
-    const b1 = new THREE.Mesh(new THREE.BoxGeometry(5, 0.9, 0.8), geel); b1.position.y = 0.45; b1.castShadow = true; bakje.add(b1);
-    const leuning = new THREE.Mesh(new THREE.BoxGeometry(5, 0.06, 0.8), alu); leuning.position.y = 1.15; bakje.add(leuning);
-    for(const sx of [-2.45, 2.45]){ const p = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.8), alu); p.position.set(sx, 1.0, 0); bakje.add(p); }
-    // twee glazenwassers (simpel: overal, helm, emmer)
-    const overal = new THREE.MeshLambertMaterial({color: 0x2f5fa8}), helm = new THREE.MeshLambertMaterial({color: 0xf5f5f0}), huid = new THREE.MeshLambertMaterial({color: 0xd9a77f});
-    for(const sx of [-1.2, 1.1]){
-      const lijf = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.2, 1.1, 8), overal); lijf.position.set(sx, 1.45, -0.05); bakje.add(lijf);
-      const kop = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), huid); kop.position.set(sx, 2.12, -0.05); bakje.add(kop);
-      const hl = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 6, 0, 6.3, 0, 1.6), helm); hl.position.set(sx, 2.17, -0.05); bakje.add(hl);
-    }
-    const kabelMat = new THREE.MeshBasicMaterial({color: 0x222222});
-    const kabels = [-2.2, 2.2].map(sx => { const k = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1, 4), kabelMat); k.position.x = x + sx * 0.25; k.position.z = z; k.userData.beweegt = true; groep.add(k); return k; });
-    bakje.position.set(x, 60, z);
-    torenAnim.bakje = {bakje, kabels, top: top + 2.3, min: L1.y0 + 6, max: l.y1 - 10};
   }
 
   // ═════ 9. HET PLEIN: bomen, lantaarns, banken, vlaggen, spiegelvijver, naambord ═════
@@ -2345,14 +2613,6 @@ function updateToren(dt, t){
   if(ver > 900) return;
   if(a.draaideur) a.draaideur.rotation.y += dt * 0.5;
   if(a.golfjes){ a.golfjes.offset.x = t * 0.012; a.golfjes.offset.y = t * 0.007; }
-  // het bakje: 3 minuten heen en weer langs de gevel, met kleine stops
-  const b = a.bakje;
-  if(b){
-    const s = 0.5 - 0.5 * Math.cos(t * Math.PI * 2 / 180);
-    const y = b.min + (b.max - b.min) * s;
-    b.bakje.position.y = y; b.bakje.rotation.z = Math.sin(t * 0.7) * 0.012;
-    for(const k of b.kabels){ const lang = b.top - (y + 1.15); k.scale.y = Math.max(0.1, lang); k.position.y = y + 1.15 + lang / 2; }
-  }
   // vlaggen wapperen: een golf die van de mast af naar buiten loopt
   if(ver < 450) for(const v of a.vlaggen){
     const p = v.geo.attributes.position, o = v.basis;
@@ -7802,7 +8062,7 @@ function loop(nu){
     updateWeerLucht(dt);
     updateCrafterSpook();
   }
-  updateToren(dt, t);   // 🏙️ draaideur, vlaggen, glazenwassers, lichten
+  updateToren(dt, t);   // 🏙️ draaideur, vlaggen, lichten
   golfZee(t);
   updateWolkenV2(dt, t);   // ☁️ v2: stapelwolken + wolkenlaag reizen mee en drijven
   updateWind(t);      _m.wind     += performance.now() - _t; _t = performance.now();
