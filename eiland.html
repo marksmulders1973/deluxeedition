@@ -6069,6 +6069,8 @@ function updateKraken(dt, t){
 // ── de planner: om de zoveel tijd een gok — kraken of vulkaan ──
 function updateRampen(dt){
   if(uitbarst || (kraken && kraken.fase !== 'borrelt')) return;   // er is al iets aan de hand (borrelen = nog aan het aftellen)
+  // Brian 22 okt: geen automatische rampen meer — alleen via het admin-paneel (of ?ramp=... om te testen)
+  if(!rampForce && !rampKeuze && !(RAMP_TEST && !rampTestGedaan)) return;
   rampTimer += dt;
   if(RAMP_TEST && !rampTestGedaan && rampTimer > 3){ rampTestGedaan = true; rampTimer = rampVolgende - UITBARST_WAARSCHUW; rampKeuze = null; rommelt = false; rampForce = RAMP_TEST; }
   if(!rampKeuze && rampTimer >= rampVolgende - UITBARST_WAARSCHUW){
@@ -6513,7 +6515,7 @@ function updateLensDruppels(dt){
 function updateOnweerV3(dt, t){ updateRegenGPU(dt, t); updateLensDruppels(dt); }
 function updateOnweer(dt){
   if(RAMP_TEST === 'onweer' && !onweerTestGedaan && gestart){ onweerTestGedaan = true; startOnweer(70); }
-  if(!onweer){ onweerTimer -= dt; if(onweerTimer <= 0 && !uitbarst){ onweerTimer = 180 + Math.random() * 240; startOnweer(45 + Math.random() * 40); } }
+  // Brian 22 okt: geen automatisch onweer meer — alleen via het admin-paneel (⛈️ Onweer NU)
   if(onweer){
     onweer.t += dt;
     // opbouw: eerst gerommel in de verte, dan pas regen en bliksem
