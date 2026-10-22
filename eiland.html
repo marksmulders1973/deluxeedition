@@ -1323,6 +1323,7 @@ function torenBotst(x, z, y){
   if(!torenDichtbij(dx, dz)) return false;
   const ly = y - TW.pleinY;
   for(const v of TV){
+    if(v.actief === false) continue;                       // (de helikopter is weg)
     if(ly >= v.y1 - 0.6 || ly + 1.8 <= v.y0) continue;     // eroverheen stappen of eronderdoor lopen
     if(inVorm(v, dx, dz, 0.35)) return true;
   }
@@ -1388,7 +1389,7 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
       if(r() < 0.14){
         doek = ph * (0.15 + r() * 0.65);
         gK.fillStyle = `hsl(38,${8 + r() * 8}%,${44 + r() * 10}%)`; gK.fillRect(px, y0, pw, doek);
-        gM.fillStyle = 'rgb(255,30,200)'; gM.fillRect(px, y0, pw, doek);
+        gM.fillStyle = 'rgb(0,30,200)'; gM.fillRect(px, y0, pw, doek);
         for(let s = 2; s < doek; s += 3){ gK.fillStyle = 'rgba(0,0,0,0.06)'; gK.fillRect(px, y0 + s, pw, 1); }
       }
       // — licht in het kantoor —
@@ -1412,11 +1413,11 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
       // — de borstwering bij de vloer (dicht, gezandstraald glas) —
       const by = y0 + fh - borst;
       gK.fillStyle = `hsl(208,12%,${20 + r() * 4}%)`; gK.fillRect(x0, by, mw, borst);
-      gM.fillStyle = 'rgb(255,70,190)'; gM.fillRect(x0, by, mw, borst);
+      gM.fillStyle = 'rgb(0,70,190)'; gM.fillRect(x0, by, mw, borst);
       gN.fillStyle = `rgb(${kl(128 + (r() - 0.5) * 6)},128,252)`; gN.fillRect(x0, by, mw, borst);
       // — de aluminium stijl links van dit raam —
       gK.fillStyle = '#aeb6bd'; gK.fillRect(x0 - mul / 2, y0, mul, fh);
-      gM.fillStyle = 'rgb(255,85,235)'; gM.fillRect(x0 - mul / 2, y0, mul, fh);
+      gM.fillStyle = 'rgb(0,85,235)'; gM.fillRect(x0 - mul / 2, y0, mul, fh);
       gN.fillStyle = 'rgb(92,128,236)'; gN.fillRect(x0 - mul / 2, y0, mul / 2, fh);
       gN.fillStyle = 'rgb(164,128,236)'; gN.fillRect(x0, y0, mul / 2, fh);
       gE.fillStyle = '#000'; gE.fillRect(x0 - mul / 2, y0, mul, fh);
@@ -1429,12 +1430,12 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
   }
   // de laatste stijl (rechts) loopt door naar de volgende tegel
   gK.fillStyle = '#aeb6bd'; gK.fillRect(GW - mul / 2, 0, mul / 2, GH); gK.fillRect(0, 0, mul / 2, GH);
-  const tGevelK = tex(cK), tGevelM = tex(cM), tGevelN = tex(cN), tGevelE = tex(cE);
+  const tGevelK = tex(cK), tGevelM = tex(cM), tGevelN = tex(cN);   // (rood-kanaal van M = 'hier is doorzichtig glas')
   const TEXB = 24, TEXH = 64;   // meters per tegel
 
   // ═════ 2. DE MATERIALEN ═════
   const gevel = std({map: tGevelK, roughnessMap: tGevelM, metalnessMap: tGevelM, normalMap: tGevelN,
-    normalScale: new THREE.Vector2(0.55, 0.55), emissiveMap: tGevelE, emissive: 0xffffff, emissiveIntensity: 0.16,
+    normalScale: new THREE.Vector2(0.55, 0.55),
     roughness: 1, metalness: 1}, 1.15);
   const kroonGlas = std({map: tGevelK, roughnessMap: tGevelM, metalnessMap: tGevelM, normalMap: tGevelN,
     normalScale: new THREE.Vector2(0.55, 0.55), roughness: 1, metalness: 1, side: THREE.DoubleSide}, 1.15);
@@ -1531,10 +1532,161 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
       const a = P[i], b = P[(i + 1) % 8], ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
       let nx = ez / L, nz = -ex / L; if(nx * (a[0] + b[0]) + nz * (a[1] + b[1]) < 0){ nx = -nx; nz = -nz; }
       for(let s = 0; s <= L + 0.01; s += 1.5 * elke){
-        vinPlekken.push({x: a[0] + ex * s / L + nx * 0.14, z: a[1] + ez * s / L + nz * 0.14, y0, y1, hoek: Math.atan2(nx, nz)});
+        vinPlekken.push({x: a[0] + ex * s / L + nx * 0.09, z: a[1] + ez * s / L + nz * 0.09, y0, y1, hoek: Math.atan2(nx, nz)});
       }
     }
   }
+
+  // ── GLOED rond lampen (zoals je oog en een camera dat zien): een zacht lichtvlekje ──
+  const gloedTex = (() => {
+    const c = canvas(64, 64), g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.18, 'rgba(255,255,255,0.5)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.12)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
+  })();
+  const gloedMat = (kleur) => new THREE.SpriteMaterial({map: gloedTex, color: kleur, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending});
+  const roodGloed = gloedMat(0xff2a2a), witGloed = gloedMat(0xffffff), lampGloed = gloedMat(0xffd9a0);
+  const gloed = (mat, x, y, z, s, ouder) => { const sp = new THREE.Sprite(mat); sp.position.set(x, y, z); sp.scale.set(s, s, 1); (ouder || groep).add(sp); return sp; };
+  torenAnim.roodGloed = roodGloed; torenAnim.witGloed = witGloed; torenAnim.lampGloed = lampGloed;
+
+  // ── ECHTE BOMEN: een stam met takken en een kruin van losse blaadjes ──
+  // Elke kruin bestaat uit tientallen kaartjes vol getekende blaadjes (met
+  // gaatjes ertussen). De kaartjes krijgen een 'normaal' die van het midden
+  // van de kruin naar buiten wijst: dan wordt de hele kruin belicht als één
+  // bol — licht aan de zonkant, donker eronder — net als een echte boom.
+  const bladTex = (() => {
+    const c = canvas(256, 256), g = c.getContext('2d');
+    for(let i = 0; i < 90; i++){
+      const x = 18 + r() * 220, y = 18 + r() * 220, l = 9 + r() * 13, b = l * (0.36 + r() * 0.16), a = r() * Math.PI * 2;
+      const h = 82 + r() * 34, s = 38 + r() * 26, L = 22 + r() * 22;
+      g.save(); g.translate(x, y); g.rotate(a);
+      const gr = g.createLinearGradient(0, -b, 0, b);
+      gr.addColorStop(0, `hsl(${h},${s}%,${L + 10}%)`); gr.addColorStop(1, `hsl(${h},${s}%,${L - 6}%)`);
+      g.fillStyle = gr; g.beginPath(); g.ellipse(0, 0, l, b, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = `hsla(${h},${s}%,${L + 18}%,0.55)`; g.lineWidth = 1; g.beginPath(); g.moveTo(-l, 0); g.lineTo(l, 0); g.stroke();
+      g.strokeStyle = '#3d2d1e'; g.beginPath(); g.moveTo(-l, 0); g.lineTo(-l - 4, 0); g.stroke();
+      g.restore();
+    }
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
+  })();
+  const bladMats = [0xffffff, 0xd2ecb4, 0xaecb8e].map(k => new THREE.MeshLambertMaterial({map: bladTex, color: k, alphaTest: 0.5}));
+  const schors = new THREE.MeshLambertMaterial({color: 0x5a4636});
+  function boom(x, y, z, s){
+    const h = (3.0 + r() * 1.3) * s;
+    cil(0.12 * s, 0.22 * s, h, schors, x, y, z, 7);
+    const ky = y + h + 0.8 * s;
+    for(let k = 0; k < 5; k++){                       // takken die schuin omhoog de kruin in gaan
+      const a = k * 1.26 + r() * 0.6, lang = (1.5 + r() * 0.6) * s, kantel = 0.7 + r() * 0.3;
+      const m = zet(new THREE.CylinderGeometry(0.03 * s, 0.08 * s, lang, 5), schors,
+        x + Math.cos(a) * Math.sin(kantel) * lang / 2, y + h * 0.78 + Math.cos(kantel) * lang / 2, z + Math.sin(a) * Math.sin(kantel) * lang / 2);
+      m.rotation.set(Math.sin(a) * kantel, 0, -Math.cos(a) * kantel);
+    }
+    const R = 2.0 * s;
+    for(let mi = 0; mi < 3; mi++){
+      const pos = [], nor = [], uv = [], idx = []; let v = 0;
+      for(let i = 0; i < 24; i++){
+        let px, py, pz; do { px = r() * 2 - 1; py = r() * 2 - 1; pz = r() * 2 - 1; } while(px * px + py * py + pz * pz > 1);
+        const cx = x + px * R, cy = ky + py * R * 0.72, cz = z + pz * R, gr = (1.0 + r() * 0.8) * s;
+        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(r() * 6.3, r() * 6.3, r() * 6.3));
+        const ax = new THREE.Vector3(1, 0, 0).applyQuaternion(q).multiplyScalar(gr / 2), ay = new THREE.Vector3(0, 1, 0).applyQuaternion(q).multiplyScalar(gr / 2);
+        const n = new THREE.Vector3(px, py * 0.7 + 0.3, pz).normalize();
+        for(const [sx, sy, u, w] of [[-1, -1, 0, 0], [1, -1, 1, 0], [1, 1, 1, 1], [-1, 1, 0, 1]]){
+          pos.push(cx + ax.x * sx + ay.x * sy, cy + ax.y * sx + ay.y * sy, cz + ax.z * sx + ay.z * sy); nor.push(n.x, n.y, n.z); uv.push(u, w);
+        }
+        idx.push(v, v + 1, v + 2, v, v + 2, v + 3, v, v + 2, v + 1, v, v + 3, v + 2);   // voor- én achterkant, zelfde licht
+        v += 4;
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx);
+      zet(g, bladMats[mi], 0, 0, 0);
+    }
+  }
+
+  // ═════ ECHTE KAMERS ACHTER HET GLAS ("interior mapping", zoals in grote games) ═════
+  // Er staan geen echte kamers in de toren — dat zou véél te zwaar zijn. In
+  // plaats daarvan rekent de grafische kaart voor elk beeldpunt van het glas uit:
+  // "als je hier naar binnen kijkt, welke muur, vloer of welk plafond raak je
+  // dan?" De toren is in gedachten verdeeld in kamers van 3 × 4 × 3 m. Elke kamer
+  // krijgt zijn eigen toevalsgetal: licht aan of uit, kleur van de muren, wel of
+  // geen bureaus, iemand aan het werk. Loop je langs, dan schuift alles mee alsof
+  // er écht diepte achter zit.
+  // Daarna het glas zelf: recht ervoor kijk je naar binnen, schuin erlangs zie
+  // je vooral de spiegeling (dat heet het Fresnel-effect — zo werkt echt glas).
+  const KAMER_GLSL = `
+    float tHash(vec3 p){ p = fract(p * 0.1031); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }
+    vec3 tKamer(vec3 pos, vec3 d, vec3 nrm, float donker){
+      vec3 R = vec3(3.0, 4.0, 3.0);
+      vec3 p = pos - nrm * 0.03;
+      vec3 cel = floor(p / R);
+      vec3 lo = cel * R, hi = lo + R;
+      d.x = abs(d.x) < 1e-4 ? 1e-4 : d.x; d.y = abs(d.y) < 1e-4 ? 1e-4 : d.y; d.z = abs(d.z) < 1e-4 ? 1e-4 : d.z;
+      vec3 tt = (mix(lo, hi, step(0.0, d)) - p) / d;
+      float t = min(tt.x, min(tt.y, tt.z));
+      vec3 h = p + d * t;
+      vec3 f = (h - lo) / R;
+      float id = tHash(cel + 17.0), id2 = tHash(cel * 1.7 + 3.0), id3 = tHash(cel * 2.3 + 11.0);
+      float aan = step(0.52 - donker * 0.2, id);
+      vec3 lamp = mix(vec3(1.0, 0.9, 0.74), vec3(0.86, 0.93, 1.0), step(0.7, id2));
+      float dagIn = (1.0 - donker) * 0.32;
+      bool zijX = abs(nrm.x) > abs(nrm.z);
+      vec3 kleur; float gloei = 0.0;
+      if(t == tt.y){
+        if(d.y < 0.0){
+          vec2 tg = step(0.94, fract(h.xz / 0.6));
+          kleur = mix(vec3(0.09, 0.1, 0.12), vec3(0.17, 0.15, 0.13), id3) * (1.0 - 0.25 * max(tg.x, tg.y));
+        } else {
+          vec2 pl = abs(fract(h.xz / 1.5) - 0.5);
+          float paneel = step(pl.x, 0.2) * step(pl.y, 0.3);
+          vec2 rs = step(0.96, fract(h.xz / 0.75));
+          kleur = mix(vec3(0.62) * (1.0 - 0.15 * max(rs.x, rs.y)), vec3(0.8), paneel);
+          gloei = paneel * aan * 2.2;
+        }
+      } else {
+        bool achter = zijX ? (t == tt.x) : (t == tt.z);
+        kleur = achter ? mix(vec3(0.55, 0.52, 0.47), vec3(0.3, 0.35, 0.4), step(0.6, id3)) : vec3(0.66, 0.64, 0.6);
+        kleur *= 1.0 - 0.45 * step(f.y, 0.025);
+        if(achter && id2 > 0.45 && f.y < 0.32) kleur = vec3(0.42, 0.36, 0.3) * (0.85 + 0.15 * step(0.5, fract((zijX ? h.z : h.x) / 0.9)));
+      }
+      vec3 naarBinnen = -nrm;
+      float diep = dot(d, naarBinnen);
+      if(diep > 0.02){
+        float tp = 1.3 / diep;
+        if(tp < t){
+          vec3 q = p + d * tp; vec3 fq = (q - lo) / R;
+          float lat = zijX ? fq.z : fq.x;
+          if(id3 > 0.25 && lat > 0.12 && lat < 0.88){
+            if(fq.y < 0.185){ kleur = vec3(0.07, 0.07, 0.08) + vec3(0.05) * step(0.17, fq.y); t = tp; gloei = 0.0; }
+            else if(fq.y < 0.3 && abs(fract(lat * 2.0) - 0.5) < 0.17){ kleur = vec3(0.02); gloei = aan * 0.9; lamp = vec3(0.45, 0.62, 0.9); t = tp; }
+          }
+          if(id2 > 0.62 && abs(lat - 0.3 - id * 0.4) < 0.045 && fq.y < 0.42){ kleur = vec3(0.05, 0.05, 0.06); t = tp; gloei = 0.0; }
+        }
+      }
+      float licht = aan * 0.8 + dagIn * exp(-t * 0.35) + 0.03;
+      return kleur * licht * lamp + gloei * lamp;
+    }
+  `;
+  const GLAS_GLSL = `
+    {
+      float glasMasker = texture2D(roughnessMap, vUv).r;
+      if(glasMasker > 0.5){
+        vec3 V = normalize(vTW - cameraPosition);
+        vec3 N = normalize(vTN);
+        float cosT = clamp(dot(-V, N), 0.0, 1.0);
+        float F = 0.08 + 0.92 * pow(1.0 - cosT, 5.0);
+        vec3 binnen = tKamer(vTW - uToren, V, N, uDonker);
+        gl_FragColor.rgb = gl_FragColor.rgb * (0.32 + 0.68 * F) + binnen * vec3(0.46, 0.53, 0.56) * (1.0 - F);
+      }
+    }
+  `;
+  gevel.onBeforeCompile = (sh) => {
+    sh.uniforms.uToren = {value: new THREE.Vector3(TOREN.x, TW.pleinY, TOREN.z)};
+    sh.uniforms.uDonker = {value: 0};
+    torenAnim.gevelUni = sh.uniforms;
+    sh.vertexShader = 'varying vec3 vTW;\nvarying vec3 vTN;\n' + sh.vertexShader.replace('#include <project_vertex>',
+      '#include <project_vertex>\n  vTW = (modelMatrix * vec4(transformed, 1.0)).xyz;\n  vTN = normalize(mat3(modelMatrix) * objectNormal);');
+    sh.fragmentShader = 'varying vec3 vTW;\nvarying vec3 vTN;\nuniform vec3 uToren;\nuniform float uDonker;\n' + KAMER_GLSL +
+      sh.fragmentShader.replace('#include <tonemapping_fragment>', GLAS_GLSL + '\n#include <tonemapping_fragment>');
+  };
 
   // ═════ 4. HET PLEIN ═════
   const HP = TOREN.plein / 2, onder = TW.pleinY - 3;
@@ -1608,7 +1760,7 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
   // het overstek: onderkant van de eerste laag met inbouwspotjes
   zet(mantel(L1.h, L1.c, L1.y0 - 0.01, L1.y0, {bodem: true}), [alu, alu, plafond], 0, 0, 0, false);
   // zuilen (natuursteen) onder het overstek
-  const zuilSteen = std({color: 0xb3ada3, roughness: 0.4}, 0.5);
+  const zuilSteen = std({color: 0x958c80, roughness: 0.35}, 0.6);
   {
     const d = L1.h - 1.1;
     for(const s of [-10, -5, 0, 5, 10]) for(const [fx, fz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]){
@@ -1675,12 +1827,10 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
       doos(rx, 0.7, rz, bak, x, y, z);
       const h = doos(rx - 0.2, 0.6, rz - 0.2, haag, x, y + 0.7, z); h.scale.y = 1;
     }
-    const stam = new THREE.MeshLambertMaterial({color: 0x5b4636}), kruin = new THREE.MeshLambertMaterial({color: 0x3d6e2b});
     const P = punten(d + 0.8, TW.lagen[0].c);
     for(let i = 0; i < 8; i += 2){
       const x = (P[i][0] + P[i + 1][0]) / 2 * 0.93, z = (P[i][1] + P[i + 1][1]) / 2 * 0.93;
-      cil(0.12, 0.16, 2.2, stam, x, y, z, 6);
-      for(let k = 0; k < 3; k++) zet(new THREE.IcosahedronGeometry(0.9 + r() * 0.3, 1), kruin, x + (r() - 0.5) * 0.7, y + 2.6 + k * 0.45, z + (r() - 0.5) * 0.7);
+      boom(x, y, z, 0.55);
     }
   }
   // tweede laag: een roosterscherm rond de airco's
@@ -1703,13 +1853,13 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
   }
   // alle uitstekende stijlen in één keer
   {
-    const vm = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), alu, vinPlekken.length);
+    const vm = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), std({color: 0x8d959c, metalness: 0.85, roughness: 0.4}, 0.6), vinPlekken.length);
     const dm = new THREE.Object3D();
     vinPlekken.forEach((p, i) => {
-      dm.position.set(p.x, (p.y0 + p.y1) / 2, p.z); dm.rotation.set(0, p.hoek, 0); dm.scale.set(0.07, p.y1 - p.y0, 0.28);
+      dm.position.set(p.x, (p.y0 + p.y1) / 2, p.z); dm.rotation.set(0, p.hoek, 0); dm.scale.set(0.06, p.y1 - p.y0, 0.18);
       dm.updateMatrix(); vm.setMatrixAt(i, dm.matrix);
     });
-    vm.castShadow = true; groep.add(vm);
+    vm.castShadow = false; groep.add(vm);
   }
 
   // ═════ 7. BOVENOP: helikopterplatform, antennemast, gevelkraan ═════
@@ -1741,9 +1891,9 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
     for(let k = 0; k < 6; k++) cil(0.7, 0.7, 0.12, aluDonker, ax, dak + 8 + k * 6, az, 10);
     const rood = new THREE.MeshBasicMaterial({color: 0xff1a1a}), wit = new THREE.MeshBasicMaterial({color: 0xffffff});
     const lichtjes = [];
-    for(const hh of [dak + 18, dak + 31, dak + 44.6]){ const b = zet(new THREE.SphereGeometry(0.42, 12, 8), hh > dak + 40 ? wit : rood, ax, hh, az, false); lichtjes.push(b); }
+    for(const hh of [dak + 18, dak + 31, dak + 44.6]){ const b = zet(new THREE.SphereGeometry(0.42, 12, 8), hh > dak + 40 ? wit : rood, ax, hh, az, false); lichtjes.push(b); gloed(hh > dak + 40 ? witGloed : roodGloed, ax, hh, az, hh > dak + 40 ? 9 : 7); }
     // ook op de hoeken van elke laag een rood lampje
-    for(const L of TW.lagen){ for(const p of punten(L.h + 0.25, L.c).filter((_, j) => j % 2 === 0)) zet(new THREE.SphereGeometry(0.28, 8, 6), rood, p[0], L.y1 + 0.6, p[1], false); }
+    for(const L of TW.lagen){ for(const p of punten(L.h + 0.25, L.c).filter((_, j) => j % 2 === 0)){ zet(new THREE.SphereGeometry(0.28, 8, 6), rood, p[0], L.y1 + 0.6, p[1], false); gloed(roodGloed, p[0], L.y1 + 0.6, p[1], 4); } }
     torenAnim.rood = rood; torenAnim.wit = wit;
     // gevelkraan (voor de glazenwassers) op het dak
     doos(3, 1.4, 3, std({color: 0xd8dde1, roughness: 0.5, metalness: 0.4}, 0.5), 5, dak, -4.5);
@@ -1783,12 +1933,7 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
     for(const [x, z] of [[-30, -28], [-30, -8], [-30, 12], [30, -28], [30, -8], [30, 12], [-20, -34], [0, -34], [20, -34]]){
       doos(2.6, 0.5, 2.6, bakSteen, x, 0, z);
       doos(2.3, 0.05, 2.3, new THREE.MeshLambertMaterial({color: 0x3b2c20}), x, 0.5, z);
-      const h = 3 + r() * 1.2;
-      cil(0.16, 0.24, h, stam, x, 0.5, z, 7);
-      for(let k = 0; k < 6; k++){
-        const m = zet(new THREE.IcosahedronGeometry(1.2 + r() * 0.6, 1), kruinen[k % 3], x + (r() - 0.5) * 2.2, 0.5 + h + (r() - 0.2) * 1.6, z + (r() - 0.5) * 2.2);
-        m.scale.y = 0.8;
-      }
+      boom(x, 0.5, z, 1.0);
       TV.push({soort: 'rond', x, z, r: 0.3, y0: 0, y1: 6});
     }
     // lantaarnpalen
@@ -1799,6 +1944,7 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
       cil(0.09, 0.12, 6, paal, x, 0, z, 8);
       doos(1.4, 0.18, 0.4, paal, x + 0.5, 6, z);
       doos(1.0, 0.04, 0.3, lampGlas, x + 0.7, 5.97, z);
+      gloed(lampGloed, x + 0.7, 5.85, z, 2.6);
       TV.push({soort: 'rond', x, z, r: 0.15, y0: 0, y1: 6});
     }
     // banken
@@ -1859,6 +2005,106 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
     }
   }
 
+  // ═════ 10. DE HELIKOPTER 🚁 (staat op het dak, stijgt op, vliegt een rondje om het eiland en landt weer) ═════
+  {
+    const heli = new THREE.Group(); heli.rotation.order = 'YZX';
+    // de lak: wit met een rode rug en een blauwe buik (de DELUXE-kleuren), ramen in de cabine
+    const c = canvas(512, 512), g = c.getContext('2d');
+    const vy = (v) => (1 - v) * 512;                   // v = 0 bij de neus, 1 bij de staart
+    g.fillStyle = '#f1f2f3'; g.fillRect(0, 0, 512, 512);
+    g.fillStyle = '#c8102e'; g.fillRect(56, 0, 144, 512);                 // rug
+    g.fillStyle = '#1c2f74'; g.fillRect(300, 0, 170, 512);                // buik
+    g.fillStyle = '#1c2f74'; g.fillRect(200, 0, 8, 512); g.fillRect(48, 0, 8, 512);   // biesjes
+    g.fillStyle = '#10161d';
+    const raam = (xm, v0, v1) => { g.beginPath(); g.roundRect ? g.roundRect(xm - 24, vy(v1), 48, vy(v0) - vy(v1), 10) : g.rect(xm - 24, vy(v1), 48, vy(v0) - vy(v1)); g.fill(); };
+    for(const [v0, v1] of [[0.3, 0.4], [0.43, 0.53]]){ raam(256, v0, v1); raam(0, v0, v1); raam(512, v0, v1); }
+    g.save(); g.translate(262, vy(0.72)); g.rotate(-Math.PI / 2); g.fillStyle = '#1c2f74'; g.font = 'bold 40px Arial'; g.textAlign = 'center'; g.fillText('DELUXE', 0, 14); g.restore();
+    g.save(); g.translate(10, vy(0.72)); g.rotate(Math.PI / 2); g.fillStyle = '#1c2f74'; g.font = 'bold 40px Arial'; g.textAlign = 'center'; g.fillText('PH-DLX', 0, 6); g.restore();
+    const lakTex = tex(c, false);
+    const lak = std({map: lakTex, roughness: 0.22, metalness: 0.3}, 1.3);
+    const lakRood = std({color: 0xc8102e, roughness: 0.25, metalness: 0.3}, 1.3);
+    const ruit = std({color: 0x0b1117, roughness: 0.04, metalness: 0.9}, 1.5);
+    const zwart = std({color: 0x1c1f22, roughness: 0.5, metalness: 0.5}, 0.6);
+    const staal = std({color: 0x9aa2aa, roughness: 0.35, metalness: 0.85}, 0.9);
+    const deel = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; heli.add(m); return m; };
+    // de romp: een draaivorm (lathe) van neus naar staart, wat platter aan de zijkant en onderkant
+    const prof = [[0.05, 0], [0.45, 0.15], [0.8, 0.5], [1.05, 1.0], [1.2, 1.8], [1.22, 3.0], [1.15, 4.2], [0.95, 5.2], [0.6, 6.2], [0.36, 7.0]].map(([r0, y]) => new THREE.Vector2(r0, y));
+    const romp = new THREE.LatheGeometry(prof, 32);
+    romp.rotateZ(Math.PI / 2); romp.translate(3.2, 0, 0);
+    { const p = romp.attributes.position; for(let i = 0; i < p.count; i++){ p.setZ(i, p.getZ(i) * 0.82); const y = p.getY(i); if(y < -0.8) p.setY(i, -0.8 + (y + 0.8) * 0.35); } romp.computeVertexNormals(); }
+    deel(romp, lak, 0, 0, 0);
+    // de cockpit-ruit
+    const kap = new THREE.SphereGeometry(1.05, 28, 14, 0, Math.PI * 2, 0, Math.PI * 0.5); kap.scale(1.45, 0.78, 0.86);
+    const k = deel(kap, ruit, 1.9, 0.18, 0); k.rotation.z = -0.32;
+    // motorkap, uitlaten, staartboom, vinnen
+    deel(new THREE.BoxGeometry(3.2, 0.72, 1.3), lakRood, -0.7, 1.22, 0);
+    for(const s of [-1, 1]){ const u = deel(new THREE.CylinderGeometry(0.16, 0.2, 0.6, 10), zwart, -2.1, 1.25, s * 0.55); u.rotation.z = Math.PI / 2 + 0.3; }
+    const boom = new THREE.CylinderGeometry(0.2, 0.36, 5.6, 14); boom.rotateZ(Math.PI / 2);
+    deel(boom, lakRood, -6.4, 0.38, 0);
+    const vin = deel(new THREE.BoxGeometry(1.3, 1.9, 0.12), lakRood, -9.0, 1.15, 0); vin.rotation.z = 0.35;
+    deel(new THREE.BoxGeometry(0.8, 0.07, 2.4), lakRood, -8.3, 0.45, 0);
+    // de staartrotor
+    const staartRotor = new THREE.Group(); staartRotor.position.set(-9.35, 1.45, 0.2); heli.add(staartRotor);
+    for(let i = 0; i < 2; i++){ const b = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.7, 0.03), zwart); b.rotation.z = i * Math.PI / 2; staartRotor.add(b); }
+    // de hoofdrotor: mast, naaf en vijf bladen
+    deel(new THREE.CylinderGeometry(0.12, 0.16, 0.7, 10), staal, -0.3, 1.9, 0);
+    const rotor = new THREE.Group(); rotor.position.set(-0.3, 2.3, 0); heli.add(rotor);
+    rotor.add(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.22, 12), staal));
+    for(let i = 0; i < 5; i++){
+      const arm = new THREE.Group(); arm.rotation.y = i * Math.PI * 2 / 5; rotor.add(arm);
+      const blad = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.05, 0.42), zwart); blad.position.x = 3.5; blad.rotation.z = -0.025; blad.castShadow = true; arm.add(blad);
+      const punt = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.052, 0.43), new THREE.MeshLambertMaterial({color: 0xf2c230})); punt.position.x = 6.5; punt.rotation.z = -0.03; arm.add(punt);
+    }
+    // bij hoge toeren zie je de bladen als een waas
+    const waasMat = new THREE.MeshBasicMaterial({color: 0x15181b, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide});
+    const waas = new THREE.Mesh(new THREE.RingGeometry(0.4, 6.75, 48), waasMat); waas.rotation.x = -Math.PI / 2; waas.position.set(-0.3, 2.3, 0); heli.add(waas);
+    // landingsski's
+    for(const s of [-1, 1]){
+      const ski = new THREE.CylinderGeometry(0.06, 0.06, 4.8, 8); ski.rotateZ(Math.PI / 2);
+      deel(ski, staal, -0.4, -1.55, s * 1.08);
+      const neus = deel(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 8), staal, 2.2, -1.42, s * 1.08); neus.rotation.z = -1.0;
+      for(const x of [0.9, -1.5]){ const poot = deel(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 6), staal, x, -1.12, s * 0.9); poot.rotation.x = s * 0.45; }
+    }
+    // lichten: rood zwaailicht bovenop, witte flitser op de staart
+    const zwaai = deel(new THREE.SphereGeometry(0.12, 8, 6), new THREE.MeshBasicMaterial({color: 0xff2020}), -1.6, 1.62, 0);
+    gloed(roodGloed, -1.6, 1.62, 0, 2.6, heli);
+    gloed(witGloed, -9.6, 2.35, 0, 2.2, heli);
+    // waar staat hij?
+    const PAD = new THREE.Vector3(TOREN.x, TW.pleinY + TW.heliY + 1.61, TOREN.z);
+    { // vaste delen samenvoegen per materiaal: minder tekenwerk
+      const perMat = new Map();
+      for(const o of heli.children.slice()){ if(!o.isMesh || Array.isArray(o.material) || o === zwaai || o === waas) continue; if(!perMat.has(o.material)) perMat.set(o.material, []); perMat.get(o.material).push(o); }
+      for(const [mat, lijst] of perMat){
+        if(lijst.length < 2) continue;
+        const pos = [], nor = [], uv = [];
+        for(const m of lijst){
+          m.updateMatrix(); const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()); g.applyMatrix4(m.matrix);
+          const P = g.attributes.position, N = g.attributes.normal, U = g.attributes.uv;
+          for(let i = 0; i < P.count; i++){ pos.push(P.getX(i), P.getY(i), P.getZ(i)); nor.push(N.getX(i), N.getY(i), N.getZ(i)); uv.push(U ? U.getX(i) : 0, U ? U.getY(i) : 0); }
+          heli.remove(m);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        const m = new THREE.Mesh(g, mat); m.castShadow = true; heli.add(m);
+      }
+    }
+    heli.position.copy(PAD); heli.rotation.y = -Math.PI / 2;
+    scene.add(heli);
+    // de route: van het dak naar zee, een ronde om het hele eiland, en terug
+    const pts = [PAD.clone().add(new THREE.Vector3(0, 25, 0)), new THREE.Vector3(TOREN.x + 40, PAD.y + 10, TOREN.z + 150)];
+    const a0 = Math.atan2(TOREN.z + 300, TOREN.x);
+    for(let i = 1; i <= 9; i++){
+      const a = a0 - i * Math.PI * 2 / 9.6, rr = 770 + 40 * Math.sin(i * 1.7);
+      pts.push(new THREE.Vector3(Math.cos(a) * rr, 200 + 45 * Math.sin(i * 1.3), Math.sin(a) * rr));
+    }
+    pts.push(new THREE.Vector3(TOREN.x - 90, PAD.y + 50, TOREN.z + 260), new THREE.Vector3(TOREN.x - 20, PAD.y + 42, TOREN.z + 70), PAD.clone().add(new THREE.Vector3(0, 40, 0)));
+    const route = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+    const botsing = {soort: 'rond', x: 0, z: 0, r: 2.4, y0: TW.heliY, y1: TW.heliY + 3.6, actief: true};
+    TV.push(botsing);
+    torenAnim.heli = {heli, rotor, staartRotor, waasMat, zwaai, route, lengte: route.getLength(), PAD, botsing,
+      fase: 'staat', tijd: 20, u: 0, toeren: 0, hoek: 0, koers: -Math.PI / 2, rol: 0, neus: 0, geluid: null};
+  }
+
   // ═════ SAMENVOEGEN: honderden losse stukjes → één vorm per materiaal ═════
   // Elk los stukje kost de grafische kaart een aparte tekenopdracht. Alles wat
   // stilstaat en hetzelfde materiaal heeft, plakken we aan elkaar.
@@ -1892,6 +2138,10 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
     }
   }
 
+  // hoge delen werpen geen 'gewone' schaduw: die zou alleen in het vak rond jou te zien zijn.
+  // De grote torenschaduw (verderop) neemt het over.
+  groep.traverse(o => { if(o.isMesh && !o.isInstancedMesh){ if(!o.geometry.boundingBox) o.geometry.computeBoundingBox(); if(o.geometry.boundingBox.max.y > 14) o.castShadow = false; } });
+
   groep.position.set(TOREN.x, TW.pleinY, TOREN.z);
   scene.add(groep);
   torenAnim.groep = groep;
@@ -1923,6 +2173,154 @@ const torenAnim = {};          // dingen die bewegen (draaideur, vlaggen, bakje,
   torenAnim.gevel = gevel; torenAnim.plafond = plafond;
 })();
 
+// ── DE SCHADUW VAN DE TOREN, honderden meters lang over het eiland ──
+// De gewone schaduwen in het spel zijn er alleen in een vak van 140 m rond
+// jou (meer kan een telefoon niet aan). Maar een toren van 232 m werpt een
+// schaduw van wel 200 m! Die rekenen we één keer zelf uit: voor elk puntje
+// grond kijken we of een lijn naar de zon de toren raakt. Waar dat zo is,
+// leggen we een donker waas over de grond — met een zachte rand, want ver
+// van de toren is een echte schaduwrand ook wazig.
+(function torenSchaduw(){
+  const L = new THREE.Vector3(70, 95, 45).normalize();            // richting naar de zon (zelfde als het zonlicht)
+  const weg = new THREE.Vector2(-L.x, -L.z).normalize(), dwars = new THREE.Vector2(-weg.y, weg.x);
+  const LANG = 250, BREED = 70, NL = 170, NB = 96;
+  const vormen = [{h: TOREN.lobby.h, c: TOREN.lobby.c, y0: 0, y1: TOREN.lobbyH}]
+    .concat(TW.lagen.map(l => ({h: l.h, c: l.c, y0: l.y0, y1: l.y1 + 0.35})))
+    .concat([{h: TW.lagen[2].h, c: TW.lagen[2].c, y0: TW.lagen[2].y1, y1: TW.lagen[2].y1 + TOREN.kroon}, {h: 6, c: 0, y0: TW.heliY - 0.4, y1: TW.heliY}]);
+  const vlakken = (h, c) => [[1, 0, h], [-1, 0, h], [0, 1, h], [0, -1, h], [1, 1, 2 * h - c], [1, -1, 2 * h - c], [-1, 1, 2 * h - c], [-1, -1, 2 * h - c]];
+  for(const v of vormen) v.vl = vlakken(v.h, v.c);
+  function inSchaduw(px, py, pz){
+    const lx = px - TOREN.x, lz = pz - TOREN.z, ly = py - TW.pleinY;
+    for(const v of vormen){
+      let t0 = 0, t1 = 1e9;
+      for(const [a, b, d] of v.vl){                                // knippen met de acht zijkanten
+        const s = a * lx + b * lz, ds = a * L.x + b * L.z;
+        if(Math.abs(ds) < 1e-9){ if(s >= d){ t0 = 1; t1 = 0; break; } continue; }
+        const tt = (d - s) / ds;
+        if(ds > 0) t1 = Math.min(t1, tt); else t0 = Math.max(t0, tt);
+      }
+      if(t0 >= t1) continue;
+      if(ly + L.y * t1 >= v.y0 && ly + L.y * t0 <= v.y1) return true;
+    }
+    return false;
+  }
+  const pos = [], uv = [], idx = [], data = new Uint8Array(NL * NB * 4);
+  for(let i = 0; i < NL; i++){
+    const s = -12 + i / (NL - 1) * LANG;
+    for(let j = 0; j < NB; j++){
+      const w = (j / (NB - 1) - 0.5) * BREED;
+      const x = TOREN.x + weg.x * s + dwars.x * w, z = TOREN.z + weg.y * s + dwars.y * w;
+      const y = opPlein(x, z) ? TW.pleinY + 0.03 : hoogteOp(x, z) + 0.08;
+      pos.push(x, y, z); uv.push(j / (NB - 1), i / (NL - 1));
+      const k = (i * NB + j) * 4; data[k + 1] = inSchaduw(x, y, z) ? 255 : 0; data[k + 3] = 255;
+    }
+  }
+  for(let i = 0; i < NL - 1; i++) for(let j = 0; j < NB - 1; j++){
+    const a = i * NB + j;
+    idx.push(a, a + 1, a + NB, a + 1, a + NB + 1, a + NB);   // linksom gezien van boven = bovenkant zichtbaar
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
+  const kaart = new THREE.DataTexture(data, NB, NL, THREE.RGBAFormat); kaart.magFilter = kaart.minFilter = THREE.LinearFilter; kaart.needsUpdate = true;
+  const mat = new THREE.MeshBasicMaterial({color: 0x0d1a30, transparent: true, opacity: 0.5, alphaMap: kaart, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4});
+  const m = new THREE.Mesh(g, mat); m.renderOrder = 1; m.frustumCulled = false;
+  scene.add(m);
+  torenAnim.schaduw = m;
+})();
+
+// ── de helikopter: wachten → motor aan → opstijgen → rondje eiland → landen → motor uit ──
+const _hv = new THREE.Vector3(), _ht = new THREE.Vector3();
+function hoekVerschil(a, b){ let d = a - b; while(d > Math.PI) d -= Math.PI * 2; while(d < -Math.PI) d += Math.PI * 2; return d; }
+function updateHeli(dt, t){
+  const H = torenAnim.heli; if(!H) return;
+  H.tijd += dt;
+  let doelToeren = 0, doelNeus = 0, doelRol = 0;
+  const P = H.PAD, hp = H.heli.position;
+  switch(H.fase){
+    case 'staat':                                          // stil op het platform
+      hp.copy(P);
+      if(H.tijd > 45){ H.fase = 'opstart'; H.tijd = 0; }
+      break;
+    case 'opstart':                                        // de motor loopt warm, de rotor gaat draaien
+      doelToeren = 1; hp.copy(P);
+      if(H.tijd > 9){ H.fase = 'stijgt'; H.tijd = 0; }
+      break;
+    case 'stijgt': {                                       // recht omhoog van het dak
+      doelToeren = 1;
+      const s = Math.min(1, H.tijd / 7), e = s * s * (3 - 2 * s);
+      hp.set(P.x, P.y + 25 * e, P.z);
+      doelNeus = -0.04 * e;
+      if(s >= 1){ H.fase = 'vliegt'; H.tijd = 0; H.u = 0; H.snel = 4; }
+      break;
+    }
+    case 'vliegt': {                                       // de ronde om het eiland
+      doelToeren = 1;
+      const weg = H.u * H.lengte, rest = H.lengte - weg;
+      const doelSnel = Math.max(6, Math.min(58, weg * 0.35 + 6, rest * 0.22 + 4));
+      H.snel += (doelSnel - H.snel) * Math.min(1, dt * 0.8);
+      H.u = Math.min(1, H.u + H.snel * dt / H.lengte);
+      H.route.getPointAt(H.u, _hv); H.route.getTangentAt(H.u, _ht);
+      _hv.y = Math.max(_hv.y, hoogteOp(_hv.x, _hv.z) + 60);
+      hp.copy(_hv);
+      const koersDoel = Math.atan2(-_ht.z, _ht.x);
+      const dk = hoekVerschil(koersDoel, H.koers);
+      H.koers += dk * Math.min(1, dt * 1.6);
+      doelRol = Math.max(-0.45, Math.min(0.45, -dk * 1.4));      // schuin hangen in de bocht
+      doelNeus = -0.13 * Math.min(1, H.snel / 50) - (doelSnel - H.snel) * 0.01;   // neus omlaag = vooruit
+      if(H.u >= 1){ H.fase = 'daalt'; H.tijd = 0; }
+      break;
+    }
+    case 'daalt': {                                        // voorzichtig landen
+      doelToeren = 1;
+      const s = Math.min(1, H.tijd / 11), e = 1 - Math.pow(1 - s, 2.2);
+      hp.set(P.x, P.y + 40 * (1 - e), P.z);
+      doelNeus = 0.05 * (1 - s);                            // neus iets omhoog: afremmen
+      if(s >= 1){ H.fase = 'uitloop'; H.tijd = 0; }
+      break;
+    }
+    case 'uitloop':                                        // motor uit, de rotor loopt langzaam leeg
+      hp.copy(P);
+      if(H.tijd > 14){ H.fase = 'staat'; H.tijd = 0; }
+      break;
+  }
+  H.botsing.actief = H.fase === 'staat' || H.fase === 'opstart' || H.fase === 'uitloop';
+  H.toeren += (doelToeren - H.toeren) * Math.min(1, dt * (doelToeren > H.toeren ? 0.28 : 0.16));
+  H.neus += (doelNeus - H.neus) * Math.min(1, dt * 1.5);
+  H.rol += (doelRol - H.rol) * Math.min(1, dt * 1.5);
+  H.heli.rotation.set(H.rol, H.koers, H.neus);
+  H.hoek += H.toeren * Math.PI * 2 * 5.0 * dt;
+  H.rotor.rotation.y = H.hoek;
+  H.staartRotor.rotation.z = H.hoek * 4.4;
+  H.waasMat.opacity = Math.max(0, (H.toeren - 0.45) / 0.55) * 0.2;
+  H.zwaai.material.color.setHex((t % 1.2) < 0.15 && H.toeren > 0.05 ? 0xff3030 : 0x401010);
+  // ── het geluid: het "wop-wop-wop" van de rotor + het fluiten van de turbine ──
+  if(audioCtx && !H.geluid){
+    try {
+      const ac = audioCtx;
+      const ruis = ac.createBufferSource(); ruis.buffer = ruisBuffer(ac, 2, 0); ruis.loop = true;
+      const laag = ac.createBiquadFilter(); laag.type = 'lowpass'; laag.frequency.value = 320;
+      const puls = ac.createGain(); puls.gain.value = 0.5;
+      const lfo = ac.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 1;
+      const lfoG = ac.createGain(); lfoG.gain.value = 0.5; lfo.connect(lfoG); lfoG.connect(puls.gain);
+      const turb = ac.createOscillator(); turb.type = 'sine'; turb.frequency.value = 900;
+      const turbG = ac.createGain(); turbG.gain.value = 0.03;
+      const hoofd = ac.createGain(); hoofd.gain.value = 0;
+      ruis.connect(laag); laag.connect(puls); puls.connect(hoofd); turb.connect(turbG); turbG.connect(hoofd); hoofd.connect(ac.destination);
+      ruis.start(); lfo.start(); turb.start();
+      H.geluid = {hoofd, lfo, turb};
+    } catch(e){ H.geluid = {kapot: true}; }
+  }
+  if(H.geluid && H.geluid.hoofd){
+    const afst = camera.position.distanceTo(hp);
+    const vol = geluidAan ? H.toeren * Math.pow(Math.max(0, 1 - afst / 1100), 2) * 0.9 : 0;
+    const nu = audioCtx.currentTime;
+    H.geluid.hoofd.gain.setTargetAtTime(vol, nu, 0.1);
+    H.geluid.lfo.frequency.setTargetAtTime(Math.max(0.5, 21 * H.toeren), nu, 0.2);   // vijf bladen × ~4 rondjes per seconde
+    H.geluid.turb.frequency.setTargetAtTime(300 + 900 * H.toeren, nu, 0.3);
+  }
+}
+
 // ── alles wat beweegt aan de toren, elk beeldje ──
 let torenFrames = 0, torenSpiegelKlaar = false;
 const TOREN_DAGLICHT = zon.intensity;
@@ -1934,12 +2332,16 @@ function updateToren(dt, t){
   const dx = camera.position.x - TOREN.x, dz = camera.position.z - TOREN.z, ver = Math.hypot(dx, dz);
   // donkerder buiten (onweer, as van de vulkaan) → de lampen binnen vallen meer op
   const donker = Math.max(0, Math.min(1, 1 - zon.intensity / TOREN_DAGLICHT));
-  a.gevel.emissiveIntensity = 0.16 + donker * 1.3;
+  if(a.gevelUni) a.gevelUni.uDonker.value = donker;   // bij onweer gaan er meer lampen aan in de kamers
   a.plafond.emissiveIntensity = 1 + donker;
   // vliegtuiglichten: rood knippert, wit flitst kort
   const fase = t % 1.6;
   a.rood.color.setHex(fase < 0.8 ? 0xff1a1a : 0x3a0808);
   a.wit.color.setHex((t % 1.5) < 0.08 ? 0xffffff : 0x555555);
+  a.roodGloed.opacity = fase < 0.8 ? 0.9 : 0.04;
+  a.witGloed.opacity = (t % 1.5) < 0.08 ? 1 : 0;
+  a.lampGloed.opacity = 0.12 + donker * 0.9;
+  updateHeli(dt, t);
   if(ver > 900) return;
   if(a.draaideur) a.draaideur.rotation.y += dt * 0.5;
   if(a.golfjes){ a.golfjes.offset.x = t * 0.012; a.golfjes.offset.y = t * 0.007; }
