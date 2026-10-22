@@ -9012,6 +9012,143 @@ function updateWolkenV2(dt, t){
     u.dekking.value = 0.5 + 0.42 * storm; u.donker.value = Math.min(1, storm * 1.1 + uitb * 0.5); u.flits.value = flits;
   }
 }
+
+// ══════════════════════════════════════════════════════════════════
+// 🧍 JEZELF ZIEN — derdepersoons-camera (Brian 22 okt: "maak dat ik mijzelf zie, uit dit
+// perspectief", met een foto uit Fortnite en zijn eigen ontwerp: een jongen met bruin haar
+// in een wit-zwart pantserpak met blauw gloeiende lijnen, logo CX).
+// Het lijf is een echt 3D-model van een jongen (Microsoft Rocketbox, MIT-licentie). Het pak
+// is er zelf overheen geschilderd: hoekige witte platen, zwart pak ertussen, zwarte
+// handschoenen, witte laarzen, en blauwe lijnen die écht gloeien.
+// Lopen, rennen, springen en zwemmen bewegen de botten. Met T wissel je tussen jezelf
+// zien en door je eigen ogen kijken.
+// ══════════════════════════════════════════════════════════════════
+const SPELER = {derde: true, groep: new THREE.Group(), klaar: false, fase: 0, kijkYaw: 0, botten: null, vorige: new THREE.Vector3(), snelheid: 0};
+try { SPELER.derde = localStorage.getItem('deluxe-eiland-derde') !== '0'; } catch(e){}
+scene.add(SPELER.groep);
+(function laadSpeler(){
+  if(!THREE.GLTFLoader) return;
+  const tl = new THREE.TextureLoader(), tx = (u) => { const t = tl.load('speler/' + u); t.flipY = false; t.anisotropy = 4; return t; };
+  new THREE.GLTFLoader().load('speler/model.glb', g => {
+    const pak = new THREE.MeshStandardMaterial({map: tx('pak.jpg'), normalMap: tx('pak_n.jpg'), emissiveMap: tx('pak_gloed.jpg'), emissive: 0xffffff, emissiveIntensity: 2.4, roughness: 0.38, metalness: 0.0, skinning: true});
+    pak.envMapIntensity = 0.6;
+    const hoofd = new THREE.MeshStandardMaterial({map: tx('head.jpg'), normalMap: tx('head_n.jpg'), roughness: 0.6, skinning: true});
+    g.scene.traverse(o => {
+      if(!o.isMesh) return;
+      const kies = (m) => /head/i.test(m.name) ? hoofd : pak;
+      o.material = Array.isArray(o.material) ? o.material.map(kies) : kies(o.material);
+      o.castShadow = true; o.frustumCulled = false;
+    });
+    // botnamen: 'Bip01_L_Hand' (of Bip02 bij dit model) → we zetten ze allemaal onder 'Bip01_...'
+    const B = {}; g.scene.traverse(o => { if(o.isBone) B[o.name.replace(/^Bip0\d_/, 'Bip01_')] = o; });
+    SPELER.groep.add(g.scene);
+    g.scene.updateMatrixWorld(true);
+    const wp = (o) => o.getWorldPosition(new THREE.Vector3());
+    // armen omlaag uit de T-houding (een klein beetje van het lijf af), ellebogen licht gebogen
+    const richt = (bot, kind, dir) => {
+      bot.updateMatrixWorld(true);
+      const nu = wp(kind).sub(wp(bot)).normalize();
+      const q = new THREE.Quaternion().setFromUnitVectors(nu, dir.clone().normalize());
+      const wq = bot.getWorldQuaternion(new THREE.Quaternion()), pq = bot.parent.getWorldQuaternion(new THREE.Quaternion());
+      bot.quaternion.copy(pq.invert().multiply(q.multiply(wq))); bot.updateMatrixWorld(true);
+    };
+    for(const [s, sx] of [['L', 1], ['R', -1]]){
+      richt(B[`Bip01_${s}_UpperArm`], B[`Bip01_${s}_Forearm`], new THREE.Vector3(sx * 0.17, -1, -0.02));
+      richt(B[`Bip01_${s}_Forearm`], B[`Bip01_${s}_Hand`], new THREE.Vector3(sx * 0.08, -1, 0.22));
+      richt(B[`Bip01_${s}_Hand`], B[`Bip01_${s}_Finger2`], new THREE.Vector3(sx * 0.05, -1, 0.15));
+      for(const f of [1, 2, 3, 4]){ const a = B[`Bip01_${s}_Finger${f}`], b = B[`Bip01_${s}_Finger${f}1`]; if(a && b){ const voor = wp(b).sub(wp(a)).normalize(); richt(a, b, voor.add(new THREE.Vector3(0, 0, 0.5))); } }
+    }
+    // per bewegend bot: de rust-houding + de "kanteldraai-as" (zijwaarts, in het stelsel van zijn ouder)
+    const X = new THREE.Vector3(1, 0, 0);
+    const bot = (naam) => { const b = B[naam]; if(!b) return null; const pq = b.parent.getWorldQuaternion(new THREE.Quaternion()).invert(); return {b, rust: b.quaternion.clone(), as: X.clone().applyQuaternion(pq).normalize()}; };
+    SPELER.botten = {};
+    for(const n of ['L_Thigh', 'R_Thigh', 'L_Calf', 'R_Calf', 'L_Foot', 'R_Foot', 'L_UpperArm', 'R_UpperArm', 'L_Forearm', 'R_Forearm', 'Spine', 'Spine1', 'Neck', 'Head', 'Pelvis']) SPELER.botten[n] = bot('Bip01_' + n);
+    SPELER.voetY = Math.min(wp(B['Bip01_L_Foot']).y, wp(B['Bip01_R_Foot']).y) - 0.08;
+    SPELER.bekkenY = wp(B['Bip01_Pelvis']).y;
+    g.scene.position.y = -SPELER.voetY;
+    SPELER.model = g.scene; SPELER.klaar = true;
+  }, undefined, e => console.warn('speler niet geladen', e));
+})();
+const _sq = new THREE.Quaternion();
+function draaiBot(n, hoek){ const d = SPELER.botten[n]; if(!d) return; d.b.quaternion.copy(d.rust); if(hoek) d.b.quaternion.premultiply(_sq.setFromAxisAngle(d.as, hoek)); }
+function updateSpelerModel(dt){
+  const S = SPELER;
+  const tonen = S.derde && S.klaar && gestart && !dood;
+  S.groep.visible = tonen;
+  for(const h of handen) h.visible = !S.derde;
+  if(!tonen) return;
+  const voet = new THREE.Vector3(camera.position.x, spelerY, camera.position.z);
+  const v = Math.hypot(voet.x - S.vorige.x, voet.z - S.vorige.z) / Math.max(dt, 0.001);
+  S.vorige.copy(voet);
+  S.snelheid += (Math.min(v, 14) - S.snelheid) * Math.min(1, dt * 8);
+  S.groep.position.copy(voet);
+  if(zwemt) S.groep.position.y = -0.55 - 1.0;
+  // het lijf draait naar waar je heen kijkt (zoals in Fortnite), zacht
+  const doel = yaw + Math.PI;
+  let dy = doel - S.kijkYaw; while(dy > Math.PI) dy -= Math.PI * 2; while(dy < -Math.PI) dy += Math.PI * 2;
+  if(S.snelheid > 0.3 || Math.abs(dy) > 1.2) S.kijkYaw += dy * Math.min(1, dt * 10);
+  S.groep.rotation.y = S.kijkYaw;
+  // ── de bewegingen ──
+  const loop = Math.min(1, S.snelheid / 4.5), ren = Math.max(0, Math.min(1, (S.snelheid - 6) / 5));
+  S.fase += dt * (S.snelheid > 0.2 ? 1.6 + S.snelheid * 0.75 : 0);
+  const f = S.fase, sw = Math.sin(f);
+  const been = (0.55 + ren * 0.35) * loop, arm = (0.45 + ren * 0.45) * loop;
+  const lucht = !opGrond && !zwemt && !adminVlieg;
+  if(zwemt){
+    const sl = Math.sin(performance.now() / 1000 * 3);
+    draaiBot('L_Thigh', 0.4 * sl); draaiBot('R_Thigh', -0.4 * sl); draaiBot('L_Calf', 0.3); draaiBot('R_Calf', 0.3);
+    draaiBot('L_UpperArm', -2.2 + 0.6 * sl); draaiBot('R_UpperArm', -2.2 - 0.6 * sl); draaiBot('L_Forearm', -0.3); draaiBot('R_Forearm', -0.3);
+    draaiBot('Spine', 0.5); draaiBot('Spine1', 0); draaiBot('Neck', -0.5); draaiBot('Head', 0); draaiBot('L_Foot', 0.5); draaiBot('R_Foot', 0.5); draaiBot('Pelvis', 0);
+    return;
+  }
+  if(lucht){
+    draaiBot('L_Thigh', -0.9); draaiBot('R_Thigh', -0.3); draaiBot('L_Calf', 1.3); draaiBot('R_Calf', 0.7);
+    draaiBot('L_UpperArm', -0.9); draaiBot('R_UpperArm', 0.5); draaiBot('L_Forearm', -0.7); draaiBot('R_Forearm', -0.5);
+    draaiBot('Spine', 0.1); draaiBot('Spine1', 0); draaiBot('Neck', 0); draaiBot('Head', 0); draaiBot('L_Foot', 0.3); draaiBot('R_Foot', 0.2); draaiBot('Pelvis', 0);
+    return;
+  }
+  // lopen/rennen (min = naar voren); bij stilstaan rustig ademhalen
+  const adem = Math.sin(performance.now() / 1000 * 1.8) * 0.02 * (1 - loop);
+  draaiBot('L_Thigh', -sw * been - ren * 0.15); draaiBot('R_Thigh', sw * been - ren * 0.15);
+  draaiBot('L_Calf', Math.max(0, Math.sin(f - 1.1)) * (0.9 + ren * 0.6) * loop + ren * 0.2);
+  draaiBot('R_Calf', Math.max(0, Math.sin(f + Math.PI - 1.1)) * (0.9 + ren * 0.6) * loop + ren * 0.2);
+  draaiBot('L_Foot', -Math.max(0, sw) * 0.3 * loop); draaiBot('R_Foot', -Math.max(0, -sw) * 0.3 * loop);
+  draaiBot('L_UpperArm', sw * arm); draaiBot('R_UpperArm', -sw * arm);
+  draaiBot('L_Forearm', -(0.25 + ren * 0.9) * loop - 0.12 - Math.max(0, sw) * 0.3 * loop);
+  draaiBot('R_Forearm', -(0.25 + ren * 0.9) * loop - 0.12 - Math.max(0, -sw) * 0.3 * loop);
+  draaiBot('Spine', 0.05 * loop + ren * 0.18 + adem); draaiBot('Spine1', adem); draaiBot('Neck', -ren * 0.15); draaiBot('Head', -0.04 * loop);
+  draaiBot('Pelvis', 0);
+  S.model.position.y = -S.voetY + Math.abs(Math.cos(f)) * 0.04 * loop;   // op en neer bij elke stap
+}
+// de camera tijdelijk achter de speler zetten (vlak vóór het tekenen), en daarna terug
+const _oog = new THREE.Vector3(), _vw = new THREE.Vector3(), _rechts = new THREE.Vector3();
+function cameraAchter(){
+  if(!(SPELER.derde && SPELER.klaar && gestart && !dood)) return false;
+  _oog.copy(camera.position);
+  camera.getWorldDirection(_vw);
+  _rechts.set(-_vw.z, 0, _vw.x).normalize();
+  const binnen = typeof KANTOOR !== 'undefined' && KANTOOR.actief;
+  const afst = binnen ? 1.7 : 2.3;
+  camera.position.copy(_oog).addScaledVector(_vw, -afst).addScaledVector(_rechts, 0.5);
+  camera.position.y -= 0.05;
+  // niet door de grond
+  const g = hoogteOp(camera.position.x, camera.position.z) + 0.4;
+  if(!binnen && camera.position.y < g) camera.position.y = g;
+  return true;
+}
+const spelerKnop = document.createElement('button');
+spelerKnop.textContent = '👁';
+spelerKnop.title = 'T: jezelf zien / door je eigen ogen kijken';
+spelerKnop.style.cssText = 'position:fixed;right:14px;bottom:86px;width:46px;height:46px;border-radius:12px;border:0;background:rgba(10,14,20,0.6);color:#fff;font-size:22px;cursor:pointer;z-index:40';
+document.body.appendChild(spelerKnop);
+function wisselPerspectief(){
+  SPELER.derde = !SPELER.derde;
+  try { localStorage.setItem('deluxe-eiland-derde', SPELER.derde ? '1' : '0'); } catch(e){}
+  zeg(SPELER.derde ? '🧍 Je ziet jezelf (T = door je eigen ogen)' : '👀 Door je eigen ogen (T = jezelf zien)');
+}
+spelerKnop.onclick = wisselPerspectief;
+addEventListener('keydown', e => { if(e.code === 'KeyT' && gestart && !(e.target && e.target.tagName === 'INPUT')) wisselPerspectief(); });
+
 function loop(nu){
   requestAnimationFrame(loop);
   const t = nu / 1000;
@@ -9062,8 +9199,11 @@ function loop(nu){
   camera.rotateY(yaw);
   camera.rotateX(pitch);
   if(schok > 0.002) camera.rotateZ(Math.sin(performance.now() * 0.045) * 0.035 * schok);   // de dreun van een vallende boom
+  updateSpelerModel(dt);                       // 🧍 jezelf zien: lopen, rennen, springen, zwemmen
+  const achter = cameraAchter();               // camera even achter je zetten…
   _t = performance.now();
   renderer.render(scene, camera);
+  if(achter) camera.position.copy(_oog);      // …en weer terug (het spel rekent met je ogen)
   _m.render += performance.now() - _t; _m.frames++;
   if(_m.frames === 1) tik('eerste beeldje getekend');
 }
