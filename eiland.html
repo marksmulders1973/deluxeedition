@@ -102,6 +102,7 @@
   <p style="font-size:13px">💻 WASD = lopen · Shift = rennen · spatie = springen · muis = kijken<br>
      📱 rondje links = lopen · vegen rechts = kijken · groene knop = springen<br>
      🏊 in het water kun je zwemmen — maar niet te ver!</p>
+  <p style="font-size:10px;opacity:0.6">🗽 Vrijheidsbeeld: 3D-scan door Scan the World / Cool3DModel (CC BY) · mensen: Microsoft Rocketbox (MIT)</p>
   <button class="knop">▶ STAP OP HET EILAND</button>
 </div>
 
@@ -2492,107 +2493,45 @@ function metKamers(mat, soort, texMeter, tint){
     const fortGeo = new THREE.ExtrudeGeometry(ster, {depth: 7, bevelEnabled: true, bevelThickness: 0.4, bevelSize: 0.4, bevelSegments: 1});
     const fort = new THREE.Mesh(fortGeo, [new THREE.MeshStandardMaterial({color: 0x6e8a4a, roughness: 0.95}), granietFort]);
     fort.rotation.x = -Math.PI / 2; sg.add(fort);
-    // de sokkel: voet, schacht met portalen aan vier kanten, een balkon en de bovenrand
-    const sok = [];
-    const blok = (w, h, d, y, x = 0, z = 0) => { const m0 = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), graniet); m0.position.set(x, y + h / 2, z); sg.add(m0); sok.push(m0); return m0; };
-    blok(21, 2.2, 21, 7); blok(19, 1.2, 19, 9.2);
-    const schacht = new THREE.Mesh(new THREE.CylinderGeometry(7.0 * Math.SQRT2, 7.8 * Math.SQRT2, 15, 4, 1), graniet); schacht.rotation.y = Math.PI / 4; schacht.position.y = 10.4 + 7.5; sg.add(schacht);
-    for(let s = 0; s < 4; s++){
-      const a = s * Math.PI / 2, ux = Math.sin(a), uz = Math.cos(a);
-      const portaal = blok(7, 9, 1.4, 12, ux * 7.4, uz * 7.4); portaal.rotation.y = a;
-      const gat = new THREE.Mesh(new THREE.BoxGeometry(4.2, 6, 0.3), new THREE.MeshStandardMaterial({color: 0x2b2824, roughness: 1})); gat.position.set(ux * 8.15, 13.5, uz * 8.15); gat.rotation.y = a; sg.add(gat);
-      for(const zij of [-1, 1]){ const zuil = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 6, 10), graniet); zuil.position.set(ux * 8.4 + uz * zij * 2.5, 13.5, uz * 8.4 - ux * zij * 2.5); sg.add(zuil); }
-    }
-    blok(17, 0.8, 17, 25.4);                                  // balkon
-    blok(15, 4, 15, 26.2); blok(16, 0.8, 16, 30.2);
-    for(let s = 0; s < 4; s++) for(let k = -2; k <= 2; k++){   // ronde schilden op de bovenrand
-      const a = s * Math.PI / 2, ux = Math.sin(a), uz = Math.cos(a);
-      const schild = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.2, 16), graniet); schild.rotation.x = Math.PI / 2; schild.rotation.y = a;
-      schild.position.set(ux * 7.55 + uz * k * 2.6, 28.2, uz * 7.55 - ux * k * 2.6); sg.add(schild);
-    }
-    const top = 31;
-    // het koper: groen uitgeslagen (verdigris) met donkere regenstrepen
-    const cc = canvas(512, 512), cg = cc.getContext('2d');
-    cg.fillStyle = '#6fa391'; cg.fillRect(0, 0, 512, 512);
-    for(let i = 0; i < 260; i++){ const x = r() * 512, R0 = 10 + r() * 60, y = r() * 512, gr = cg.createRadialGradient(x, y, 0, x, y, R0); gr.addColorStop(0, r() < 0.5 ? 'rgba(140,190,170,0.35)' : 'rgba(60,100,85,0.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); cg.fillStyle = gr; cg.fillRect(x - R0, y - R0, R0 * 2, R0 * 2); }
-    for(let i = 0; i < 120; i++){ const x = r() * 512, l = 40 + r() * 200, y = r() * 512; const gr = cg.createLinearGradient(0, y, 0, y + l); gr.addColorStop(0, 'rgba(40,60,52,0.35)'); gr.addColorStop(1, 'rgba(40,60,52,0)'); cg.fillStyle = gr; cg.fillRect(x, y, 2 + r() * 5, l); }
-    for(let i = 0; i < 20000; i++){ const v0 = r(); cg.fillStyle = `rgba(${v0 < 0.5 ? '30,50,45' : '170,215,195'},0.12)`; cg.fillRect(r() * 512, r() * 512, 1, 1); }
-    const koper = new THREE.MeshStandardMaterial({map: tex(cc), roughness: 0.62, metalness: 0.25});
-    const goud = new THREE.MeshStandardMaterial({color: 0xf2c55a, emissive: 0xb07010, emissiveIntensity: 0.6, metalness: 0.9, roughness: 0.22, envMap: env, envMapIntensity: 1.2});
-    const st = new THREE.Group(); st.position.y = top; st.scale.setScalar(1.12); sg.add(st);
-    const voeg = (g, mat = koper) => { const m0 = new THREE.Mesh(g, mat); st.add(m0); return m0; };
-    // de mantel: een draaivorm met diepe plooien die naar onder toe dieper worden
-    const prof = [[0, 0], [4.6, 0], [4.55, 0.6], [4.2, 3], [3.85, 7], [3.5, 11], [3.25, 14.5], [3.35, 17.5], [3.15, 19.5], [2.6, 20.6], [1.4, 21.3], [0.9, 21.8], [0, 22]].map(([x, y]) => new THREE.Vector2(x, y));
-    const mantel = new THREE.LatheGeometry(prof, 96);
-    { const p = mantel.attributes.position;
-      for(let q = 0; q < p.count; q++){
-        const x = p.getX(q), y = p.getY(q), z = p.getZ(q), a = Math.atan2(z, x), rr = Math.hypot(x, z);
-        if(rr < 0.01) continue;
-        const diep = Math.min(1, Math.max(0, (19 - y) / 10));
-        const plooi = 1 + (0.09 * Math.sin(a * 11 + y * 0.28 + Math.sin(a * 3) * 1.5) + 0.04 * Math.sin(a * 23 + y * 0.6) + 0.02 * Math.sin(a * 41)) * diep;
-        const voor = a > 0.2 && a < 1.4 ? 1 + 0.04 * Math.sin((a - 0.2) * 2.6) * Math.min(1, y / 6) : 1;   // het rechterbeen dat naar voren stapt
-        p.setXYZ(q, Math.cos(a) * rr * plooi * voor, y, Math.sin(a) * rr * plooi * voor);
+    // 🗽 v3 (Brian 26 okt: "maak de Statue of Liberty 10000x realistischer"): geen zelfgebouwd
+    // beeld meer, maar een ECHTE 3D-SCAN van het Vrijheidsbeeld mét sokkel (Scan the World,
+    // via Cool3DModel op Thingiverse, CC BY — zie vrijheidsbeeld/LICENSE.txt): 203.473 driehoekjes
+    // met elke plooi van de mantel, het gezicht, de kroon, de tafel en de fakkel. De kleuren zijn
+    // vooraf berekend: groen uitgeslagen koper (lichter waar de regen erop valt, donker in de
+    // plooien), granieten sokkel, en de vlam van de fakkel van bladgoud.
+    // Het bestand (3,4 MB) wordt op de achtergrond geladen; het fort staat er meteen.
+    const SCHAAL_BEELD = 8.0;                     // scan (9,1 hoog) → 73 m sokkel + beeld, zoals het echte
+    const beeldMat = new THREE.MeshStandardMaterial({color: 0xd2dcd8, vertexColors: true, roughness: 0.62, metalness: 0.15, envMap: env, envMapIntensity: 0.55});   // iets matter en grijzer, zoals oud koper
+    const goudMat = new THREE.MeshStandardMaterial({color: 0xf0c060, emissive: 0xa06810, emissiveIntensity: 0.55, metalness: 0.95, roughness: 0.22, envMap: env, envMapIntensity: 1.3});
+    stadAnim.vlam = {material: goudMat};
+    fetch('vrijheidsbeeld/beeld.bin').then(r => { if(!r.ok) throw new Error('beeld ' + r.status); return r.arrayBuffer(); }).then(buf => {
+      const kop = new Uint32Array(buf, 0, 4), mm = new Float32Array(buf, 16, 6);
+      const nv = kop[0], ni = kop[1], nVlam = kop[2];
+      const Q = new Uint16Array(buf, 40, nv * 3), C = new Uint8Array(buf, 40 + nv * 6, nv * 3);
+      const iBegin = 40 + nv * 9 + ((4 - (40 + nv * 9) % 4) % 4), I = new Uint32Array(buf, iBegin, ni * 3);
+      // scan: x, y = grond, z = omhoog → hier: x, omhoog, -y; midden van de sokkel in de oorsprong
+      const pos = new Float32Array(nv * 3), cx = (mm[0] + mm[3]) / 2, cy = (mm[1] + mm[4]) / 2;
+      for(let i = 0; i < nv; i++){
+        const x = mm[0] + Q[i * 3] / 65535 * (mm[3] - mm[0]), y = mm[1] + Q[i * 3 + 1] / 65535 * (mm[4] - mm[1]), z = mm[2] + Q[i * 3 + 2] / 65535 * (mm[5] - mm[2]);
+        pos[i * 3] = (x - cx) * SCHAAL_BEELD; pos[i * 3 + 1] = (z - mm[2]) * SCHAAL_BEELD; pos[i * 3 + 2] = -(y - cy) * SCHAAL_BEELD;
       }
-      mantel.computeVertexNormals(); }
-    voeg(mantel);
-    // de stola: een schuine doek over de linkerschouder naar de rechterheup
-    const stolaPad = new THREE.CatmullRomCurve3([[2.9, 20.2, -0.6], [2.2, 18.2, 2.4], [0, 16.3, 3.55], [-2.4, 14.6, 2.5], [-3.5, 13.4, 0], [-2.6, 13.2, -2.4], [0, 14.6, -3.4], [2.5, 17.4, -2.5], [2.9, 20.2, -0.6]].map(([x, y, z]) => new THREE.Vector3(x, y, z)), true);
-    const stola = new THREE.TubeGeometry(stolaPad, 120, 0.55, 8, true);
-    { const p = stola.attributes.position; for(let q = 0; q < p.count; q++){ const y = p.getY(q); p.setY(q, y + 0.12 * Math.sin(p.getX(q) * 5 + p.getZ(q) * 4)); } stola.computeVertexNormals(); }
-    voeg(stola);
-    // het hoofd: gezicht met neus, kin, wenkbrauwen en het haar in een knot
-    const hoofd = new THREE.SphereGeometry(1.5, 32, 24);
-    { const p = hoofd.attributes.position;
-      for(let q = 0; q < p.count; q++){
-        let x = p.getX(q), y = p.getY(q), z = p.getZ(q);
-        y *= 1.18; z *= 1.05;
-        if(z > 0.6){ const f = Math.exp(-(x * x) / 0.08) * Math.exp(-((y + 0.05) ** 2) / 0.35); z += f * 0.42; }     // neus
-        if(z > 0.4 && y > 0.2 && y < 0.55) z += 0.12 * Math.exp(-((Math.abs(x) - 0.5) ** 2) / 0.05);                // wenkbrauwen
-        if(z > 0.4 && Math.abs(y - 0.08) < 0.2) z -= 0.12 * Math.exp(-((Math.abs(x) - 0.5) ** 2) / 0.04);           // oogkassen
-        if(y < -0.9) { const f = (y + 0.9); x *= 1 + f * 0.25; }                                                   // smallere kin
-        p.setXYZ(q, x, y, z);
-      }
-      hoofd.computeVertexNormals(); }
-    const hoofdM = voeg(hoofd); hoofdM.position.set(0, 23.4, 0.15);
-    const knot = voeg(new THREE.SphereGeometry(0.75, 16, 12)); knot.position.set(0, 23.6, -1.45);
-    const nek = voeg(new THREE.CylinderGeometry(0.75, 0.95, 1.6, 16)); nek.position.set(0, 22, 0);
-    // de kroon: een diadeem met 25 raampjes en 7 stralen
-    const diadeem = voeg(new THREE.CylinderGeometry(1.7, 1.75, 0.75, 32, 1, true)); diadeem.position.set(0, 24.6, 0.1);
-    for(let k = 0; k < 9; k++){ const a = -0.95 + k * 0.24; const raampje = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.32, 0.1), new THREE.MeshStandardMaterial({color: 0x1a2228, roughness: 0.2})); raampje.position.set(Math.sin(a) * 1.76, 24.6, 0.1 + Math.cos(a) * 1.76); raampje.rotation.y = a; st.add(raampje); }
-    const omhoog = new THREE.Vector3(0, 1, 0);
-    for(let q = 0; q < 7; q++){
-      const a = (q - 3) * 0.42, dd = new THREE.Vector3(Math.sin(a) * 0.82, 0.58, Math.cos(a) * 0.82).normalize();
-      const straal = voeg(new THREE.ConeGeometry(0.3, 3.8, 4));
-      straal.quaternion.setFromUnitVectors(omhoog, dd);
-      straal.position.set(dd.x * 3.4, 24.8 + dd.y * 3.4 - 0.9, 0.1 + dd.z * 3.4);
-    }
-    // de rechterarm omhoog: een mouw die van de schouder afzakt, de arm, de hand en de fakkel
-    const armPad = new THREE.CatmullRomCurve3([new THREE.Vector3(-2.4, 19.6, 0.1), new THREE.Vector3(-2.9, 23.5, 0.15), new THREE.Vector3(-3.2, 27.5, 0.2), new THREE.Vector3(-3.35, 30.5, 0.2)]);
-    const arm = new THREE.TubeGeometry(armPad, 24, 0.62, 14);
-    { const p = arm.attributes.position; for(let q = 0; q < p.count; q++){ const y = p.getY(q), f = Math.max(0, (24 - y) / 4.4); const x = p.getX(q) + 2.9, z = p.getZ(q) - 0.15; const s = 1 + f * 0.75 + 0.05 * Math.sin(Math.atan2(z, x) * 9); p.setX(q, -2.9 + x * s); p.setZ(q, 0.15 + z * s); } arm.computeVertexNormals(); }
-    voeg(arm);
-    const hand = voeg(new THREE.SphereGeometry(0.62, 14, 10)); hand.scale.set(1, 1.3, 1); hand.position.set(-3.35, 30.8, 0.2);
-    const greep = voeg(new THREE.CylinderGeometry(0.5, 0.36, 2.6, 16)); greep.position.set(-3.35, 32.3, 0.2);
-    const beker = voeg(new THREE.CylinderGeometry(1.0, 0.55, 1.4, 20)); beker.position.set(-3.35, 34.1, 0.2);
-    const balkon = voeg(new THREE.TorusGeometry(1.15, 0.12, 6, 24), goud); balkon.rotation.x = Math.PI / 2; balkon.position.set(-3.35, 34.75, 0.2);
-    const vlamGeo = new THREE.ConeGeometry(0.95, 2.7, 16, 4);
-    { const p = vlamGeo.attributes.position; for(let q = 0; q < p.count; q++){ const y = p.getY(q), a = Math.atan2(p.getZ(q), p.getX(q)); const f = 1 + 0.18 * Math.sin(a * 5 + y * 3); p.setX(q, p.getX(q) * f); p.setZ(q, p.getZ(q) * f); } vlamGeo.computeVertexNormals(); }
-    const vlam = new THREE.Mesh(vlamGeo, goud); vlam.position.set(-3.35, 36.1, 0.2); st.add(vlam);
-    // de linkerarm met de tafel
-    const arm2Pad = new THREE.CatmullRomCurve3([new THREE.Vector3(2.5, 19.5, 0.0), new THREE.Vector3(3.3, 17.5, 0.6), new THREE.Vector3(3.2, 15.8, 1.6)]);
-    voeg(new THREE.TubeGeometry(arm2Pad, 16, 0.55, 12));
-    const tc = canvas(256, 512), tg = tc.getContext('2d');
-    tg.drawImage(cc, 0, 0, 256, 512);
-    tg.fillStyle = 'rgba(30,55,48,0.75)'; tg.font = 'bold 34px Times New Roman'; tg.textAlign = 'center';
-    tg.font = 'bold 40px Times New Roman'; tg.fillText('JULY IV', 128, 220); tg.font = 'bold 34px Times New Roman'; tg.fillText('MDCCLXXVI', 128, 290);
-    const tafel = new THREE.Mesh(new THREE.BoxGeometry(0.55, 4.8, 2.9), [koper, new THREE.MeshStandardMaterial({map: tex(tc, false), roughness: 0.6, metalness: 0.25}), koper, koper, koper, koper]);
-    tafel.position.set(3.35, 16.6, 1.35); tafel.rotation.z = -0.22; tafel.rotation.y = Math.PI / 2 - 0.35; st.add(tafel);
-    // de gebroken ketting bij haar voeten
-    for(let k = 0; k < 6; k++){ const schakel = voeg(new THREE.TorusGeometry(0.32, 0.09, 6, 12)); schakel.position.set(1.5 + k * 0.5, 0.2, 3.2 + Math.sin(k) * 0.3); schakel.rotation.set(Math.PI / 2, k % 2 ? 0 : Math.PI / 2, 0.3 * k); }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.BufferAttribute(C, 3, true));
+      g.setIndex(new THREE.BufferAttribute(I, 1));
+      g.computeVertexNormals();
+      g.addGroup(0, (ni - nVlam) * 3, 0); g.addGroup((ni - nVlam) * 3, nVlam * 3, 1);
+      const beeld = new THREE.Mesh(g, [beeldMat, goudMat]);
+      beeld.position.y = 7.0;                      // op het fort
+      beeld.rotation.y = -2.18;                    // in de scan kijkt ze schuin; zo kijkt ze recht naar het oosten (het strand)
+      beeld.castShadow = true; beeld.receiveShadow = true;
+      sg.add(beeld);
+      renderer.shadowMap.needsUpdate = true;
+    }).catch(e => console.warn('Vrijheidsbeeld niet geladen', e));
     sg.traverse(o => { if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
     groep.add(sg);
     stadVoegBots({x0: V.x - 24, x1: V.x + 24, z0: V.z - 24, z1: V.z + 24, y0: y0 - 2, y1: y0 + 7.4});
-    stadAnim.vlam = vlam;
+    stadVoegBots({x0: V.x - 13, x1: V.x + 13, z0: V.z - 13, z1: V.z + 13, y0: y0 + 7, y1: y0 + 36});   // de sokkel
   }
 
   // ════════ 6. ALLES SAMENVOEGEN ════════

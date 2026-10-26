@@ -1,0 +1,6 @@
+Vrijheidsbeeld (Statue of Liberty) — 3D-scan
+"Statue of Liberty in Manhattan, New York" by Cool3DModel on Thingiverse
+https://www.thingiverse.com/thing:2445539
+Originally 3D scanned by Scan the World (MyMiniFactory).
+License: Creative Commons - Attribution (CC BY), https://creativecommons.org/licenses/by/4.0/
+Wijzigingen: punten samengevoegd, kleuren (koper/graniet/goud) en plooischaduw toegevoegd, omgezet naar een eigen binair formaat (beeld.bin).
