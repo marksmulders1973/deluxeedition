@@ -7,7 +7,9 @@
 // npm-pakket nodig.
 // ══════════════════════════════════════════════════════
 const SUPA_URL = process.env.SUPABASE_URL;
-const SUPA_KEY = process.env.SUPABASE_ANON_KEY;
+// Service-sleutel (alleen server-side, nooit in de browser) zodat de tabellen
+// achter RLS kunnen; valt terug op de anon-sleutel zolang die ontbreekt (3 nov 2026).
+const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
 const KOPPEN = { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` };
 
 export async function kvLees(sleutel, anders = null) {

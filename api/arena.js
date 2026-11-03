@@ -8,7 +8,9 @@
 // ══════════════════════════════════════════════════════
 
 const SUPA_URL = process.env.SUPABASE_URL;
-const SUPA_KEY = process.env.SUPABASE_ANON_KEY;
+// Service-sleutel (alleen server-side, nooit in de browser) zodat de tabellen
+// achter RLS kunnen; valt terug op de anon-sleutel zolang die ontbreekt (3 nov 2026).
+const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
 
 const LETTERS = "BCDFGHJKLMNPRSTVWXZ";
 const KLEUREN = ["#ff3b3b","#3b82ff","#22c55e","#f59e0b","#a855f7","#ec4899","#06b6d4","#f97316","#84cc16","#6366f1"];

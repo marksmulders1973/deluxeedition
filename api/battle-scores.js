@@ -5,7 +5,9 @@
 // ══════════════════════════════════════════════════════
 
 const SUPA_URL = process.env.SUPABASE_URL;
-const SUPA_KEY = process.env.SUPABASE_ANON_KEY;
+// Service-sleutel (alleen server-side, nooit in de browser) zodat de tabellen
+// achter RLS kunnen; valt terug op de anon-sleutel zolang die ontbreekt (3 nov 2026).
+const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
 
 function schoon(n) { return String(n || "").trim().replace(/[^a-zA-Z0-9_\- ]/g, "").slice(0, 20); }
 
