@@ -343,7 +343,7 @@ const STAD = {px: 132, pz: 54, bx: 110, bz: 40, av: 22, st: 14};
 const VRIJHEID = {x: -270, z: 730, r: 44, h: 3.0};  // Liberty Island
 // 🏰 Castle Doom (Brian 6 nov 2026): een rotseiland in zee, links (west) van het eiland, en ver
 // daarachter het rotsje van de Doom-toren. Zie bouwCastleDoom() verderop.
-const KASTEEL = {x: -840, z: 40, r: 78, h: 9.0, rand: 14};          // vlak plateau, steile rotsrand van 14 m
+const KASTEEL = {x: -840, z: 40, r: 78, h: 11.0, rand: 9};          // vlak plateau, steile rotsrand van 14 m
 const DOOMTOREN = {x: -985, z: -160, r: 22, h: 6.0};                 // decor, buiten de haaiengrens
 const STADPLAN = (() => {
   const blokken = [], heeft = new Map();
@@ -3044,8 +3044,11 @@ function updateStad(dt, t){
   const stamMat = new THREE.MeshStandardMaterial({color: 0x4a3324, roughness: 0.95});
   const denMat = new THREE.MeshStandardMaterial({color: 0x2f5a35, roughness: 0.9});
   const roodMat = new THREE.MeshStandardMaterial({color: 0x9c2a2a, roughness: 0.85});
+  const haagMat = new THREE.MeshStandardMaterial({color: 0x2a5a2e, roughness: 0.95});
+  const waterMat = new THREE.MeshStandardMaterial({color: 0x3f8fb8, roughness: 0.15, metalness: 0.2, envMap: env, envMapIntensity: 0.8});
+  const rotsMat = new THREE.MeshStandardMaterial({color: 0x4f4c48, roughness: 0.95});
 
-  const bak = {steen: [], leien: [], koper: [], donker: [], raam: [], banier: [], goud: [], doom: [], gloei: [], stam: [], den: [], rood: []};
+  const bak = {steen: [], leien: [], koper: [], donker: [], raam: [], banier: [], goud: [], doom: [], gloei: [], stam: [], den: [], rood: [], haag: [], water: [], rots: []};
   const G = new THREE.Group(); G.position.set(C.x, Y, C.z);
 
   // uv's schalen zodat de stenen overal ~4 m per plaatje zijn (dozen: per vlak; cilinders: omtrek × hoogte)
@@ -3111,27 +3114,27 @@ function updateStad(dt, t){
     bots(x - rr - 0.9, x + rr + 0.9, z - rr - 0.9, z + rr + 0.9, h, h + 2.4);   // de kantelen-rand (niet eraf lopen)
   }
   // ── een zaal: steen met een zadeldak van leien, ramen met warm licht, schoorsteen ──
-  function zaal(x, z, w, d, h, dakH, ry = 0){
-    const g = new THREE.BoxGeometry(w, h, d); schaalDoosUV(g, w, h, d); g.rotateY(ry); g.translate(x, h / 2, z); bak.steen.push(g);
+  function zaal(x, z, w, d, h, dakH, ry = 0, y0 = 0){
+    const g = new THREE.BoxGeometry(w, h, d); schaalDoosUV(g, w, h, d); g.rotateY(ry); g.translate(x, y0 + h / 2, z); bak.steen.push(g);
     // zadeldak: driehoekig prisma (extrude), het dak steekt 1 m over
     const vorm = new THREE.Shape(); vorm.moveTo(-w / 2 - 1, 0); vorm.lineTo(w / 2 + 1, 0); vorm.lineTo(0, dakH); vorm.closePath();
     const dak = new THREE.ExtrudeGeometry(vorm, {depth: d + 2, bevelEnabled: false}); dak.translate(0, 0, -(d + 2) / 2);
     const uv = dak.attributes.uv; for(let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 3, uv.getY(i) / 3);
-    dak.rotateY(ry); dak.translate(x, h, z); bak.leien.push(dak);
+    dak.rotateY(ry); dak.translate(x, y0 + h, z); bak.leien.push(dak);
     // nok van koper
-    const nok = new THREE.BoxGeometry(0.5, 0.35, d + 2.2); nok.rotateY(ry); nok.translate(x, h + dakH, z); bak.koper.push(nok);
+    const nok = new THREE.BoxGeometry(0.5, 0.35, d + 2.2); nok.rotateY(ry); nok.translate(x, y0 + h + dakH, z); bak.koper.push(nok);
     // ramen: spitsbogen (doos + kleine kegel erboven), om en om verlicht
     const n = Math.max(2, Math.floor(d / 4.5));
     for(const kant of [-1, 1]) for(let k = 0; k < n; k++){
       const t = (k + 0.5) / n - 0.5, lx = kant * (w / 2 + 0.05), lz = t * d;
       const px = x + Math.cos(ry) * lx + Math.sin(ry) * lz, pz = z - Math.sin(ry) * lx + Math.cos(ry) * lz;
-      doos(k % 2 ? bak.raam : bak.donker, 0.3, 2.6, 1.2, px, h * 0.35, pz, ry, 1);
-      const sb = new THREE.ConeGeometry(0.62, 0.8, 4); sb.rotateY(Math.PI / 4); sb.rotateX(0); sb.rotateY(ry); sb.translate(px, h * 0.35 + 2.6 + 0.35, pz); (k % 2 ? bak.raam : bak.donker).push(sb);
+      doos(k % 2 ? bak.raam : bak.donker, 0.3, 2.6, 1.2, px, y0 + h * 0.35, pz, ry, 1);
+      const sb = new THREE.ConeGeometry(0.62, 0.8, 4); sb.rotateY(Math.PI / 4); sb.rotateX(0); sb.rotateY(ry); sb.translate(px, y0 + h * 0.35 + 2.6 + 0.35, pz); (k % 2 ? bak.raam : bak.donker).push(sb);
     }
     // schoorsteen
-    doos(bak.steen, 1.4, dakH + 2.5, 1.4, x + Math.cos(ry) * (w * 0.3), h, z - Math.sin(ry) * (w * 0.3), ry, 2);
+    doos(bak.steen, 1.4, dakH + 2.5, 1.4, x + Math.cos(ry) * (w * 0.3), y0 + h, z - Math.sin(ry) * (w * 0.3), ry, 2);
     const hx = Math.abs(Math.cos(ry)) * w / 2 + Math.abs(Math.sin(ry)) * d / 2, hz = Math.abs(Math.sin(ry)) * w / 2 + Math.abs(Math.cos(ry)) * d / 2;
-    bots(x - hx, x + hx, z - hz, z + hz, -1, h + dakH);
+    bots(x - hx, x + hx, z - hz, z + hz, y0 - 1, y0 + h + dakH);
   }
   // ── banier: groen doek met gouden rand aan een stok tegen de muur ──
   function banier(x, y, z, ry, hoog = 5){
@@ -3143,69 +3146,168 @@ function updateStad(dt, t){
     cil(bak.stam, 0.25 * s, 0.35 * s, 3.5 * s, x, 0, z, 6);
     for(let k = 0; k < 3; k++){ const g = new THREE.ConeGeometry((2.6 - k * 0.55) * s, 3.4 * s, 8); g.translate(x, (2.2 + k * 2.1) * s + 1.7 * s, z); bak.den.push(g); }
   }
-  function roodBoom(x, z, s = 1){
-    cil(bak.stam, 0.3 * s, 0.4 * s, 2.6 * s, x, 0, z, 6);
-    for(let k = 0; k < 4; k++){ const a = k * 1.9, g = new THREE.SphereGeometry(1.7 * s, 9, 7); g.translate(x + Math.cos(a) * 0.9 * s, (3.3 + (k % 2) * 0.9) * s, z + Math.sin(a) * 0.9 * s); bak.rood.push(g); }
+  function roodBoom(x, z, s = 1, y0 = 0){
+    cil(bak.stam, 0.3 * s, 0.4 * s, 2.6 * s, x, y0, z, 6);
+    for(let k = 0; k < 4; k++){ const a = k * 1.9, g = new THREE.SphereGeometry(1.7 * s, 9, 7); g.translate(x + Math.cos(a) * 0.9 * s, y0 + (3.3 + (k % 2) * 0.9) * s, z + Math.sin(a) * 0.9 * s); bak.rood.push(g); }
   }
 
-  // ════════ HET KASTEEL ════════
-  // ringmuur: rechthoek 96 × 84 (x ±48, z ±42), poort aan de oostkant (naar de brug en het strand)
-  const W = 48, D = 42, MH = 9, DIK = 2.6;
-  muur(-W, -D, W, -D, MH, DIK, [0, -1]);                 // noordmuur
-  muur(-W, D, W, D, MH, DIK, [0, 1]);                    // zuidmuur
-  muur(-W, -D, -W, D, MH, DIK, [-1, 0]);                 // westmuur
-  muur(W, -D, W, -6, MH, DIK, [1, 0]);                   // oostmuur, met de poort in het midden
-  muur(W, 6, W, D, MH, DIK, [1, 0]);
-  // hoektorens + middentorens
-  toren(-W, -D, 6.5, 17, 9.5, {vlag: true}); toren(W, -D, 6.5, 17, 9.5); toren(-W, D, 6.5, 17, 9.5); toren(W, D, 6.5, 17, 9.5, {vlag: true});
-  toren(0, -D, 5, 14, 8); toren(-W, 0, 5, 14, 8);
-  // poortgebouw: twee torens naast de doorgang, een boog erboven en een gang erdoorheen
-  toren(W, -8.5, 4.6, 15, 8.5, {vlag: true}); toren(W, 8.5, 4.6, 15, 8.5, {vlag: true});
-  doos(bak.steen, DIK + 1.6, 4.5, 12, W, MH - 2, 0);                         // boog-balk boven de poort (ruimte eronder = 7 m)
-  doos(bak.donker, DIK + 0.2, 7, 12, W, 0, 0, 0, 1);                          // de donkere doorgang (de poort zelf)
-  for(let k = -2; k <= 2; k++) doos(bak.donker, 0.12, 6.4, 0.12, W + DIK / 2 + 0.3, 0.6, k * 1.2, 0, 1);   // het valhek: dunne spijlen
-  bots(W - 2.5, W + 2.5, -6, 6, MH - 2, MH + 2.5);
-  banier(W + DIK / 2 + 0.6, 5.5, -3.2, Math.PI / 2); banier(W + DIK / 2 + 0.6, 5.5, 3.2, Math.PI / 2);
-  // de donjon: dikke ronde toren met vier torentjes en de hoogste spits, op een sokkel
-  cil(bak.steen, 14, 13.5, 6, -10, 0, -4, 24); bots(-24, 4, -18, 10, -1, 6);
-  toren(-10, -4, 11.5, 36, 18, {vlag: true, ramen: 3});
-  for(const [dx, dz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) toren(-10 + dx * 9.5, -4 + dz * 9.5, 2.6, 30, 7, {ramen: 2});
-  // nog drie slanke torens van verschillende hoogte (het silhouet van het plaatje)
-  toren(14, -22, 3.4, 24, 11, {ramen: 2}); toren(-28, 18, 3.8, 21, 10, {ramen: 2}); toren(16, 24, 3.0, 19, 9, {ramen: 2});
-  // de grote zaal (het gebouw met het grote groene dak op plaatje 1) en de kapel
-  zaal(16, -8, 16, 34, 11, 7, Math.PI / 2 * 0);
-  zaal(10, 24, 12, 22, 9, 6);
-  zaal(-30, 24, 10, 16, 8, 5.5);
-  // banieren aan de donjon en de hallen
-  banier(-10 + 11.6, 20, -4, Math.PI / 2, 7); banier(-10 - 11.6, 20, -4, -Math.PI / 2, 7);
-  // bomen: dennen rond het plateau, rode bomen op het binnenplein en bij de poort
-  for(let k = 0; k < 18; k++){ const a = k / 18 * Math.PI * 2 + r() * 0.3, rr = 58 + r() * 14; const x = Math.cos(a) * rr, z = Math.sin(a) * rr; if(x > 40 && Math.abs(z) < 14) continue; den(x, z, 0.9 + r() * 0.7); }
-  for(const [x, z] of [[-30, -28], [30, -30], [-14, 30], [32, 30], [28, 10], [-36, -10]]) roodBoom(x, z, 0.9 + r() * 0.5);
-  for(let k = 0; k < 6; k++) roodBoom(44 + r() * 10, 12 + k * 5 - 15 + (k > 2 ? 10 : -14), 0.8 + r() * 0.4);
+  // ════════ HET KASTEEL — v2, nagebouwd naar het bovenaanzicht van Castle Doom (Fortnite) ════════
+  // Oriëntatie: in Fortnite komt de lange brug uit het zuiden het kasteel in. Hier komt de brug van
+  // het strand (oosten, +x), dus "voor" = +x en "achter" = -x. Kijk je vanaf de brug naar het kasteel
+  // (naar het westen), dan is rechts -z en links +z.
+  //   · lange stenen boogbrug → poortgebouw met twee ronde, platte torens (kantelen + koperen rand)
+  //   · lage voorhof, trap omhoog naar het hoge terras met de tuin (hagen + fontein)
+  //   · rechts (-z) de grote zaal met het grote groene leien zadeldak en dakkapellen
+  //   · links (+z) de lange vleugel (bibliotheek) met aan het eind twee kegeltorens
+  //   · achterin de donjon: vierkante voet met hoektorentjes, ronde toren erbovenop, de hoogste spits;
+  //     ernaast twee lange dunne spitsen
+  //   · rondom muren met kantelen en koperen randen, hoektorens, groene banieren, rode bomen, dennen,
+  //     rotsblokken langs de rand van het eiland en een houten steiger aan de rechterkant
+  const T = 5.0;                         // hoogte van het hoge terras boven het plateau
+  const koperRand = (x0, z0, x1, z1, y) => { const L = Math.hypot(x1 - x0, z1 - z0), ry = Math.atan2(x1 - x0, z1 - z0); doos(bak.koper, 0.35, 0.22, L, (x0 + x1) / 2, y, (z0 + z1) / 2, ry, 1); };
+  // platte toren (poort): kantelen + koperen rand, geen dak
+  function platteToren(x, z, rr, h){
+    cil(bak.steen, rr, rr, h, x, 0, z, 22);
+    cil(bak.steen, rr + 0.9, rr + 1.0, 1.6, x, h - 1.6, z, 22, 2);
+    const n = Math.round(rr * 3.4); for(let k = 0; k < n; k++){ const a = k / n * Math.PI * 2; doos(bak.steen, 0.8, 1.3, 1.0, x + Math.cos(a) * (rr + 0.5), h, z + Math.sin(a) * (rr + 0.5), -a, 2); }
+    const ring = new THREE.TorusGeometry(rr + 1.0, 0.16, 6, 28); ring.rotateX(Math.PI / 2); ring.translate(x, h + 0.05, z); bak.koper.push(ring);
+    const ring2 = new THREE.TorusGeometry(rr + 0.05, 0.14, 6, 28); ring2.rotateX(Math.PI / 2); ring2.translate(x, h * 0.55, z); bak.koper.push(ring2);
+    for(let v = 0; v < 2; v++) for(let k = 0; k < 3; k++){ const a = k / 3 * Math.PI * 2 + 0.6, yy = h * (0.3 + v * 0.32); doos(k === 1 ? bak.raam : bak.donker, 0.5, 1.8, 0.25, x + Math.cos(a) * (rr + 0.02), yy, z + Math.sin(a) * (rr + 0.02), -a + Math.PI / 2, 1); }
+    bots(x - rr, x + rr, z - rr, z + rr, -1, h);
+    bots(x - rr - 1, x + rr + 1, z - rr - 1, z + rr + 1, h, h + 2.4);
+  }
+  // hoge, dunne spits (de lange naalden naast de donjon)
+  function spits(x, z, rr, h, dakH, y0 = 0){
+    cil(bak.steen, rr, rr * 0.92, h, x, y0, z, 14);
+    cil(bak.steen, rr + 0.5, rr + 0.6, 1.2, x, y0 + h - 1.2, z, 14, 2);
+    kegel(bak.leien, rr + 0.8, dakH, x, y0 + h, z, 14);
+    kegel(bak.koper, 0.3, 3.5, x, y0 + h + dakH - 0.4, z, 8);
+    const bol = new THREE.SphereGeometry(0.28, 8, 6); bol.translate(x, y0 + h + dakH + 3.2, z); bak.koper.push(bol);
+    for(let v = 0; v < 3; v++) for(let k = 0; k < 2; k++){ const a = k * Math.PI + 0.8, yy = y0 + h * (0.25 + v * 0.25); doos(bak.raam, 0.4, 1.4, 0.2, x + Math.cos(a) * (rr + 0.02), yy, z + Math.sin(a) * (rr + 0.02), -a + Math.PI / 2, 1); }
+    bots(x - rr, x + rr, z - rr, z + rr, y0 - 1, y0 + h + dakH);
+  }
+  // terras: stenen platform (bovenkant beloopbaar), met een rand van kantelen aan de voorkant
+  function terras(x0, x1, z0, z1, h){
+    doos(bak.steen, x1 - x0, h, z1 - z0, (x0 + x1) / 2, 0, (z0 + z1) / 2);
+    bots(x0, x1, z0, z1, -1, h);
+  }
+  // trap: n treden van voren (hoog) naar achteren, elk 'tree' diep en h/n hoog, beloopbaar
+  function trap(xVoor, xAchter, zm, breed, h, n = 5){
+    const diep = (xVoor - xAchter) / n;
+    for(let k = 0; k < n; k++){ const x1 = xVoor - k * diep, x0 = x1 - diep, th = h * (k + 1) / n; doos(bak.steen, diep + 0.05, th, breed, (x0 + x1) / 2, 0, zm, 0, 2); bots(x0, x1, zm - breed / 2, zm + breed / 2, -1, th); }
+  }
+  // tuin op het terras: grasvlak, vier hagen-vierkanten, een fontein in het midden
+  function tuin(xm, zm, w, d, y){
+    const gras = new THREE.BoxGeometry(w, 0.25, d); gras.translate(xm, y + 0.12, zm); bak.den.push(gras);
+    for(const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]){ const hx = xm + sx * w * 0.26, hz = zm + sz * d * 0.26; doos(bak.haag, w * 0.34, 0.9, 0.7, hx, y + 0.2, hz - sz * d * 0.17, 0, 1); doos(bak.haag, 0.7, 0.9, d * 0.34, hx - sx * w * 0.17, y + 0.2, hz, 0, 1); }
+    cil(bak.steen, 3.2, 3.0, 0.9, xm, y + 0.2, zm, 20, 2); cil(bak.water, 2.7, 2.7, 0.3, xm, y + 0.85, zm, 20, 2);
+    cil(bak.steen, 0.5, 0.4, 2.6, xm, y + 1.0, zm, 10, 1); cil(bak.steen, 1.3, 1.1, 0.4, xm, y + 3.5, zm, 14, 1); cil(bak.water, 1.0, 1.0, 0.2, xm, y + 3.9, zm, 14, 1);
+    bots(xm - 3.2, xm + 3.2, zm - 3.2, zm + 3.2, y - 1, y + 1.1);
+  }
+  // rotsblok (donkere, platte bol) langs de rand
+  function rots(x, z, y, s){ const g = new THREE.DodecahedronGeometry(s, 0); g.scale(1, 0.7, 0.85); g.rotateY(r() * 3); g.rotateX(r() * 0.5); g.translate(x, y, z); bak.rots.push(g); }
+
+  // ── maten ──
+  const XV = 40;                                         // voorkant (poort) op x = +40, de brug begint daar
+  const XA = -62, ZB = 48, MH = 9, DIK = 2.6;            // achterkant, halve breedte, muurhoogte, muurdikte
+
+  // ── de buitenmuren (kantelen aan de buitenkant, koperen rand) ──
+  muur(XA, -ZB, XA, ZB, MH + 1, DIK, [-1, 0]);          // achtermuur (west)
+  muur(XA, -ZB, 28, -ZB, MH, DIK, [0, -1]);            // rechter zijmuur (-z)
+  muur(XA, ZB, 28, ZB, MH, DIK, [0, 1]);               // linker zijmuur (+z)
+  muur(28, -ZB, 28, -34, MH, DIK, [1, 0]);             // voormuur rechts van de voorhof
+  muur(28, 34, 28, ZB, MH, DIK, [1, 0]);               // voormuur links van de voorhof
+  // de voorhof zelf: lage muren naar het poortgebouw toe
+  muur(28, -34, XV, -34, MH - 1, DIK, [0, -1]);
+  muur(28, 34, XV, 34, MH - 1, DIK, [0, 1]);
+  muur(XV, -34, XV, -6, MH - 1, DIK, [1, 0]);
+  muur(XV, 6, XV, 34, MH - 1, DIK, [1, 0]);
+  for(const [x0, z0, x1, z1] of [[XA, -ZB, XA, ZB], [XA, -ZB, 28, -ZB], [XA, ZB, 28, ZB]]) koperRand(x0 + (x1 - x0) * 0.0, z0, x1, z1, MH + 0.95);
+
+  // ── poortgebouw: twee platte torens, poort ertussen, Doom-banier erboven ──
+  platteToren(XV, -9.5, 5.5, 18); platteToren(XV, 9.5, 5.5, 18);
+  doos(bak.steen, DIK + 2, 5, 8, XV, MH - 2, 0);                                   // de balk boven de poort
+  doos(bak.donker, DIK + 0.2, 7, 8, XV, 0, 0, 0, 1);                               // donkere doorgang
+  for(let k = -2; k <= 2; k++) doos(bak.donker, 0.12, 6.4, 0.12, XV + DIK / 2 + 0.6, 0.6, k * 1.4, 0, 1);   // valhek
+  bots(XV - 2.3, XV + 2.3, -4, 4, MH - 2, MH + 3);
+  banier(XV + DIK / 2 + 1.4, 11.5, 0, Math.PI / 2, 4.5);                           // groot Doom-doek boven de poort
+  banier(XV + 5.5 + 0.4, 9, -9.5, Math.PI / 2, 6); banier(XV + 5.5 + 0.4, 9, 9.5, Math.PI / 2, 6);
+
+  // ── hoek- en zijtorens ──
+  toren(28, -ZB, 5.2, 15, 9);                           // voor-rechts
+  toren(28, ZB, 5.2, 15, 9, {vlag: true});              // voor-links
+  toren(XA, -ZB, 6.2, 22, 12, {vlag: true});            // achter-rechts (NE in Fortnite)
+  toren(XA, 8, 4.2, 16, 9);                             // achtermuur-toren
+  toren(-12, -ZB, 4.0, 14, 8);                          // halverwege rechts
+  // achter-links: de twee kegeltorens naast elkaar aan het eind van de vleugel
+  toren(XA + 4, ZB - 4, 6.0, 20, 11); toren(XA + 4, ZB - 20, 5.2, 18, 10, {vlag: true});
+
+  // ── het hoge terras met de tuin (vanaf x = 10 naar achteren), trap in het midden ──
+  terras(XA + 1.5, 10, -ZB + 1.5, ZB - 1.5, T);
+  trap(18, 10, 0, 12, T, 5);
+  // borstwering langs de voorrand van het terras (met opening voor de trap)
+  doos(bak.steen, 1.0, 1.2, ZB - 1.5 - 7, 10 - 0.5, T, (7 + ZB - 1.5) / 2, 0, 2); doos(bak.steen, 1.0, 1.2, ZB - 1.5 - 7, 10 - 0.5, T, -(7 + ZB - 1.5) / 2, 0, 2);
+  bots(9, 10.5, 7, ZB - 1.5, T, T + 1.3); bots(9, 10.5, -ZB + 1.5, -7, T, T + 1.3);
+  tuin(-6, 0, 26, 24, T);
+  // rode bomen in de hoeken van de tuin, op het terras
+  for(const [x, z] of [[-20, -14], [-20, 14], [6, -14], [6, 14]]) roodBoom(x, z, 0.75, T);
+
+  // ── de grote zaal (rechts, -z): groot groen zadeldak, dakkapellen, schoorsteen ──
+  zaal(8, -32, 36, 15, 12, 9, 0, T);
+  for(const dx of [-10, 0, 10]) { doos(bak.steen, 3.2, 2.6, 2.2, 8 + dx, T + 12 + 0.2, -32 + 7.0, 0, 1); kegel(bak.leien, 2.0, 1.8, 8 + dx, T + 14.8, -32 + 7.0, 4); doos(bak.raam, 1.2, 1.4, 0.2, 8 + dx, T + 12.6, -32 + 8.15, 0, 1); }   // dakkapellen
+  // ── de lange vleugel (links, +z): lager, lang groen dak ──
+  zaal(-18, 34, 44, 12, 9, 6.5, 0, T);
+  // ── een kleine kapel achter de tuin ──
+  zaal(-34, -10, 14, 20, 9, 7, Math.PI / 2, T);
+
+  // ── de donjon: vierkante voet met vier torentjes, ronde toren erop, de hoogste spits ──
+  {
+    const kx = -46, kz = 6, voetH = 16;
+    const voet = new THREE.BoxGeometry(22, voetH, 22); schaalDoosUV(voet, 22, voetH, 22); voet.translate(kx, T + voetH / 2, kz); bak.steen.push(voet);
+    bots(kx - 11, kx + 11, kz - 11, kz + 11, T - 1, T + voetH);
+    koperRand(kx - 11, kz - 11.2, kx + 11, kz - 11.2, T + voetH - 0.3); koperRand(kx - 11, kz + 11.2, kx + 11, kz + 11.2, T + voetH - 0.3);
+    for(const [dx, dz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) spits(kx + dx * 10.5, kz + dz * 10.5, 2.3, 24, 7, T);
+    cil(bak.steen, 8.5, 8.0, 38, kx, T + voetH, kz, 24);
+    cil(bak.steen, 9.6, 9.8, 2.0, kx, T + voetH + 36, kz, 24, 2);
+    const n = 26; for(let k = 0; k < n; k++){ const a = k / n * Math.PI * 2; doos(bak.steen, 0.8, 1.2, 1.0, kx + Math.cos(a) * 9.3, T + voetH + 38, kz + Math.sin(a) * 9.3, -a, 2); }
+    kegel(bak.leien, 9.4, 22, kx, T + voetH + 39, kz, 24);
+    kegel(bak.koper, 0.6, 7, kx, T + voetH + 39 + 21.5, kz, 8);
+    const bol = new THREE.SphereGeometry(0.6, 8, 6); bol.translate(kx, T + voetH + 39 + 28.2, kz); bak.koper.push(bol);
+    doos(bak.goud, 0.1, 3.5, 0.1, kx, T + voetH + 39 + 28.5, kz, 0, 1); const vl = new THREE.PlaneGeometry(2.4, 1.3); vl.translate(kx + 1.3, T + voetH + 39 + 31.2, kz); bak.banier.push(vl);
+    for(let v = 0; v < 4; v++) for(let k = 0; k < 6; k++){ const a = k / 6 * Math.PI * 2 + v * 0.5, yy = T + voetH + 6 + v * 8; doos((k + v) % 2 ? bak.raam : bak.donker, 0.5, 2.0, 0.25, kx + Math.cos(a) * 8.3, yy, kz + Math.sin(a) * 8.3, -a + Math.PI / 2, 1); }
+    bots(kx - 8.5, kx + 8.5, kz - 8.5, kz + 8.5, T + voetH, T + voetH + 60);
+    // de twee lange dunne spitsen ernaast
+    spits(-30, -20, 2.6, 44, 14, T); spits(-26, 20, 2.4, 38, 12, T);
+  }
+
+  // ── banieren op de muren, rode bomen en dennen op het plateau, rotsblokken langs de rand ──
+  for(const z of [-22, 22]) banier(XV + DIK / 2 + 0.3 - 12, 5, z + 12, Math.PI / 2, 4);
+  for(let k = 0; k < 22; k++){ const a = k / 22 * Math.PI * 2 + r() * 0.25, rr = 62 + r() * 10; const x = Math.cos(a) * rr, z = Math.sin(a) * rr; if(x > 30 && Math.abs(z) < 16) continue; den(x, z, 0.9 + r() * 0.8); }
+  for(const [x, z] of [[50, -22], [50, 22], [34, -44 - 10], [-20, 56], [-56, -58], [-70, 10]]) roodBoom(x, z, 0.9 + r() * 0.5);
+  // rotsen langs de rand: kleinere, hoekige brokken, half in de helling (geen grote grijze bollen)
+  for(let k = 0; k < 40; k++){ const a = k / 40 * Math.PI * 2 + r() * 0.15, rr = C.r + 3 + r() * 6; const rx = Math.cos(a) * rr, rz = Math.sin(a) * rr; rots(rx, rz, hoogteOp(C.x + rx, C.z + rz) - Y - 1.2, 1.6 + r() * 2.2); }
+
+  // ── houten steiger aan de rechterkant (de tweede, kleine brug in Fortnite) ──
+  { const z0 = -ZB - DIK / 2, len = 30; for(let k = 0; k < 7; k++){ const z = z0 - 2 - k * 4; doos(bak.stam, 3.6, 0.25, 3.8, 2, 0.3, z, 0, 1); for(const sx of [-1, 1]) cil(bak.stam, 0.18, 0.2, 3.5, 2 + sx * 1.6, -3.2, z, 6, 1); } bots(0.2, 3.8, z0 - len, z0, -1, 0.55); }
 
   // ════════ DE BRUG naar het strand (oostkant) ════════
-  // van de poort over het plateau (vlak), dan vanaf de rotsrand schuin omlaag naar het strand van het
-  // hoofdeiland. Stenen dek van 9 m breed met lage borstweringen en pijlers in het water; de bovenkant
-  // is beloopbaar (botsdozen per stuk, elk stuk zakt minder dan een opstapje).
+  // de lange stenen boogbrug uit Fortnite: breed dek met borstweringen, dikke pijlers met rondbogen
+  // ertussen, en aan het strand twee sokkels met beelden. Vlak vanaf de poort, dan zacht omlaag.
   {
-    const xStart = W + DIK / 2, xRand = C.r - 14 + 2, xEind = (-735) - C.x;   // poort → rotsrand (plateau is vlak tot C.r - rand) → strand
-    const yEind = (hoogteOp(-735, C.z) + 0.5) - Y;
-    const stuk = (x0, x1, y0, y1) => {
+    const xStart = XV + DIK / 2 + 5.5, xRand = C.r - 14 + 2, xEind = (-735) - C.x;
+    const yEind = (hoogteOp(-735, C.z) + 0.6) - Y;
+    const stuk = (x0, x1, y0, y1, pijler) => {
       const dx = x1 - x0, ym = (y0 + y1) / 2, hoek = Math.atan2(y1 - y0, dx), L = Math.hypot(dx, y1 - y0) + 0.3;
-      const dek = new THREE.BoxGeometry(L, 1.2, 9); schaalDoosUV(dek, L, 1.2, 9); dek.rotateZ(hoek); dek.translate((x0 + x1) / 2, ym - 0.6, 0); bak.steen.push(dek);
-      for(const sgn of [-1, 1]){ const b = new THREE.BoxGeometry(L, 1.0, 0.6); schaalDoosUV(b, L, 1.0, 0.6, 2); b.rotateZ(hoek); b.translate((x0 + x1) / 2, ym + 0.5, sgn * 4.2); bak.steen.push(b); }
-      bots(x0, x1, -4.5, 4.5, Math.min(y0, y1) - 1.4, Math.max(y0, y1));
-      bots(x0, x1, -4.6, -3.8, Math.max(y0, y1), Math.max(y0, y1) + 1.4); bots(x0, x1, 3.8, 4.6, Math.max(y0, y1), Math.max(y0, y1) + 1.4);
-      // pijler tot in de grond/het water
-      const xm = (x0 + x1) / 2, grond = hoogteOp(C.x + xm, C.z) - Y - 1.5;
-      if(ym - grond > 1.5) cil(bak.steen, 1.7, 1.5, ym - grond, xm, grond, 0, 10);
+      const dek = new THREE.BoxGeometry(L, 1.6, 10); schaalDoosUV(dek, L, 1.6, 10); dek.rotateZ(hoek); dek.translate((x0 + x1) / 2, ym - 0.8, 0); bak.steen.push(dek);
+      for(const sgn of [-1, 1]){ const b = new THREE.BoxGeometry(L, 1.1, 0.7); schaalDoosUV(b, L, 1.1, 0.7, 2); b.rotateZ(hoek); b.translate((x0 + x1) / 2, ym + 0.55, sgn * 4.65); bak.steen.push(b); const kr = new THREE.BoxGeometry(L, 0.18, 0.3); kr.rotateZ(hoek); kr.translate((x0 + x1) / 2, ym + 1.2, sgn * 4.65); bak.koper.push(kr); }
+      bots(x0, x1, -5, 5, Math.min(y0, y1) - 1.8, Math.max(y0, y1));
+      bots(x0, x1, -5.1, -4.2, Math.max(y0, y1), Math.max(y0, y1) + 1.5); bots(x0, x1, 4.2, 5.1, Math.max(y0, y1), Math.max(y0, y1) + 1.5);
+      if(pijler){ const grond = hoogteOp(C.x + x1, C.z) - Y - 2; if(ym - grond > 1.5){ doos(bak.steen, 3.0, ym - grond, 11, x1, grond, 0, 0, 3); const boog = new THREE.CylinderGeometry(dx * 0.42, dx * 0.42, 11.2, 16, 1, false, 0, Math.PI); boog.rotateZ(Math.PI / 2); boog.rotateY(Math.PI / 2); boog.translate(x1 - dx / 2 - dx * 0.0, ym - 1.6, 0); bak.donker.push(boog); } }
     };
-    // vlak stuk over het plateau
-    const n1 = 3; for(let k = 0; k < n1; k++) stuk(xStart + (xRand - xStart) * k / n1, xStart + (xRand - xStart) * (k + 1) / n1, 0, 0);
-    // schuin stuk naar het strand (in 7 stukken, elk ~1,2 m lager)
-    const n2 = 7; for(let k = 0; k < n2; k++){ const t0 = k / n2, t1 = (k + 1) / n2; stuk(xRand + (xEind - xRand) * t0, xRand + (xEind - xRand) * t1, yEind * t0, yEind * t1); }
-    // twee lantaarnpalen bij het strand-einde
-    for(const sgn of [-1, 1]){ cil(bak.koper, 0.12, 0.15, 3.2, xEind, yEind, sgn * 4.2, 6, 1); const bol = new THREE.SphereGeometry(0.35, 8, 6); bol.translate(xEind, yEind + 3.4, sgn * 4.2); bak.raam.push(bol); }
+    const n1 = 3; for(let k = 0; k < n1; k++) stuk(xStart + (xRand - xStart) * k / n1, xStart + (xRand - xStart) * (k + 1) / n1, 0, 0, k < n1 - 1);
+    const n2 = 7; for(let k = 0; k < n2; k++){ const t0 = k / n2, t1 = (k + 1) / n2; stuk(xRand + (xEind - xRand) * t0, xRand + (xEind - xRand) * t1, yEind * t0, yEind * t1, k < n2 - 1); }
+    // twee sokkels met "wolven" (ruwe beelden) bij het begin van de brug op het strand
+    for(const sgn of [-1, 1]){ const sx = xEind + 1.5, sz = sgn * 6.4; doos(bak.steen, 3, 2.2, 3, sx, yEind - 0.6, sz, 0, 1.5); const lijf = new THREE.BoxGeometry(2.6, 1.3, 1.2); lijf.translate(sx, yEind + 2.3, sz); bak.steen.push(lijf); const kop = new THREE.BoxGeometry(1.1, 0.9, 0.9); kop.translate(sx - 1.6, yEind + 3.0, sz); bak.steen.push(kop); for(const o of [-0.25, 0.25]) doos(bak.gloei, 0.12, 0.12, 0.12, sx - 2.16, yEind + 3.05, sz + o, 0, 1); bots(sx - 1.5, sx + 1.5, sz - 1.5, sz + 1.5, yEind - 1.5, yEind + 3.6); }
   }
 
   // ════════ DE DOOM-TOREN in zee (decor) ════════
@@ -3221,7 +3323,7 @@ function updateStad(dt, t){
   }
 
   // ════════ ALLES SAMENVOEGEN EN IN DE SCÈNE ════════
-  const mats = {steen: steenMat, leien: leienMat, koper: koperMat, donker: donkerMat, raam: raamMat, banier: banierMat, goud: goudMat, doom: doomMat, gloei: gloeiMat, stam: stamMat, den: denMat, rood: roodMat};
+  const mats = {steen: steenMat, leien: leienMat, koper: koperMat, donker: donkerMat, raam: raamMat, banier: banierMat, goud: goudMat, doom: doomMat, gloei: gloeiMat, stam: stamMat, den: denMat, rood: roodMat, haag: haagMat, water: waterMat, rots: rotsMat};
   for(const naam in bak){
     if(!bak[naam].length) continue;
     const m = new THREE.Mesh(voegSamen(bak[naam]), mats[naam]);
