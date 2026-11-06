@@ -345,6 +345,19 @@ const VRIJHEID = {x: -270, z: 730, r: 44, h: 3.0};  // Liberty Island
 // daarachter het rotsje van de Doom-toren. Zie bouwCastleDoom() verderop.
 const KASTEEL = {x: -840, z: 40, r: 78, h: 11.0, rand: 9};          // vlak plateau, steile rotsrand van 14 m
 const DOOMTOREN = {x: -985, z: -160, r: 22, h: 6.0};                 // decor, buiten de haaiengrens
+const KASTEEL_ANIM = {};                                             // fontein-druppels e.d. (gevuld door bouwCastleDoom)
+function updateKasteel(dt, t){
+  const d = KASTEEL_ANIM.druppels, f = KASTEEL_ANIM.fontein; if(!d || !f) return;
+  const pos = d.pts.geometry.attributes.position.array, ZW = 9.8;
+  for(let i = 0; i < d.N; i++){
+    const q = d.D[i]; q.t += dt;
+    if(q.t > 1.55 || q.t < 0){ q.t = 0; q.a = Math.random() * Math.PI * 2; q.v = 5.2 + Math.random() * 1.4; q.zij = 0.35 + Math.random() * 0.9; }
+    const T = q.t, hor = q.zij * T, yy = f.y + q.v * T - 0.5 * ZW * T * T;
+    pos[i * 3] = f.x + Math.cos(q.a) * hor; pos[i * 3 + 1] = yy < f.bakY ? f.bakY + 0.02 : yy; pos[i * 3 + 2] = f.z + Math.sin(q.a) * hor;
+    if(yy < f.bakY) q.t = 2;   // in de bak gevallen → volgende keer opnieuw starten
+  }
+  d.pts.geometry.attributes.position.needsUpdate = true;
+}
 const STADPLAN = (() => {
   const blokken = [], heeft = new Map();
   for(let i = -6; i <= 6; i++) for(let j = -14; j <= 14; j++){
@@ -3085,6 +3098,42 @@ function updateStad(dt, t){
     return tex(c);
   })();
 
+  // ── Brian 6 nov (ronde 2): "het gras is een groene blob, de fontein werkt niet, de bomen zijn bolletjes" ──
+  // Bladerkluwen: een doorzichtig plaatje met tientallen losse blaadjes; tientallen van die kaartjes
+  // kriskras in een kruin geven een echte boom (zo doen games het). Naalden idem voor de dennen.
+  const bladKaart = (rood) => {
+    const c = canvas(256, 256), g = c.getContext('2d');
+    for(let i = 0; i < 70; i++){
+      const x = 30 + r() * 196, y = 30 + r() * 196, a = r() * Math.PI, L = 14 + r() * 16, B = 7 + r() * 7, t = r();
+      g.fillStyle = rood ? `rgb(${150 + t * 80},${20 + t * 40},${18 + t * 25})` : `rgb(${40 + t * 50},${95 + t * 70},${30 + t * 40})`;
+      g.save(); g.translate(x, y); g.rotate(a); g.beginPath(); g.moveTo(-L, 0); g.quadraticCurveTo(0, -B, L, 0); g.quadraticCurveTo(0, B, -L, 0); g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 1; g.beginPath(); g.moveTo(-L, 0); g.lineTo(L, 0); g.stroke(); g.restore();
+    }
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
+  };
+  const naaldKaart = (() => {
+    const c = canvas(256, 256), g = c.getContext('2d');
+    for(let tak = 0; tak < 4; tak++){
+      const y0 = 36 + tak * 60; g.strokeStyle = '#4a3220'; g.lineWidth = 3; g.beginPath(); g.moveTo(4, y0); g.lineTo(252, y0 - 10); g.stroke();
+      for(let x = 6; x < 252; x += 2){ const t = r(); g.strokeStyle = `rgb(${22 + t * 30},${62 + t * 60},${26 + t * 30})`; g.lineWidth = 1.8; const yy = y0 - (x - 4) / 248 * 10; for(const sgn of [-1, 1]){ g.beginPath(); g.moveTo(x, yy); g.lineTo(x + 8 + r() * 6, yy + sgn * (18 + r() * 14)); g.stroke(); } }
+      // zijtakjes
+      for(let k = 0; k < 6; k++){ const x = 20 + r() * 210, yy = y0 - (x - 4) / 248 * 10, a = (r() - 0.5) * 1.2; for(let q = 0; q < 14; q++){ const t = r(); g.strokeStyle = `rgb(${22 + t * 30},${62 + t * 60},${26 + t * 30})`; g.lineWidth = 1.5; const px = x + Math.cos(a) * q * 3, py = yy + Math.sin(a) * q * 3; g.beginPath(); g.moveTo(px, py); g.lineTo(px + (r() - 0.5) * 14, py + (r() - 0.5) * 22); g.stroke(); } }
+    }
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
+  })();
+  const schorsTex = (() => {
+    const c = canvas(256, 512), g = c.getContext('2d');
+    g.fillStyle = '#5a4634'; g.fillRect(0, 0, 256, 512);
+    for(let i = 0; i < 90; i++){ const x = r() * 256, t = r(); g.strokeStyle = t < 0.5 ? `rgba(30,20,12,${0.25 + r() * 0.4})` : `rgba(130,105,80,${0.15 + r() * 0.3})`; g.lineWidth = 1 + r() * 5; g.beginPath(); g.moveTo(x, -10); for(let y = 0; y < 530; y += 40) g.lineTo(x + (r() - 0.5) * 16, y); g.stroke(); }
+    for(let i = 0; i < 12000; i++){ const v = 40 + r() * 90; g.fillStyle = `rgba(${v},${v * 0.8},${v * 0.6},0.25)`; g.fillRect(r() * 256, r() * 512, 2, 3); }
+    return tex(c);
+  })();
+  const sprietKaart = (() => {
+    const c = canvas(256, 256), g = c.getContext('2d');
+    for(let i = 0; i < 110; i++){ const x = r() * 256, h = 90 + r() * 150, t = r(); g.strokeStyle = `rgb(${50 + t * 60},${120 + t * 80},${30 + t * 40})`; g.lineWidth = 2 + r() * 3; g.beginPath(); g.moveTo(x, 256); g.quadraticCurveTo(x + (r() - 0.5) * 30, 256 - h * 0.6, x + (r() - 0.5) * 60, 256 - h); g.stroke(); }
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
+  })();
+  const druppelTex = (() => { const c = canvas(64, 64), g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 2, 32, 32, 30); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(210,235,255,0.8)'); gr.addColorStop(1, 'rgba(180,220,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const steenMat = new THREE.MeshStandardMaterial({map: steenTex, bumpMap: steenBump, bumpScale: 0.16, roughness: 0.93, metalness: 0.02});
   const leienMat = new THREE.MeshStandardMaterial({map: leienTex, bumpMap: leienBump, bumpScale: 0.25, roughness: 0.62, metalness: 0.18, envMap: env, envMapIntensity: 0.35});
   const keiMat = new THREE.MeshStandardMaterial({map: keiTex, bumpMap: keiBump, bumpScale: 0.22, roughness: 0.9});
@@ -3098,15 +3147,36 @@ function updateStad(dt, t){
   const doomMat = new THREE.MeshStandardMaterial({map: doomTex, roughness: 0.6, metalness: 0.3});
   const gloeiMat = new THREE.MeshBasicMaterial({color: 0xff2a10});
   const stamMat = new THREE.MeshStandardMaterial({color: 0x4a3324, roughness: 0.95});
-  const denMat = new THREE.MeshStandardMaterial({color: 0x2f5a35, roughness: 0.9});
+  const denMat = new THREE.MeshStandardMaterial({color: 0x1f3f26, roughness: 0.95});
   const roodMat = new THREE.MeshStandardMaterial({color: 0x9c2a2a, roughness: 0.85});
-  const haagMat = new THREE.MeshStandardMaterial({color: 0x2a5a2e, roughness: 0.95});
   const waterMat = new THREE.MeshStandardMaterial({color: 0x3f8fb8, roughness: 0.15, metalness: 0.2, envMap: env, envMapIntensity: 0.8});
   const rotsMat = new THREE.MeshStandardMaterial({color: 0x4f4c48, roughness: 0.95});
   const roodDonkerMat = new THREE.MeshStandardMaterial({color: 0x6e1c1c, roughness: 0.9});
+  const loofRoodMat = new THREE.MeshStandardMaterial({map: bladKaart(true), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.85, vertexColors: true});
+  const loofGroenMat = new THREE.MeshStandardMaterial({map: bladKaart(false), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.85, vertexColors: true});
+  const naaldMat = new THREE.MeshStandardMaterial({map: naaldKaart, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.9, vertexColors: true});
+  const schorsMat = new THREE.MeshStandardMaterial({map: schorsTex, roughness: 0.95});
+  const sprietMat = new THREE.MeshStandardMaterial({map: sprietKaart, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.9, vertexColors: true});
+  const gazonDoek = (() => {
+    const c = canvas(512, 512), g = c.getContext('2d');
+    g.fillStyle = '#2f5a22'; g.fillRect(0, 0, 512, 512);
+    for(let i = 0; i < 9000; i++){ const x = r() * 512, y = r() * 512, t = r(), L = 6 + r() * 10, a = r() * Math.PI * 2; g.strokeStyle = `rgb(${45 + t * 70},${110 + t * 90},${25 + t * 45})`; g.lineWidth = 1 + r() * 1.5; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * L, y + Math.sin(a) * L); g.stroke(); }
+    for(let i = 0; i < 40; i++){ g.fillStyle = `rgba(20,40,15,${0.08 + r() * 0.12})`; g.beginPath(); g.ellipse(r() * 512, r() * 512, 20 + r() * 50, 12 + r() * 30, r() * 3, 0, Math.PI * 2); g.fill(); }
+    return c;
+  })();
+  const tuinGrasMat = new THREE.MeshStandardMaterial({map: tex(gazonDoek), bumpMap: tex(gazonDoek), bumpScale: 0.08, roughness: 0.95});
+  // hagen: dicht blad (buxus), klein en donkergroen
+  const haagDoek = (() => {
+    const c = canvas(256, 256), g = c.getContext('2d');
+    g.fillStyle = '#1e3d1c'; g.fillRect(0, 0, 256, 256);
+    for(let i = 0; i < 2600; i++){ const t = r(); g.fillStyle = `rgb(${30 + t * 50},${80 + t * 70},${25 + t * 35})`; g.save(); g.translate(r() * 256, r() * 256); g.rotate(r() * 3); g.beginPath(); g.ellipse(0, 0, 3 + r() * 4, 2 + r() * 2, 0, 0, Math.PI * 2); g.fill(); g.restore(); }
+    return c;
+  })();
+  const haagMat = new THREE.MeshStandardMaterial({map: tex(haagDoek), bumpMap: tex(haagDoek), bumpScale: 0.1, roughness: 0.95});
 
-  const bak = {steen: [], leien: [], koper: [], donker: [], raam: [], banier: [], goud: [], doom: [], gloei: [], stam: [], den: [], rood: [], haag: [], water: [], rots: [], kei: [], vlam: [], staal: [], roodDonker: []};
+  const bak = {steen: [], leien: [], koper: [], donker: [], raam: [], banier: [], goud: [], doom: [], gloei: [], stam: [], den: [], rood: [], haag: [], water: [], rots: [], kei: [], vlam: [], staal: [], roodDonker: [], loofRood: [], loofGroen: [], naald: [], schors: [], spriet: [], tuinGras: []};
   const G = new THREE.Group(); G.position.set(C.x, Y, C.z);
+  KASTEEL_ANIM.groep = G;
 
   // uv's schalen zodat de stenen overal ~4 m per plaatje zijn (dozen: per vlak; cilinders: omtrek × hoogte)
   function schaalDoosUV(g, w, h, d, m = 7){
@@ -3248,14 +3318,42 @@ function updateStad(dt, t){
     const rand = new THREE.PlaneGeometry(2.4, 0.25); rand.rotateY(ry); rand.translate(x, y + hoog / 2 + 0.1, z); bak.goud.push(rand);
   }
   // ── bomen: dennen (drie kegels) en rode bomen (bolkruin) ──
-  function den(x, z, s = 1){
-    cil(bak.stam, 0.22 * s, 0.4 * s, 3.2 * s, x, 0, z, 7);
-    for(let k = 0; k < 5; k++){ const g = new THREE.ConeGeometry((2.5 - k * 0.42) * s * (0.92 + r() * 0.16), 2.6 * s, 9); g.rotateY(r() * 1.5); g.translate(x + (r() - 0.5) * 0.3 * s, (2.0 + k * 1.55) * s + 1.3 * s, z + (r() - 0.5) * 0.3 * s); bak.den.push(g); }
+  // een kaartje (vierkant plaatje) met een kleurtint, als onderdeel van een kruin
+  const kaartje = (lijst, w, h, x, y, z, rx, ry, rz, tint) => {
+    const g = new THREE.PlaneGeometry(w, h); g.rotateX(rx); g.rotateY(ry); g.rotateZ(rz); g.translate(x, y, z);
+    const c = []; for(let i = 0; i < 4; i++) c.push(tint[0], tint[1], tint[2]); g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3)); lijst.push(g);
+  };
+  const stamMetSchors = (rb, rt, h, x, y0, z, seg = 8) => { const g = new THREE.CylinderGeometry(rt, rb, h, seg); const uv = g.attributes.uv; for(let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 2, uv.getY(i) * h / 2.5); g.translate(x, y0 + h / 2, z); bak.schors.push(g); return g; };
+  function den(x, z, s = 1, y0 = 0){
+    const H = (9 + r() * 4) * s;
+    stamMetSchors(0.28 * s, 0.1 * s, H, x, y0, z, 8);
+    // takken in lagen: onderaan breed, naar boven smaller; elke tak = een naaldkaartje dat schuin naar beneden hangt
+    const lagen = 7;
+    for(let L = 0; L < lagen; L++){
+      const yy = y0 + H * (0.2 + 0.76 * L / lagen), breed = (3.6 - L * 0.4) * s * (0.9 + r() * 0.2), n = 10;
+      // een donkergroene kegel als 'vulling' van de laag, met de naaldkaartjes eromheen
+      const vul = new THREE.ConeGeometry(breed * 0.42, breed * 0.7, 8); vul.translate(x, yy + breed * 0.15, z); bak.den.push(vul);
+      for(let k = 0; k < n; k++){
+        const a = k / n * Math.PI * 2 + L * 0.5 + r() * 0.4, t = 0.8 + r() * 0.35;
+        kaartje(bak.naald, breed, breed * 0.55, x + Math.cos(a) * breed * 0.42, yy, z + Math.sin(a) * breed * 0.42, -0.3 - r() * 0.3, -a + Math.PI / 2, 0, [t * 0.9, t, t * 0.9]);
+        kaartje(bak.naald, breed * 0.8, breed * 0.5, x + Math.cos(a) * breed * 0.42, yy + 0.08, z + Math.sin(a) * breed * 0.42, -0.9 - r() * 0.3, -a + Math.PI / 2 + Math.PI / 2, 0, [t * 0.85, t * 0.95, t * 0.85]);
+      }
+    }
+    kaartje(bak.naald, 1.2 * s, 1.6 * s, x, y0 + H + 0.5 * s, z, 0, r() * 3, 0, [0.9, 1, 0.9]); kaartje(bak.naald, 1.2 * s, 1.6 * s, x, y0 + H + 0.5 * s, z, 0, r() * 3 + 1.57, 0, [0.9, 1, 0.9]);
   }
-  function roodBoom(x, z, s = 1, y0 = 0){
-    cil(bak.stam, 0.3 * s, 0.4 * s, 2.6 * s, x, y0, z, 6);
-    for(let k = 0; k < 9; k++){ const a = k * 2.4 + r(), rr = (0.6 + r() * 0.9) * s, g = new THREE.SphereGeometry((0.9 + r() * 0.6) * s, 8, 6); g.translate(x + Math.cos(a) * rr, y0 + (2.9 + r() * 1.8) * s, z + Math.sin(a) * rr); (k % 3 ? bak.rood : bak.roodDonker).push(g); }
-    for(let k = 0; k < 3; k++){ const a = k * 2.1 + 0.5, t = new THREE.CylinderGeometry(0.06 * s, 0.14 * s, 1.6 * s, 5); t.rotateZ(0.6); t.rotateY(a); t.translate(x + Math.cos(a) * 0.5 * s, y0 + 3.0 * s, z + Math.sin(a) * 0.5 * s); bak.stam.push(t); }
+  function roodBoom(x, z, s = 1, y0 = 0, groen = false){
+    const H = (3.2 + r() * 1.2) * s;                                   // stamhoogte tot de kruin
+    stamMetSchors(0.32 * s, 0.18 * s, H, x, y0, z, 8);
+    // takken: 5 schuin omhoog uit de top van de stam
+    for(let k = 0; k < 5; k++){ const a = k / 5 * Math.PI * 2 + r() * 0.6, g = new THREE.CylinderGeometry(0.05 * s, 0.12 * s, 2.4 * s, 5); g.translate(0, 1.2 * s, 0); g.rotateZ(0.75 + r() * 0.3); g.rotateY(-a); g.translate(x, y0 + H - 0.3 * s, z); bak.schors.push(g); }
+    // de kruin: een bol van ~40 bladerkaartjes, kriskras, met licht bovenin en donker onderin
+    const lijst = groen ? bak.loofGroen : bak.loofRood, R = (2.4 + r() * 0.6) * s, cy = y0 + H + 1.4 * s;
+    for(let k = 0; k < 42; k++){
+      const u = r() * Math.PI * 2, v = Math.acos(2 * r() - 1), rr = R * Math.cbrt(r());
+      const px = x + Math.sin(v) * Math.cos(u) * rr, py = cy + Math.cos(v) * rr * 0.8, pz = z + Math.sin(v) * Math.sin(u) * rr;
+      const t = 0.6 + 0.5 * ((py - cy) / R + 1) / 2 + r() * 0.15;   // licht boven, donker onder
+      kaartje(lijst, 1.9 * s, 1.9 * s, px, py, pz, r() * Math.PI, r() * Math.PI, r() * Math.PI, [t, t, t]);
+    }
   }
 
   // ════════ HET KASTEEL — v2, nagebouwd naar het bovenaanzicht van Castle Doom (Fortnite) ════════
@@ -3308,11 +3406,24 @@ function updateStad(dt, t){
   }
   // tuin op het terras: grasvlak, vier hagen-vierkanten, een fontein in het midden
   function tuin(xm, zm, w, d, y){
-    const gras = new THREE.BoxGeometry(w, 0.25, d); gras.translate(xm, y + 0.12, zm); bak.den.push(gras);
+    // de grasmat: het echte gras-plaatje van het eiland (met reliëf), en daar bovenop ~500 sprietjes-kaartjes
+    const mat = new THREE.PlaneGeometry(w, d, 1, 1); mat.rotateX(-Math.PI / 2); const muv = mat.attributes.uv; for(let i = 0; i < muv.count; i++) muv.setXY(i, muv.getX(i) * w / 3.2, muv.getY(i) * d / 3.2); mat.translate(xm, y + 0.32, zm); bak.tuinGras.push(mat);
+    doos(bak.steen, w + 0.6, 0.3, d + 0.6, xm, y, zm, 0, 2);                    // stenen rand om het gras
+    for(let k = 0; k < 520; k++){
+      const px = xm + (r() - 0.5) * (w - 1), pz = zm + (r() - 0.5) * (d - 1);
+      if(Math.hypot(px - xm, pz - zm) < 3.8) continue;                           // niet in de fontein
+      const t = 0.75 + r() * 0.35, a = r() * Math.PI, hh = 0.35 + r() * 0.3;
+      kaartje(bak.spriet, 0.9, hh, px, y + 0.32 + hh / 2, pz, 0, a, 0, [t, t, t]); kaartje(bak.spriet, 0.9, hh, px, y + 0.32 + hh / 2, pz, 0, a + Math.PI / 2, 0, [t, t, t]);
+    }
+    // bloemetjes in het gras (kleine gekleurde kaartjes)
+    for(let k = 0; k < 90; k++){ const px = xm + (r() - 0.5) * (w - 1.5), pz = zm + (r() - 0.5) * (d - 1.5); if(Math.hypot(px - xm, pz - zm) < 4) continue; const kl = [[1, 0.9, 0.2], [1, 1, 1], [0.9, 0.3, 0.5]][Math.floor(r() * 3)]; const g = new THREE.SphereGeometry(0.07, 5, 4); g.translate(px, y + 0.56, pz); const c = []; for(let i = 0; i < g.attributes.position.count; i++) c.push(...kl); g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3)); bak.spriet.push(g); }
     for(const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]){ const hx = xm + sx * w * 0.26, hz = zm + sz * d * 0.26; doos(bak.haag, w * 0.34, 0.9, 0.7, hx, y + 0.2, hz - sz * d * 0.17, 0, 1); doos(bak.haag, 0.7, 0.9, d * 0.34, hx - sx * w * 0.17, y + 0.2, hz, 0, 1); }
-    cil(bak.steen, 3.2, 3.0, 0.9, xm, y + 0.2, zm, 20, 2); cil(bak.water, 2.7, 2.7, 0.3, xm, y + 0.85, zm, 20, 2);
-    cil(bak.steen, 0.5, 0.4, 2.6, xm, y + 1.0, zm, 10, 1); cil(bak.steen, 1.3, 1.1, 0.4, xm, y + 3.5, zm, 14, 1); cil(bak.water, 1.0, 1.0, 0.2, xm, y + 3.9, zm, 14, 1);
-    bots(xm - 3.2, xm + 3.2, zm - 3.2, zm + 3.2, y - 1, y + 1.1);
+    // de fontein: bak met water, zuil, bovenschaal, en ÉCHT spuitend water (druppels met zwaartekracht, zie updateKasteel)
+    cil(bak.steen, 3.4, 3.1, 1.0, xm, y + 0.26, zm, 24, 2); cil(bak.water, 2.85, 2.85, 0.3, xm, y + 0.95, zm, 24, 2);
+    cil(bak.steen, 0.55, 0.42, 2.6, xm, y + 1.1, zm, 10, 1); cil(bak.steen, 1.4, 1.15, 0.4, xm, y + 3.6, zm, 16, 1); cil(bak.water, 1.1, 1.1, 0.2, xm, y + 4.0, zm, 16, 1);
+    cil(bak.koper, 0.12, 0.08, 0.5, xm, y + 4.1, zm, 8, 1);                      // het spuitmondje
+    KASTEEL_ANIM.fontein = {x: xm, y: y + 4.5, z: zm, bakY: y + 1.25, schaalY: y + 4.2};
+    bots(xm - 3.4, xm + 3.4, zm - 3.4, zm + 3.4, y - 1, y + 1.26);
   }
   // rotsblok (donkere, platte bol) langs de rand
   function rots(x, z, y, s){ const g = new THREE.DodecahedronGeometry(s, 0); g.scale(1, 0.7, 0.85); g.rotateY(r() * 3); g.rotateX(r() * 0.5); g.translate(x, y, z); bak.rots.push(g); }
@@ -3444,12 +3555,23 @@ function updateStad(dt, t){
   }
 
   // ════════ ALLES SAMENVOEGEN EN IN DE SCÈNE ════════
-  const mats = {steen: steenMat, leien: leienMat, koper: koperMat, donker: donkerMat, raam: raamMat, banier: banierMat, goud: goudMat, doom: doomMat, gloei: gloeiMat, stam: stamMat, den: denMat, rood: roodMat, haag: haagMat, water: waterMat, rots: rotsMat, kei: keiMat, vlam: vlamMat, staal: staalMat, roodDonker: roodDonkerMat};
+  const mats = {steen: steenMat, leien: leienMat, koper: koperMat, donker: donkerMat, raam: raamMat, banier: banierMat, goud: goudMat, doom: doomMat, gloei: gloeiMat, stam: stamMat, den: denMat, rood: roodMat, haag: haagMat, water: waterMat, rots: rotsMat, kei: keiMat, vlam: vlamMat, staal: staalMat, roodDonker: roodDonkerMat, loofRood: loofRoodMat, loofGroen: loofGroenMat, naald: naaldMat, schors: schorsMat, spriet: sprietMat, tuinGras: tuinGrasMat};
   for(const naam in bak){
     if(!bak[naam].length) continue;
     const m = new THREE.Mesh(voegSamen(bak[naam]), mats[naam]);
-    m.castShadow = naam !== 'gloei' && naam !== 'banier'; m.receiveShadow = true;
+    m.castShadow = !['gloei', 'banier', 'loofRood', 'loofGroen', 'naald', 'spriet', 'tuinGras', 'vlam'].includes(naam); m.receiveShadow = true;
     G.add(m);
+  }
+  // de druppels van de fontein: een wolk puntjes die uit het spuitmondje omhoog gaan en in de bak vallen
+  if(KASTEEL_ANIM.fontein){
+    const N = 420, pos = new Float32Array(N * 3), f = KASTEEL_ANIM.fontein, D = [];
+    for(let i = 0; i < N; i++){ D.push({t: r() * 1.6}); pos[i * 3] = f.x; pos[i * 3 + 1] = f.y; pos[i * 3 + 2] = f.z; }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const pm = new THREE.PointsMaterial({map: druppelTex, size: 0.28, transparent: true, depthWrite: false, color: 0xcfe9ff, sizeAttenuation: true});
+    const pts = new THREE.Points(g, pm); pts.frustumCulled = false; G.add(pts);
+    KASTEEL_ANIM.druppels = {pts, D, N};
+    // vier zijstralen uit de bovenschaal naar de bak (dunne boogjes van water)
+    for(let k = 0; k < 4; k++){ const a = k / 4 * Math.PI * 2; const kromme = new THREE.QuadraticBezierCurve3(new THREE.Vector3(f.x + Math.cos(a) * 1.1, f.schaalY, f.z + Math.sin(a) * 1.1), new THREE.Vector3(f.x + Math.cos(a) * 2.2, f.schaalY - 0.2, f.z + Math.sin(a) * 2.2), new THREE.Vector3(f.x + Math.cos(a) * 2.6, f.bakY, f.z + Math.sin(a) * 2.6)); const tg = new THREE.TubeGeometry(kromme, 10, 0.06, 6, false); G.add(new THREE.Mesh(tg, new THREE.MeshStandardMaterial({color: 0xd8f0ff, transparent: true, opacity: 0.7, roughness: 0.1, envMap: env}))); }
   }
   scene.add(G);
   tik('Castle Doom');
@@ -10093,6 +10215,7 @@ function loop(nu){
     updateCrafterSpook();
   }
   updateStad(dt, t);    // 🚕 taxi's rijden, vliegtuiglichten knipperen
+  updateKasteel(dt, t); // 🏰 de fontein van Castle Doom spuit
   updateLift();         // 🛗 sta je bij een ingang of vóór de lift?
   golfZee(t);
   updateWolkenV2(dt, t);   // ☁️ v2: stapelwolken + wolkenlaag reizen mee en drijven
