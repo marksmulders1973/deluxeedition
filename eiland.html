@@ -3135,6 +3135,13 @@ function updateStad(dt, t){
   })();
   const druppelTex = (() => { const c = canvas(64, 64), g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 2, 32, 32, 30); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(210,235,255,0.8)'); gr.addColorStop(1, 'rgba(180,220,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const steenMat = new THREE.MeshStandardMaterial({map: steenTex, bumpMap: steenBump, bumpScale: 0.16, roughness: 0.93, metalness: 0.02});
+  // binnenkant van muren: dezelfde steen, maar de achterkant van de vlakken (je kijkt van binnenuit) en ietsje
+  // zelf-oplichtend, want de zon komt er niet (zonder puntlichten — zie de les bij de Doom-toren)
+  const steenBinnenMat = new THREE.MeshStandardMaterial({map: steenTex, bumpMap: steenBump, bumpScale: 0.16, roughness: 0.93, side: THREE.BackSide, emissive: 0x2a2622, emissiveIntensity: 0.9});
+  const steenBinnen2Mat = new THREE.MeshStandardMaterial({map: steenTex, bumpMap: steenBump, bumpScale: 0.16, roughness: 0.93, emissive: 0x2a2622, emissiveIntensity: 0.9});   // losse dingen binnen (trap, zuilen)
+  const tapijtMat = new THREE.MeshStandardMaterial({color: 0x7a1a1a, roughness: 1.0, emissive: 0x3a0a0a, emissiveIntensity: 0.8});
+  const marmerMat = new THREE.MeshStandardMaterial({map: steenTex, color: 0x8a8a90, roughness: 0.3, metalness: 0.05, emissive: 0x16161a, emissiveIntensity: 0.9});
+  const kristalMat = new THREE.MeshStandardMaterial({color: 0x9fe8ff, emissive: 0x3fc0ff, emissiveIntensity: 1.6, roughness: 0.1, transparent: true, opacity: 0.85});
   const leienMat = new THREE.MeshStandardMaterial({map: leienTex, bumpMap: leienBump, bumpScale: 0.25, roughness: 0.62, metalness: 0.18, envMap: env, envMapIntensity: 0.35});
   const keiMat = new THREE.MeshStandardMaterial({map: keiTex, bumpMap: keiBump, bumpScale: 0.22, roughness: 0.9});
   const vlamMat = new THREE.MeshBasicMaterial({color: 0xffa030});
@@ -3174,7 +3181,7 @@ function updateStad(dt, t){
   })();
   const haagMat = new THREE.MeshStandardMaterial({map: tex(haagDoek), bumpMap: tex(haagDoek), bumpScale: 0.1, roughness: 0.95});
 
-  const bak = {steen: [], leien: [], koper: [], donker: [], raam: [], banier: [], goud: [], doom: [], gloei: [], stam: [], den: [], rood: [], haag: [], water: [], rots: [], kei: [], vlam: [], staal: [], roodDonker: [], loofRood: [], loofGroen: [], naald: [], schors: [], spriet: [], tuinGras: []};
+  const bak = {steen: [], leien: [], koper: [], donker: [], raam: [], banier: [], goud: [], doom: [], gloei: [], stam: [], den: [], rood: [], haag: [], water: [], rots: [], kei: [], vlam: [], staal: [], roodDonker: [], loofRood: [], loofGroen: [], naald: [], schors: [], spriet: [], tuinGras: [], steenBinnen: [], steenBinnen2: [], tapijt: [], marmer: [], kristal: []};
   const G = new THREE.Group(); G.position.set(C.x, Y, C.z);
   KASTEEL_ANIM.groep = G;
 
@@ -3491,8 +3498,108 @@ function updateStad(dt, t){
   // ── de donjon: vierkante voet met vier torentjes, ronde toren erop, de hoogste spits ──
   {
     const kx = -46, kz = 6, voetH = 16;
-    const voet = new THREE.BoxGeometry(22, voetH, 22); schaalDoosUV(voet, 22, voetH, 22); voet.translate(kx, T + voetH / 2, kz); bak.steen.push(voet);
-    bots(kx - 11, kx + 11, kz - 11, kz + 11, T - 1, T + voetH);
+    // ── NAAR BINNEN (Brian 6 nov: "maak dat je nu naar binnen kan in het paleis") ──
+    // De voet is geen dichte doos meer: vier muren van 1,6 m dik met een poort aan de voorkant (+x, naar
+    // het plein), een plafond, en daarbinnen de TROONZAAL: marmeren vloer, rode loper, zuilen met fakkels,
+    // een kroonluchter, Doom-banieren en de troon op een verhoging. In de hoek een wenteltrap die door het
+    // plafond de ronde toren in gaat, helemaal tot Dooms werkkamer boven.
+    const DK = 1.6, PB = 2.6, PH = 6.5;                     // muurdikte, halve poortbreedte, poorthoogte
+    // buitenmuren (steen van buiten) + binnenmuren (BackSide-doos: je ziet de binnenkant)
+    doos(bak.steen, 22, voetH, DK, kx, T, kz - 11 + DK / 2);              // -z muur
+    doos(bak.steen, 22, voetH, DK, kx, T, kz + 11 - DK / 2);              // +z muur
+    doos(bak.steen, DK, voetH, 22, kx - 11 + DK / 2, T, kz);              // -x (achter)
+    doos(bak.steen, DK, voetH, 11 - PB, kx + 11 - DK / 2, T, kz - PB - (11 - PB) / 2);   // +x links van de poort
+    doos(bak.steen, DK, voetH, 11 - PB, kx + 11 - DK / 2, T, kz + PB + (11 - PB) / 2);   // +x rechts van de poort
+    doos(bak.steen, DK, voetH - PH, PB * 2, kx + 11 - DK / 2, T + PH, kz);              // boven de poort
+    { const bin = new THREE.BoxGeometry(22 - 2 * DK, voetH - 2, 22 - 2 * DK); schaalDoosUV(bin, 22 - 2 * DK, voetH - 2, 22 - 2 * DK); bin.translate(kx, T + (voetH - 2) / 2, kz); bak.steenBinnen.push(bin); }   // de binnenkant
+    doos(bak.steen, 22, 2, 22, kx, T + voetH - 2, kz);                   // plafond/vloer van de toren (dicht, op het trapgat na)
+    // botsen: de muren apart, zodat de poort open is
+    bots(kx - 11, kx + 11, kz - 11, kz - 11 + DK, T - 1, T + voetH); bots(kx - 11, kx + 11, kz + 11 - DK, kz + 11, T - 1, T + voetH);
+    bots(kx - 11, kx - 11 + DK, kz - 11, kz + 11, T - 1, T + voetH);
+    bots(kx + 11 - DK, kx + 11, kz - 11, kz - PB, T - 1, T + voetH); bots(kx + 11 - DK, kx + 11, kz + PB, kz + 11, T - 1, T + voetH);
+    bots(kx + 11 - DK, kx + 11, kz - PB, kz + PB, T + PH, T + voetH);
+    // het plafond (van onderen) / de torenvloer — met een gat voor de wenteltrap (bij sx0/sz0 hieronder)
+    bots(kx - 11, kx + 11, kz + 0.8, kz + 11, T + voetH - 2, T + voetH); bots(kx - 11, kx + 11, kz - 11, kz - 5.8, T + voetH - 2, T + voetH);
+    bots(kx - 11, kx - 1.8, kz - 5.8, kz + 0.8, T + voetH - 2, T + voetH); bots(kx + 4.8, kx + 11, kz - 5.8, kz + 0.8, T + voetH - 2, T + voetH);
+    // de poort: donkere omlijsting, Doom-banieren ernaast, fakkels, en een spitsboog erboven
+    for(const sz of [-1, 1]) doos(bak.donker, 0.35, PH + 0.2, 0.45, kx + 11 + 0.1, T - 0.2, kz + sz * (PB + 0.22), 0, 1);
+    doos(bak.donker, 0.35, 0.5, PB * 2 + 0.9, kx + 11 + 0.1, T + PH, kz, 0, 1);
+    doos(bak.kei, 0.4, 0.12, PB * 2, kx + 11, T, kz, 0, 2);
+    { const boog = new THREE.ConeGeometry(PB + 0.4, 2.2, 4); boog.rotateY(Math.PI / 4); boog.scale(0.3, 1, 1); boog.translate(kx + 11 + 0.15, T + PH + 1.1, kz); bak.donker.push(boog); }
+    banier(kx + 11 + 0.5, T + 10, kz - 5, Math.PI / 2, 5); banier(kx + 11 + 0.5, T + 10, kz + 5, Math.PI / 2, 5);
+    fakkel(kx + 11 + 0.2, T + 4.5, kz - PB - 0.8, Math.PI / 2); fakkel(kx + 11 + 0.2, T + 4.5, kz + PB + 0.8, Math.PI / 2);
+    // ── de troonzaal ──
+    const vloerY = T + 0.12;
+    { const vl = new THREE.BoxGeometry(22 - 2 * DK, 0.1, 22 - 2 * DK); schaalDoosUV(vl, 22 - 2 * DK, 0.1, 22 - 2 * DK, 3); vl.translate(kx, vloerY + 0.05, kz); bak.marmer.push(vl); }
+    doos(bak.tapijt, 22 - 2 * DK - 5, 0.04, 3.2, kx - 1.5, vloerY + 0.1, kz, 0, 1);                       // rode loper van de poort naar de troon
+    // zuilen (4 per kant) met fakkels
+    for(const sz of [-1, 1]) for(let k = 0; k < 4; k++){
+      const zx = kx - 7 + k * 4.2, zz = kz + sz * 7.2;
+      cil(bak.steenBinnen2, 0.6, 0.5, voetH - 2.2, zx, vloerY, zz, 12, 2); cil(bak.steenBinnen2, 0.9, 0.9, 0.3, zx, vloerY, zz, 12, 2); cil(bak.steenBinnen2, 0.9, 0.9, 0.3, zx, T + voetH - 2.3, zz, 12, 2);
+      fakkel(zx, T + 3.4, zz - sz * 0.6, sz > 0 ? Math.PI : 0);
+      bots(zx - 0.6, zx + 0.6, zz - 0.6, zz + 0.6, T - 1, T + voetH - 2);
+    }
+    // de troon op een verhoging tegen de achtermuur (-x): twee treden, hoge rugleuning, Doom-masker erboven
+    const tx = kx - 11 + DK + 2.6;
+    doos(bak.marmer, 4.4, 0.4, 7, tx + 0.4, vloerY, kz, 0, 2); doos(bak.marmer, 3.0, 0.4, 5, tx, vloerY + 0.4, kz, 0, 2);
+    bots(tx - 1.8, tx + 2.6, kz - 3.5, kz + 3.5, T - 1, vloerY + 0.4); bots(tx - 1.5, tx + 1.5, kz - 2.5, kz + 2.5, vloerY + 0.4, vloerY + 0.8);
+    doos(bak.donker, 1.4, 0.9, 1.6, tx - 0.4, vloerY + 0.8, kz, 0, 1);                                  // zitting
+    doos(bak.staal, 0.3, 4.2, 1.8, tx - 1.1, vloerY + 0.8, kz, 0, 1);                                   // rugleuning
+    for(const sz of [-1, 1]) doos(bak.staal, 1.3, 0.25, 0.25, tx - 0.4, vloerY + 1.75, kz + sz * 0.9, 0, 1);   // armleuningen
+    { const punt = new THREE.ConeGeometry(0.5, 1.2, 4); punt.rotateY(Math.PI / 4); punt.translate(tx - 1.1, vloerY + 5.6, kz); bak.staal.push(punt); }
+    for(const sz of [-1, 1]){ const pt = new THREE.ConeGeometry(0.25, 0.8, 4); pt.rotateY(Math.PI / 4); pt.translate(tx - 1.1, vloerY + 5.3, kz + sz * 0.8); bak.staal.push(pt); }
+    bots(tx - 1.3, tx + 0.4, kz - 1, kz + 1, vloerY + 0.8, vloerY + 2.0);
+    { const d = new THREE.PlaneGeometry(4.5, 9); d.rotateY(Math.PI / 2); d.translate(kx - 11 + DK + 0.05, T + 8.5, kz); bak.banier.push(d); }   // groot Doom-doek achter de troon
+    for(const sz of [-1, 1]){ const d = new THREE.PlaneGeometry(2.2, 6); d.rotateY(Math.PI / 2); d.translate(kx - 11 + DK + 0.05, T + 7.5, kz + sz * 6); bak.banier.push(d); }
+    for(const sz of [-1, 1]) { cil(bak.donker, 0.5, 0.4, 0.5, tx + 1.4, vloerY + 0.4, kz + sz * 2.0, 8, 1); const v = new THREE.SphereGeometry(0.4, 8, 6); v.scale(1, 1.6, 1); v.translate(tx + 1.4, vloerY + 1.3, kz + sz * 2.0); bak.vlam.push(v); }   // vuurkorven naast de troon
+    // open haard in de zijmuur (+z) met vuur
+    doos(bak.steenBinnen2, 4.2, 3.2, 0.9, kx + 3, vloerY, kz + 11 - DK - 0.45, 0, 2); doos(bak.donker, 2.6, 2.2, 0.6, kx + 3, vloerY, kz + 11 - DK - 0.3, 0, 1);
+    for(let k = 0; k < 5; k++){ const v = new THREE.SphereGeometry(0.28 + r() * 0.15, 7, 6); v.scale(1, 1.8, 1); v.translate(kx + 3 - 1 + k * 0.5, vloerY + 0.6, kz + 11 - DK - 0.3); bak.vlam.push(v); }
+    doos(bak.steenBinnen2, 4.6, 0.3, 1.1, kx + 3, vloerY + 3.2, kz + 11 - DK - 0.55, 0, 1);
+    bots(kx + 0.9, kx + 5.1, kz + 11 - DK - 0.9, kz + 11, T - 1, vloerY + 3.5);
+    // kroonluchter: koperen ring met kaarsen, aan een ketting
+    { const ring = new THREE.TorusGeometry(2.2, 0.12, 6, 24); ring.rotateX(Math.PI / 2); ring.translate(kx - 4, T + 9, kz + 2.5); bak.koper.push(ring);
+      for(let k = 0; k < 12; k++){ const a = k / 12 * Math.PI * 2; cil(bak.koper, 0.06, 0.06, 0.5, kx - 4 + Math.cos(a) * 2.2, T + 9, kz + 2.5 + Math.sin(a) * 2.2, 6, 1); const v = new THREE.SphereGeometry(0.12, 6, 5); v.scale(1, 1.8, 1); v.translate(kx - 4 + Math.cos(a) * 2.2, T + 9.7, kz + 2.5 + Math.sin(a) * 2.2); bak.vlam.push(v); }
+      cil(bak.donker, 0.05, 0.05, voetH - 2 - 9, kx - 4, T + 9, kz + 2.5, 5, 1); }
+    // ramen aan de binnenkant (licht van buiten), tegenover de buitenramen
+    for(const sz of [-1, 1]) for(const dx of [-5, 0, 5]) doos(bak.raam, 1.0, 2.6, 0.1, kx + dx, T + 8, kz + sz * (11 - DK - 0.05), 0, 1);
+    // ── de wenteltrap: in de hoek (-x, -z), rond een zuil, door een gat in het plafond de toren in ──
+    const sx0 = kx + 1.5, sz0 = kz - 2.5, R1 = 1.0, R2 = 2.8;        // past binnen de ronde toren (r 7,6) én naast de troon
+    cil(bak.steenBinnen2, R1, R1, voetH - 2 + 32, sx0, vloerY, sz0, 14, 2);                     // de spil
+    bots(sx0 - R1, sx0 + R1, sz0 - R1, sz0 + R1, T - 1, T + voetH + 32);
+    const TREDEN = 84, STAP = 0.46, HOEK = Math.PI * 2 / 14;
+    for(let k = 0; k < TREDEN; k++){
+      const a = k * HOEK, y = vloerY + k * STAP;
+      const g = new THREE.BoxGeometry(R2 - R1 + 0.3, 0.22, 1.25); schaalDoosUV(g, R2 - R1 + 0.3, 0.22, 1.25, 2); g.translate((R1 + R2) / 2 - 0.1, 0, 0); g.rotateY(-a); g.translate(sx0, y + 0.11, sz0); bak.steenBinnen2.push(g);
+      const mx = sx0 + Math.cos(a) * (R1 + R2) / 2, mz = sz0 + Math.sin(a) * (R1 + R2) / 2;
+      bots(mx - 1.0, mx + 1.0, mz - 1.0, mz + 1.0, y - 0.3, y + 0.22);
+      if(k % 14 === 7) fakkel(sx0 + Math.cos(a) * (R2 + 0.9), y + 1.6, sz0 + Math.sin(a) * (R2 + 0.9), -a + Math.PI);
+    }
+    // trapgat in het plafond: het plafond is dicht; we maken het gat door een stuk plafond weg te laten
+    // (het plafond hierboven is één doos — daarom een tweede, donkere 'koker' om het gat heen die het dicht lijkt)
+    // → eenvoudiger: het plafond-bots-blok uitzonderen boven de trap
+    doos(bak.donker, 6.6, 2.1, 6.6, sx0, T + voetH - 2.05, sz0, 0, 1);                              // donker gat in het plafond (visueel)
+    // ── de ronde toren van binnen: BackSide-cilinder, 12 botsmuren, en bovenin Dooms werkkamer ──
+    const TH = 38, ty0 = T + voetH;
+    { const bin = new THREE.CylinderGeometry(7.6, 7.6, TH - 0.5, 24, 1, true); const uv = bin.attributes.uv; for(let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 7, uv.getY(i) * TH / 7); bin.translate(kx, ty0 + TH / 2, kz); bak.steenBinnen.push(bin); }
+    for(let k = 0; k < 16; k++){ const a = (k + 0.5) / 16 * Math.PI * 2, mx = kx + Math.cos(a) * 8.0, mz = kz + Math.sin(a) * 8.0, hx = Math.abs(Math.sin(a)) * 1.6 + Math.abs(Math.cos(a)) * 0.35, hz = Math.abs(Math.cos(a)) * 1.6 + Math.abs(Math.sin(a)) * 0.35; bots(mx - hx, mx + hx, mz - hz, mz + hz, ty0 - 1, ty0 + TH + 20); }
+    for(let v = 0; v < 3; v++) for(let k = 0; k < 6; k++){ const a = k / 6 * Math.PI * 2 + v * 0.5; doos((k + v) % 2 ? bak.raam : bak.donker, 0.5, 2.0, 0.1, kx + Math.cos(a) * 7.55, ty0 + 6 + v * 8, kz + Math.sin(a) * 7.55, -a + Math.PI / 2, 1); }
+    // de werkkamer: vloer (met gat voor de trap), tafel met kaart, stoel, boekenkast, kristallen bol
+    const wkY = vloerY + TREDEN * STAP - 0.1;
+    { const vl = new THREE.CylinderGeometry(7.5, 7.5, 0.4, 24); vl.translate(kx, wkY - 0.2, kz); bak.marmer.push(vl); }
+    bots(kx - 7.5, kx + 7.5, kz + 0.8, kz + 7.5, wkY - 0.6, wkY); bots(kx - 7.5, kx + 7.5, kz - 7.5, kz - 5.8, wkY - 0.6, wkY);
+    bots(kx - 7.5, kx - 1.8, kz - 5.8, kz + 0.8, wkY - 0.6, wkY); bots(kx + 4.8, kx + 7.5, kz - 5.8, kz + 0.8, wkY - 0.6, wkY);
+    doos(bak.donker, 5.5, 0.5, 5.5, sx0, wkY - 0.6, sz0, 0, 1);                                      // het trapgat (donker)
+    doos(bak.stam, 3.2, 0.15, 1.8, kx + 2, wkY + 0.9, kz + 1, 0.3, 1); for(const [dx, dz] of [[-1.4, -0.7], [1.4, -0.7], [-1.4, 0.7], [1.4, 0.7]]) cil(bak.stam, 0.08, 0.1, 0.9, kx + 2 + dx, wkY, kz + 1 + dz, 5, 1);   // tafel
+    { const kaart = new THREE.PlaneGeometry(2.4, 1.3); kaart.rotateX(-Math.PI / 2); kaart.rotateY(0.3); kaart.translate(kx + 2, wkY + 1.06, kz + 1); const c = []; for(let i = 0; i < 4; i++) c.push(0.85, 0.75, 0.5); kaart.setAttribute('color', new THREE.Float32BufferAttribute(c, 3)); bak.spriet.push(kaart); }
+    doos(bak.donker, 0.9, 0.5, 0.9, kx + 2, wkY, kz - 1.2, 0, 1); doos(bak.donker, 0.9, 1.4, 0.15, kx + 2, wkY + 0.5, kz - 1.65, 0, 1);   // stoel
+    bots(kx + 0.3, kx + 3.7, kz - 1.8, kz + 2.2, wkY - 1, wkY + 1.1);
+    cil(bak.steenBinnen2, 0.5, 0.4, 1.2, kx - 3, wkY, kz + 3, 10, 1); { const bol = new THREE.SphereGeometry(0.55, 14, 10); bol.translate(kx - 3, wkY + 1.75, kz + 3); bak.kristal.push(bol); }   // kristallen bol
+    bots(kx - 3.6, kx - 2.4, kz + 2.4, kz + 3.6, wkY - 1, wkY + 2.3);
+    for(let k = 0; k < 3; k++){ const a = Math.PI * 0.75 + k * 0.4, bx = kx + Math.cos(a) * 6.2, bz = kz + Math.sin(a) * 6.2; doos(bak.stam, 2.0, 3.2, 0.5, bx, wkY, bz, -a + Math.PI / 2, 1); for(let p2 = 0; p2 < 4; p2++) doos(bak.stam, 1.9, 0.06, 0.5, bx, wkY + 0.7 + p2 * 0.75, bz, -a + Math.PI / 2, 1); for(let q = 0; q < 14; q++){ const t = r(); const b = new THREE.BoxGeometry(0.12, 0.5 + r() * 0.2, 0.35); b.translate((q % 7) * 0.26 - 0.8, 0.95 + Math.floor(q / 7) * 0.75, 0.05); b.rotateY(-a + Math.PI / 2); b.translate(bx, wkY, bz); const c = []; for(let i = 0; i < b.attributes.position.count; i++) c.push(t < 0.3 ? 0.6 : 0.2, t < 0.3 ? 0.15 : 0.35, 0.15 + t * 0.3); b.setAttribute('color', new THREE.Float32BufferAttribute(c, 3)); bak.spriet.push(b); } }   // boekenkasten
+    for(let k = 0; k < 4; k++){ const a = k / 4 * Math.PI * 2 + 0.4; fakkel(kx + Math.cos(a) * 7.3, wkY + 2.2, kz + Math.sin(a) * 7.3, -a + Math.PI); }
+    { const dak = new THREE.ConeGeometry(7.6, 12, 24, 1, true); dak.translate(kx, ty0 + TH - 0.5 + 6, kz); bak.steenBinnen.push(dak); }   // de binnenkant van het dak
+    KASTEEL_ANIM.werkkamer = {x: kx, y: wkY, z: kz};
     koperRand(kx - 11, kz - 11.2, kx + 11, kz - 11.2, T + voetH - 0.3); koperRand(kx - 11, kz + 11.2, kx + 11, kz + 11.2, T + voetH - 0.3);
     for(const [dx, dz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) spits(kx + dx * 10.5, kz + dz * 10.5, 2.3, 24, 7, T);
     cil(bak.steen, 8.5, 8.0, 38, kx, T + voetH, kz, 24);
@@ -3505,7 +3612,6 @@ function updateStad(dt, t){
     for(let v = 0; v < 4; v++) for(let k = 0; k < 6; k++){ const a = k / 6 * Math.PI * 2 + v * 0.5, yy = T + voetH + 6 + v * 8; raamGotisch(kx + Math.cos(a) * 8.4, yy, kz + Math.sin(a) * 8.4, -a + Math.PI / 2, 0.6, 2.2, (k + v) % 2 === 0); }
     for(let k = 0; k < 4; k++){ const a = k / 4 * Math.PI * 2; raamGotisch(kx + Math.cos(a) * 11.02, T + 8, kz + Math.sin(a) * 11.02, -a + Math.PI / 2, 1.0, 2.6, true); }   // ramen in de voet
     dakRibben(kx, kz, 9.4, 22, T + voetH + 39, 10);
-    bots(kx - 8.5, kx + 8.5, kz - 8.5, kz + 8.5, T + voetH, T + voetH + 60);
     // de twee lange dunne spitsen ernaast
     spits(-30, -20, 2.6, 44, 14, T); spits(-26, 20, 2.4, 38, 12, T);
   }
@@ -3555,7 +3661,7 @@ function updateStad(dt, t){
   }
 
   // ════════ ALLES SAMENVOEGEN EN IN DE SCÈNE ════════
-  const mats = {steen: steenMat, leien: leienMat, koper: koperMat, donker: donkerMat, raam: raamMat, banier: banierMat, goud: goudMat, doom: doomMat, gloei: gloeiMat, stam: stamMat, den: denMat, rood: roodMat, haag: haagMat, water: waterMat, rots: rotsMat, kei: keiMat, vlam: vlamMat, staal: staalMat, roodDonker: roodDonkerMat, loofRood: loofRoodMat, loofGroen: loofGroenMat, naald: naaldMat, schors: schorsMat, spriet: sprietMat, tuinGras: tuinGrasMat};
+  const mats = {steen: steenMat, leien: leienMat, koper: koperMat, donker: donkerMat, raam: raamMat, banier: banierMat, goud: goudMat, doom: doomMat, gloei: gloeiMat, stam: stamMat, den: denMat, rood: roodMat, haag: haagMat, water: waterMat, rots: rotsMat, kei: keiMat, vlam: vlamMat, staal: staalMat, roodDonker: roodDonkerMat, loofRood: loofRoodMat, loofGroen: loofGroenMat, naald: naaldMat, schors: schorsMat, spriet: sprietMat, tuinGras: tuinGrasMat, steenBinnen: steenBinnenMat, steenBinnen2: steenBinnen2Mat, tapijt: tapijtMat, marmer: marmerMat, kristal: kristalMat};
   for(const naam in bak){
     if(!bak[naam].length) continue;
     const m = new THREE.Mesh(voegSamen(bak[naam]), mats[naam]);
