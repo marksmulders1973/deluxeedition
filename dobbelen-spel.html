@@ -295,12 +295,13 @@ const TIMER_SLEUTEL = 'deluxe-dobbelen-eindtijd', TIMER_MIN = 50, TIMER_MAX = 70
 // Stap 15: het alarm. Een harde sirene (zelf gemaakt geluid), daarna zegt een stem de tekst. Na 7 seconden stopt het vanzelf (stap 17).
 // Een tik op het scherm zet het alarm eerder uit. Het gaat per timer maar één keer af (onthouden in ALARM_SLEUTEL).
 // Een browser mag pas geluid maken nadat er op de pagina getikt is; daarom wordt het geluid bij de eerste tik "ontgrendeld".
-const ALARM_SLEUTEL = 'deluxe-dobbelen-alarm-gedaan', ALARM_TEKST = 'Ho, ho, ho, ho! Veel cadeautjes hè! Fijne kerstfeest!';
+const ALARM_SLEUTEL = 'deluxe-dobbelen-alarm-gedaan';
 const ALARM_DUUR = 7000;
 const alarmVak = document.getElementById('alarm');
 let geluid = null, alarmWachters = [], alarmToon = null;
 function ontgrendel() {
   try { if (!geluid) geluid = new (window.AudioContext || window.webkitAudioContext)(); if (geluid.state === 'suspended') geluid.resume(); } catch (e) {}
+  haalKerstman();
 }
 document.addEventListener('pointerdown', ontgrendel, true);
 function sirene(duur) {
@@ -316,14 +317,21 @@ function sirene(duur) {
     toon.start(t0); toon.stop(t0 + duur); alarmToon = toon;
   } catch (e) {}
 }
+// Stap 24 (10 nov, Brian vond de browserstem "een domme AI-stem"): de kerstman is nu een vast geluidsbestand, dobbelen-kerstman.mp3.
+// Gemaakt met de vrije stem "rdh" (Piper, CC0), daarna lager en voller gemaakt (toonhoogte ±95 Hz, wat galm). Klinkt op elk apparaat hetzelfde.
+// Het bestand wordt bij de eerste tik op de pagina al opgehaald, zodat het klaarstaat als het alarm afgaat.
+let kerstmanGeluid = null, kerstmanBron = null, kerstmanHalen = false;
+function haalKerstman() {
+  if (kerstmanHalen || !geluid) return;
+  kerstmanHalen = true;
+  fetch('dobbelen-kerstman.mp3').then((r) => r.arrayBuffer()).then((b) => geluid.decodeAudioData(b)).then((buf) => { kerstmanGeluid = buf; }).catch(() => { kerstmanHalen = false; });
+}
 function zeg() {
   try {
-    if (!('speechSynthesis' in window)) return;
-    const zin = new SpeechSynthesisUtterance(ALARM_TEKST);
-    zin.lang = 'nl-NL'; zin.pitch = 0.5; zin.rate = 1; zin.volume = 1;
-    const stem = speechSynthesis.getVoices().find((v) => /^nl/i.test(v.lang));
-    if (stem) zin.voice = stem;
-    speechSynthesis.speak(zin);
+    if (!geluid || !kerstmanGeluid) return; // nog niet geladen: dan alleen de sirene
+    kerstmanBron = geluid.createBufferSource(); kerstmanBron.buffer = kerstmanGeluid;
+    const sterkte = geluid.createGain(); sterkte.gain.value = 1.4;
+    kerstmanBron.connect(sterkte); sterkte.connect(geluid.destination); kerstmanBron.start();
   } catch (e) {}
 }
 // Stap 18: het einde. Gouden scherm met "Het spel is afgelopen"; dobbelen kan niet meer (bezig blijft aan).
@@ -336,15 +344,15 @@ function alarmAf() {
   // was het alarm van deze timer al geweest (pagina opnieuw geopend)? Dan meteen het eindscherm.
   try { if (localStorage.getItem(ALARM_SLEUTEL) === String(eindtijd)) { eindeAan(); return; } localStorage.setItem(ALARM_SLEUTEL, String(eindtijd)); } catch (e) {}
   alarmVak.classList.add('aan');
-  // Stap 17 (10 nov, Brian): het alarm duurt 7 seconden en stopt dan vanzelf. 2 seconden sirene, daarna de stem.
-  sirene(2);
-  alarmWachters.push(setTimeout(zeg, 2000));
+  // Stap 17 (10 nov, Brian): het alarm duurt 7 seconden en stopt dan vanzelf. Anderhalve seconde sirene, daarna de kerstman.
+  sirene(1.5);
+  alarmWachters.push(setTimeout(zeg, 1500)); // de kerstman praat 5,3 seconden: 1,5 + 5,3 past binnen de 7
   alarmWachters.push(setTimeout(alarmUit, ALARM_DUUR));
 }
 function alarmUit() {
   alarmWachters.forEach(clearTimeout); alarmWachters = [];
   try { if (alarmToon) alarmToon.stop(); } catch (e) {}
-  try { speechSynthesis.cancel(); } catch (e) {}
+  try { if (kerstmanBron) kerstmanBron.stop(); } catch (e) {}
   alarmVak.classList.remove('aan');
   eindeAan();
 }
