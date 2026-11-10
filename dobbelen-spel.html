@@ -33,9 +33,13 @@
   #cadeau, #merry { display: none; position: relative; z-index: 2; color: #8f0b20; font-weight: 900; }
   #cadeau { font-size: clamp(30px, 8vw, 54px); line-height: 1.05; text-shadow: 0 2px 0 rgba(255,255,255,.55); padding: 0 16px; animation: nieuw .45s ease-out; }
   #merry { position: fixed; left: 0; right: 0; bottom: 20px; font-size: clamp(22px, 6vw, 34px); font-style: italic; letter-spacing: 1px; text-shadow: 0 2px 0 rgba(255,255,255,.55); }
-  /* Stap 12 (10 nov): alle cadeautjes op = groen scherm met dezelfde versiering, verder niets. */
+  /* Stap 12 (10 nov): alle cadeautjes op = groen scherm met dezelfde versiering.
+     Stap 13 (10 nov): op het groene scherm gaat het spel gewoon door: dobbelsteen, zelf dobbelen en het gouden scherm bij een zes. */
   html.groen, body.groen { background: #146b3a; }
-  body.groen #beurt, body.groen #steen, body.groen #zelf, body.groen #zelfKnop, body.groen #cadeau, body.groen #merry { display: none; }
+  body.groen #zelfKnop { color: #0c4a27; box-shadow: 0 4px 0 #07361b; }
+  body.groen #cadeauTeller { color: #0c4a27; box-shadow: 0 3px 0 rgba(7,54,27,.6); }
+  body.groen #beurt .naam, body.groen #zelf .tekst { text-shadow: 0 3px 0 rgba(7,54,27,.6); }
+  body.groen #verder { background: #c8102e; box-shadow: 0 5px 0 #8f0b20; }
   html.goud, body.goud { background: #e3b93a; }
   body.goud { background: radial-gradient(circle at 50% 38%, #fff3b8 0%, #f1cd55 38%, #d4a321 100%); gap: 3vh; cursor: pointer; }
   body.goud #cadeau, body.goud #merry { display: block; }
@@ -156,7 +160,7 @@ function goudAan() { cadeauEraf(); document.documentElement.classList.add('goud'
 document.addEventListener('click', () => {
   if (!document.body.classList.contains('goud') || Date.now() - goudSinds < 700) return; // niet per ongeluk meteen wegtikken
   document.documentElement.classList.remove('goud'); document.body.classList.remove('goud');
-  if (cadeaus === 0) { groenAan(); return; } // het laatste cadeautje is gepakt
+  if (cadeaus === 0) groenAan(); // het laatste cadeautje is gepakt: verder op het groene scherm
   if (namen.length) { beurt = (beurt + 1) % namen.length; toonBeurt(); }
   bezig = false;
 });
@@ -186,8 +190,8 @@ function cadeauEraf() {
 }
 toonCadeaus();
 
-// Alle cadeautjes op: groen scherm. Er valt niets meer te dobbelen (bezig blijft aan).
-function groenAan() { bezig = true; document.documentElement.classList.add('groen'); document.body.classList.remove('zelf'); document.body.classList.add('groen'); }
+// Alle cadeautjes op: het scherm wordt groen. Het spel gaat gewoon door (steen, zelf dobbelen, goud bij een zes).
+function groenAan() { document.documentElement.classList.add('groen'); document.body.classList.add('groen'); }
 if (cadeaus === 0) groenAan();
 </script>
 <script src="dobbelen-kerst.js"></script>
