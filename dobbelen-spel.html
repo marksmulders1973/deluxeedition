@@ -29,6 +29,17 @@
   #verder { font-size: 22px; padding: 16px 44px; color: #fff; background: #146b3a; box-shadow: 0 5px 0 #0c4a27; }
   #verder:active { box-shadow: 0 1px 0 #0c4a27; }
   body.zelf #steen, body.zelf #zelfKnop { display: none; }
+  /* Stap 8 (10 nov): bij een zes wordt het scherm goud, met "Pak een cadeau" en onderin "Merry Christmas". Tik om verder te gaan. */
+  #cadeau, #merry { display: none; position: relative; z-index: 2; color: #8f0b20; font-weight: 900; }
+  #cadeau { font-size: clamp(30px, 8vw, 54px); line-height: 1.05; text-shadow: 0 2px 0 rgba(255,255,255,.55); padding: 0 16px; animation: nieuw .45s ease-out; }
+  #merry { position: fixed; left: 0; right: 0; bottom: 20px; font-size: clamp(22px, 6vw, 34px); font-style: italic; letter-spacing: 1px; text-shadow: 0 2px 0 rgba(255,255,255,.55); }
+  html.goud, body.goud { background: #e3b93a; }
+  body.goud { background: radial-gradient(circle at 50% 38%, #fff3b8 0%, #f1cd55 38%, #d4a321 100%); gap: 3vh; cursor: pointer; }
+  body.goud #cadeau, body.goud #merry { display: block; }
+  body.goud #zelfKnop { display: none; }
+  body.goud #steen { width: min(46vw, 32vh, 260px); }
+  body.goud #beurt .klein { color: #8f0b20; }
+  body.goud #beurt .naam { color: #8f0b20; text-shadow: 0 2px 0 rgba(255,255,255,.55); }
   body.zelf #zelf { display: flex; }
   body { box-sizing: border-box; padding-top: 104px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5vh;
          font-family: "Segoe UI", system-ui, sans-serif; color: #fff; text-align: center; }
@@ -56,6 +67,7 @@
 <div id="ballen" aria-hidden="true"></div>
 <canvas id="decor" aria-hidden="true"></canvas>
 <div id="beurt" aria-live="polite"><div class="klein"></div><div class="naam"></div></div>
+<div id="cadeau">Pak een cadeau</div>
 <svg id="steen" viewBox="0 0 200 200" role="img" aria-label="dobbelsteen">
   <defs>
     <linearGradient id="vlak" x1="0" y1="0" x2="1" y2="1">
@@ -77,6 +89,7 @@
 </svg>
 <div id="zelf"><div class="tekst">Je dobbelt zelf</div><button class="knop" id="verder">VERDER</button></div>
 <button class="knop" id="zelfKnop">ZELF DOBBELEN</button>
+<div id="merry">Merry Christmas</div>
 <script>
 // Waar de ogen staan bij elk getal (de steen is 200 bij 200).
 const L = 64, M = 100, R = 136, B = 60, C = 96, O = 132;
@@ -121,6 +134,7 @@ function rol() {
   setTimeout(() => { clearInterval(wissel); toon(uitkomst); }, 900);
   setTimeout(() => {
     steen.classList.remove('rolt');
+    if (uitkomst === 6) { goudAan(); return; } // zes: goud scherm, wacht op een tik
     if (!namen.length) { bezig = false; return; }
     // even laten zien wat er gegooid is, dan is de volgende aan de beurt
     setTimeout(() => { beurt = (beurt + 1) % namen.length; toonBeurt(); bezig = false; }, 1300);
@@ -128,6 +142,16 @@ function rol() {
 }
 
 steen.addEventListener('click', rol);
+
+// Een zes: het scherm wordt goud ("Pak een cadeau"). Een tik ergens op het scherm = terug naar rood en de volgende is aan de beurt.
+let goudSinds = 0;
+function goudAan() { document.documentElement.classList.add('goud'); document.body.classList.add('goud'); goudSinds = Date.now(); }
+document.addEventListener('click', () => {
+  if (!document.body.classList.contains('goud') || Date.now() - goudSinds < 700) return; // niet per ongeluk meteen wegtikken
+  document.documentElement.classList.remove('goud'); document.body.classList.remove('goud');
+  if (namen.length) { beurt = (beurt + 1) % namen.length; toonBeurt(); }
+  bezig = false;
+});
 
 // Zelf dobbelen: deze beurt gooit de speler met een echte dobbelsteen. VERDER = de volgende is aan de beurt, weer met de steen op het scherm.
 document.getElementById('zelfKnop').addEventListener('click', () => { if (!bezig) document.body.classList.add('zelf'); });
