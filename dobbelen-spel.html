@@ -40,6 +40,15 @@
   body.groen #cadeauTeller { color: #0c4a27; box-shadow: 0 3px 0 rgba(7,54,27,.6); }
   body.groen #beurt .naam, body.groen #zelf .tekst { text-shadow: 0 3px 0 rgba(7,54,27,.6); }
   body.groen #verder { background: #c8102e; box-shadow: 0 5px 0 #8f0b20; }
+  /* Stap 15 (10 nov): timer om = hard alarm + de kerstman zegt "HO HO HO HO VEEL CADEAUTJES HE FIJNE KERSTFEEST". */
+  #alarm { display: none; position: fixed; inset: 0; z-index: 5; flex-direction: column; align-items: center; justify-content: center; gap: 2vh;
+           padding: 110px 16px 30px; background: rgba(12,74,39,.84); color: #fff; font-weight: 900; cursor: pointer; }
+  #alarm.aan { display: flex; animation: flits .5s steps(2) infinite; }
+  #alarm .hoho { font-size: clamp(40px, 12vw, 110px); line-height: 1; color: #f3e3a6; text-shadow: 0 5px 0 #8f0b20; animation: schud .28s linear infinite; }
+  #alarm .regel { font-size: clamp(26px, 7vw, 60px); line-height: 1.1; text-shadow: 0 4px 0 rgba(7,54,27,.7); }
+  @keyframes flits { from { background: rgba(12,74,39,.84); } to { background: rgba(200,16,46,.84); } }
+  @keyframes schud { 0% { transform: rotate(-2deg) scale(1); } 50% { transform: rotate(2deg) scale(1.05); } 100% { transform: rotate(-2deg) scale(1); } }
+  @media (prefers-reduced-motion: reduce) { #alarm.aan, #alarm .hoho { animation: none; } }
   html.goud, body.goud { background: #e3b93a; }
   body.goud { background: radial-gradient(circle at 50% 38%, #fff3b8 0%, #f1cd55 38%, #d4a321 100%); gap: 3vh; cursor: pointer; }
   body.goud #cadeau, body.goud #merry { display: block; }
@@ -101,6 +110,7 @@
 <div id="zelf"><div class="tekst">Je dobbelt zelf</div><button class="knop" id="verder">VERDER</button></div>
 <button class="knop" id="zelfKnop">ZELF DOBBELEN</button>
 <div id="merry">Merry Christmas</div>
+<div id="alarm" role="alert"><div class="hoho">HO HO HO HO</div><div class="regel">VEEL CADEAUTJES HÈ</div><div class="regel">FIJNE KERSTFEEST</div></div>
 <script>
 // Waar de ogen staan bij elk getal (de steen is 200 bij 200).
 const L = 64, M = 100, R = 136, B = 60, C = 96, O = 132;
@@ -195,8 +205,57 @@ function groenAan() { document.documentElement.classList.add('groen'); document.
 
 // Stap 14 (10 nov): zodra het scherm groen wordt, zet de site zelf een geheime timer: een toevallige tijd tussen 50 en 70 minuten.
 // Het eindtijdstip wordt bewaard, zodat de timer doorloopt als je de pagina opnieuw opent. Je ziet hem nergens.
-// Als de tijd om is gebeurt er nog niets, behalve dat body het kenmerk data-tijd="om" krijgt (klaar voor de volgende stap).
+// Als de tijd om is gaat het alarm af (stap 15, zie alarmAf).
 const TIMER_SLEUTEL = 'deluxe-dobbelen-eindtijd', TIMER_MIN = 50, TIMER_MAX = 70;
+
+// Stap 15: het alarm. Een harde sirene (zelf gemaakt geluid), daarna zegt een stem de tekst; dat drie keer achter elkaar.
+// Een tik op het scherm zet het alarm uit. Het gaat per timer maar één keer af (onthouden in ALARM_SLEUTEL).
+// Een browser mag pas geluid maken nadat er op de pagina getikt is; daarom wordt het geluid bij de eerste tik "ontgrendeld".
+const ALARM_SLEUTEL = 'deluxe-dobbelen-alarm-gedaan', ALARM_TEKST = 'Ho, ho, ho, ho! Veel cadeautjes hè! Fijne kerstfeest!';
+const alarmVak = document.getElementById('alarm');
+let geluid = null, alarmWachters = [], alarmToon = null;
+function ontgrendel() {
+  try { if (!geluid) geluid = new (window.AudioContext || window.webkitAudioContext)(); if (geluid.state === 'suspended') geluid.resume(); } catch (e) {}
+}
+document.addEventListener('pointerdown', ontgrendel, true);
+function sirene(duur) {
+  ontgrendel();
+  if (!geluid) return;
+  try {
+    const t0 = geluid.currentTime, toon = geluid.createOscillator(), sterkte = geluid.createGain();
+    toon.type = 'square';
+    for (let t = 0, k = 0; t < duur; t += 0.22, k++) toon.frequency.setValueAtTime(k % 2 ? 660 : 990, t0 + t);
+    sterkte.gain.setValueAtTime(0.0001, t0); sterkte.gain.linearRampToValueAtTime(0.9, t0 + 0.03);
+    sterkte.gain.setValueAtTime(0.9, t0 + duur - 0.06); sterkte.gain.linearRampToValueAtTime(0.0001, t0 + duur);
+    toon.connect(sterkte); sterkte.connect(geluid.destination);
+    toon.start(t0); toon.stop(t0 + duur); alarmToon = toon;
+  } catch (e) {}
+}
+function zeg() {
+  try {
+    if (!('speechSynthesis' in window)) return;
+    const zin = new SpeechSynthesisUtterance(ALARM_TEKST);
+    zin.lang = 'nl-NL'; zin.pitch = 0.5; zin.rate = 0.85; zin.volume = 1;
+    const stem = speechSynthesis.getVoices().find((v) => /^nl/i.test(v.lang));
+    if (stem) zin.voice = stem;
+    speechSynthesis.speak(zin);
+  } catch (e) {}
+}
+function alarmAf() {
+  try { if (localStorage.getItem(ALARM_SLEUTEL) === String(eindtijd)) return; localStorage.setItem(ALARM_SLEUTEL, String(eindtijd)); } catch (e) {}
+  alarmVak.classList.add('aan');
+  for (let ronde = 0; ronde < 3; ronde++) {
+    alarmWachters.push(setTimeout(() => sirene(2.4), ronde * 9000));
+    alarmWachters.push(setTimeout(zeg, ronde * 9000 + 2500));
+  }
+}
+function alarmUit() {
+  alarmWachters.forEach(clearTimeout); alarmWachters = [];
+  try { if (alarmToon) alarmToon.stop(); } catch (e) {}
+  try { speechSynthesis.cancel(); } catch (e) {}
+  alarmVak.classList.remove('aan');
+}
+alarmVak.addEventListener('click', (e) => { e.stopPropagation(); alarmUit(); });
 let eindtijd = 0, timerWacht = 0;
 function startTimer() {
   if (eindtijd) return; // loopt al
@@ -206,7 +265,7 @@ function startTimer() {
     eindtijd = Date.now() + seconden * 1000;
     try { localStorage.setItem(TIMER_SLEUTEL, String(eindtijd)); } catch (e) {}
   }
-  const kijk = () => { if (Date.now() >= eindtijd) { document.body.dataset.tijd = 'om'; clearInterval(timerWacht); } };
+  const kijk = () => { if (Date.now() >= eindtijd) { document.body.dataset.tijd = 'om'; clearInterval(timerWacht); alarmAf(); } };
   timerWacht = setInterval(kijk, 1000); kijk();
 }
 if (cadeaus === 0) groenAan();
