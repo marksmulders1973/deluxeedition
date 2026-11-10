@@ -56,6 +56,14 @@
   body.klaar { background: radial-gradient(circle at 50% 42%, #fff3b8 0%, #f1cd55 38%, #d4a321 100%); cursor: default; }
   body.klaar #einde { display: block; animation: nieuw .5s ease-out; }
   body.klaar #beurt, body.klaar #steen, body.klaar #zelf, body.klaar #zelfKnop, body.klaar #cadeau, body.klaar #merry, body.klaar #kerstman { display: none; }
+  /* Stap 19 (10 nov): admin-paneel, alleen voor NovaX (ingelogd op deluxeedition.nl): skip ronde, geef een 6, laat de timer afgaan. */
+  #admin { display: none; position: fixed; left: 10px; bottom: 10px; z-index: 4; text-align: left; }
+  #admin.mag { display: block; }
+  body.klaar #admin { display: none; }
+  #adminKnop { font-size: 13px; padding: 8px 12px; color: #fff; background: #5b2a9c; box-shadow: 0 3px 0 #33145e; }
+  #adminLijst { display: none; flex-direction: column; gap: 8px; margin-bottom: 8px; padding: 10px; border-radius: 14px; background: rgba(20,10,40,.9); }
+  #admin.open #adminLijst { display: flex; }
+  #adminLijst .knop { font-size: 14px; padding: 10px 14px; color: #fff; background: #7a3fd0; box-shadow: 0 3px 0 #33145e; text-align: left; white-space: nowrap; }
   /* Stap 16 (10 nov): een zes op het groene scherm = het gouden scherm mét een kerstman erbij (zelf getekend, geen plaatje van internet). */
   #kerstman { display: none; position: fixed; z-index: 2; right: 7vw; bottom: 64px; height: min(52vh, 420px); width: auto; pointer-events: none; }
   body.groen.goud #kerstman { display: block; animation: kerstmanOp .5s ease-out; }
@@ -174,6 +182,14 @@
     <path d="M78 86 q42 -24 84 0 q5 -14 -3 -22 q-39 -20 -78 0 q-8 8 -3 22z" fill="#fff"/>
   </g>
 </svg>
+<div id="admin">
+  <div id="adminLijst">
+    <button class="knop" id="adminSkip">⏭ Skip ronde</button>
+    <button class="knop" id="adminZes">🎲 Geef een 6</button>
+    <button class="knop" id="adminTimer">⏰ Laat de timer afgaan</button>
+  </div>
+  <button class="knop" id="adminKnop">👑 ADMIN</button>
+</div>
 <div id="alarm" role="alert"><div class="hoho">HO HO HO HO</div><div class="regel">VEEL CADEAUTJES HÈ</div><div class="regel">FIJNE KERSTFEEST</div></div>
 <script>
 // Waar de ogen staan bij elk getal (de steen is 200 bij 200).
@@ -209,10 +225,10 @@ function toon(n) {
 }
 function gooi() { return 1 + Math.floor(Math.random() * 6); }
 
-function rol() {
+function rol(vast) {
   if (bezig) return;
   bezig = true;
-  const uitkomst = gooi();
+  const uitkomst = vast === 6 ? 6 : gooi(); // vast === 6: de admin geeft een zes (stap 19)
   steen.classList.remove('rolt'); void steen.getBoundingClientRect(); steen.classList.add('rolt');
   // tijdens het rollen springt hij langs andere getallen
   const wissel = setInterval(() => { let n; do { n = gooi(); } while (n === getal); toon(n); }, 90);
@@ -329,6 +345,34 @@ function alarmUit() {
   eindeAan();
 }
 alarmVak.addEventListener('click', (e) => { e.stopPropagation(); alarmUit(); });
+
+// Stap 19: admin-paneel. Alleen te zien als je op deluxeedition.nl bent ingelogd als NovaX (zelfde check als bij de avatars).
+const admin = document.getElementById('admin');
+let isNovaX = false;
+try { isNovaX = (localStorage.getItem('deluxe-speler') || '').trim() === 'NovaX'; } catch (e) {}
+if (isNovaX) admin.classList.add('mag');
+admin.addEventListener('click', (e) => e.stopPropagation()); // een tik op het paneel mag het gouden scherm niet wegtikken
+document.getElementById('adminKnop').addEventListener('click', () => admin.classList.toggle('open'));
+// Skip ronde: de volgende is meteen aan de beurt, zonder te gooien.
+document.getElementById('adminSkip').addEventListener('click', () => {
+  if (bezig || !namen.length) return;
+  document.body.classList.remove('zelf');
+  beurt = (beurt + 1) % namen.length; toonBeurt();
+});
+// Geef een 6: de steen rolt en komt zeker op zes (voor wie nu aan de beurt is).
+document.getElementById('adminZes').addEventListener('click', () => {
+  if (bezig) return;
+  document.body.classList.remove('zelf');
+  rol(6);
+});
+// Laat de timer afgaan: het alarm gaat nu af (ook als het scherm nog rood is); daarna is het spel afgelopen.
+document.getElementById('adminTimer').addEventListener('click', () => {
+  if (alarmVak.classList.contains('aan')) return;
+  clearInterval(timerWacht);
+  eindtijd = Date.now();
+  try { localStorage.setItem(TIMER_SLEUTEL, String(eindtijd)); localStorage.removeItem(ALARM_SLEUTEL); } catch (e) {}
+  alarmAf();
+});
 let eindtijd = 0, timerWacht = 0;
 function startTimer() {
   if (eindtijd) return; // loopt al
