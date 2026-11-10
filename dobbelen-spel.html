@@ -149,7 +149,7 @@ steen.addEventListener('click', rol);
 
 // Een zes: het scherm wordt goud ("Pak een cadeau"). Een tik ergens op het scherm = terug naar rood en de volgende is aan de beurt.
 let goudSinds = 0;
-function goudAan() { document.documentElement.classList.add('goud'); document.body.classList.add('goud'); goudSinds = Date.now(); }
+function goudAan() { cadeauEraf(); document.documentElement.classList.add('goud'); document.body.classList.add('goud'); goudSinds = Date.now(); }
 document.addEventListener('click', () => {
   if (!document.body.classList.contains('goud') || Date.now() - goudSinds < 700) return; // niet per ongeluk meteen wegtikken
   document.documentElement.classList.remove('goud'); document.body.classList.remove('goud');
@@ -167,9 +167,20 @@ toon(5);
 toonBeurt();
 
 // Hoeveel cadeautjes er zijn (ingevuld bij de namen).
-let cadeaus = 0;
-try { cadeaus = parseInt(localStorage.getItem('deluxe-dobbelen-cadeaus') || '', 10) || 0; } catch (e) { cadeaus = 0; }
-if (cadeaus >= 1 && cadeaus <= 999) document.getElementById('cadeauTeller').textContent = '🎁 ' + cadeaus + (cadeaus === 1 ? ' cadeautje' : ' cadeautjes');
+// Stap 11 (10 nov): bij een zes gaat er één cadeautje af (niet verder dan 0). Het nieuwe aantal wordt bewaard.
+const CADEAU_SLEUTEL = 'deluxe-dobbelen-cadeaus';
+let cadeaus = -1; // -1 = er is geen aantal ingevuld
+try { const bewaard = localStorage.getItem(CADEAU_SLEUTEL); if (/^[0-9]{1,3}$/.test(bewaard || '')) cadeaus = parseInt(bewaard, 10); } catch (e) {}
+function toonCadeaus() {
+  document.getElementById('cadeauTeller').textContent = cadeaus < 0 ? '' : '🎁 ' + cadeaus + (cadeaus === 1 ? ' cadeautje' : ' cadeautjes');
+}
+function cadeauEraf() {
+  if (cadeaus <= 0) return;
+  cadeaus--;
+  try { localStorage.setItem(CADEAU_SLEUTEL, String(cadeaus)); } catch (e) {}
+  toonCadeaus();
+}
+toonCadeaus();
 </script>
 <script src="dobbelen-kerst.js"></script>
 </body>
