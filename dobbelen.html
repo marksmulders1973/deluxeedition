@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOBBELEN — Deluxe Edition</title>
+<style>
+  /* 🎲 DOBBELEN — stap 1 (10 nov 2026, Brian): je kunt namen invoeren. Het dobbelen zelf komt later. */
+  :root { --rood: #ff3b3b; --blauw: #3b82ff; --lichtblauw: #8fb8ff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; font-family: "Segoe UI", system-ui, sans-serif; color: #fff;
+         background: radial-gradient(circle at 20% 0%, #2a0d16 0%, #0b0f1e 45%, #070a14 100%); }
+  .wrap { max-width: 520px; margin: 0 auto; padding: 18px 16px 40px; }
+  .terug { display: inline-block; color: var(--lichtblauw); text-decoration: none; font-weight: 700; font-size: 14px;
+           border: 2px solid rgba(59,130,255,.35); border-radius: 999px; padding: 7px 14px; }
+  .terug:hover { border-color: var(--blauw); color: #fff; }
+  h1 { text-align: center; font-size: 40px; margin: 18px 0 2px; letter-spacing: 2px;
+       background: linear-gradient(90deg, var(--rood), var(--blauw)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .steen { text-align: center; font-size: 64px; line-height: 1; margin-top: 10px; }
+  .uitleg { text-align: center; color: rgba(255,255,255,.7); margin: 6px 0 20px; font-size: 16px; }
+  .invoer { display: flex; gap: 8px; }
+  .invoer input { flex: 1; min-width: 0; font: inherit; font-size: 18px; padding: 13px 14px; border-radius: 14px;
+                  border: 2px solid rgba(255,255,255,.25); background: rgba(255,255,255,.07); color: #fff; outline: none; }
+  .invoer input:focus { border-color: var(--blauw); }
+  .invoer input::placeholder { color: rgba(255,255,255,.4); }
+  .knop { font: inherit; font-size: 17px; font-weight: 800; color: #fff; border: 0; border-radius: 14px; padding: 13px 18px; cursor: pointer;
+          background: linear-gradient(135deg, #e42222, #ff5940); box-shadow: 0 5px 0 #8b1010; }
+  .knop:active { transform: translateY(4px); box-shadow: 0 1px 0 #8b1010; }
+  .melding { min-height: 22px; margin: 8px 2px 0; font-size: 14px; color: #ffb3b3; }
+  .teller { margin: 18px 2px 8px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; font-size: 13px; color: var(--lichtblauw); }
+  .lijst { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .lijst li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px;
+              border: 2px solid rgba(59,130,255,.3); background: linear-gradient(160deg, rgba(255,255,255,.07), rgba(59,130,255,.04)); }
+  .lijst li:nth-child(odd) { border-color: rgba(255,59,59,.32); }
+  .lijst .nr { width: 30px; height: 30px; flex: none; border-radius: 50%; background: rgba(255,255,255,.12); display: flex;
+               align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
+  .lijst .naam { flex: 1; min-width: 0; font-size: 18px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lijst .weg { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); background: transparent;
+                color: rgba(255,255,255,.75); font-size: 16px; cursor: pointer; }
+  .lijst .weg:hover { color: #fff; border-color: var(--rood); background: rgba(255,59,59,.3); }
+  .leeg { text-align: center; color: rgba(255,255,255,.45); padding: 22px 10px; border: 2px dashed rgba(255,255,255,.18); border-radius: 14px; }
+  .alles-weg { display: block; margin: 16px auto 0; background: transparent; border: 0; color: rgba(255,255,255,.5); font: inherit;
+               font-size: 14px; text-decoration: underline; cursor: pointer; }
+  .binnenkort { text-align: center; margin-top: 26px; color: rgba(255,255,255,.5); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="terug" href="index.html">← deluxeedition.nl</a>
+  <div class="steen">🎲</div>
+  <h1>DOBBELEN</h1>
+  <p class="uitleg">Wie doet er mee? Zet alle namen erin.</p>
+
+  <div class="invoer">
+    <input id="naamVak" type="text" maxlength="14" placeholder="Typ een naam…" autocomplete="off" enterkeyhint="done">
+    <button class="knop" id="voegToe">＋ ERBIJ</button>
+  </div>
+  <div class="melding" id="melding"></div>
+
+  <div class="teller" id="teller"></div>
+  <ul class="lijst" id="lijst"></ul>
+  <button class="alles-weg" id="allesWeg">alle namen weghalen</button>
+
+  <p class="binnenkort">🔒 Het dobbelen zelf komt binnenkort.</p>
+</div>
+
+<script>
+// De namen worden bewaard op dit apparaat, zodat ze er de volgende keer nog staan.
+const SLEUTEL = 'deluxe-dobbelen-namen';
+const MAX_NAMEN = 20;
+let namen = [];
+try { namen = JSON.parse(localStorage.getItem(SLEUTEL) || '[]') || []; } catch (e) { namen = []; }
+if (!Array.isArray(namen)) namen = [];
+
+const vak = document.getElementById('naamVak'), lijst = document.getElementById('lijst');
+const melding = document.getElementById('melding'), teller = document.getElementById('teller');
+
+function bewaar() { try { localStorage.setItem(SLEUTEL, JSON.stringify(namen)); } catch (e) {} }
+
+function teken() {
+  lijst.innerHTML = '';
+  teller.textContent = namen.length === 1 ? '1 speler' : namen.length + ' spelers';
+  document.getElementById('allesWeg').style.display = namen.length ? '' : 'none';
+  if (!namen.length) {
+    const leeg = document.createElement('div');
+    leeg.className = 'leeg'; leeg.textContent = 'Nog niemand. Typ hierboven de eerste naam!';
+    lijst.appendChild(leeg);
+    return;
+  }
+  namen.forEach((naam, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="nr"></span><span class="naam"></span><button class="weg" title="weghalen">✕</button>';
+    li.querySelector('.nr').textContent = i + 1;
+    li.querySelector('.naam').textContent = naam; // textContent: een naam kan nooit als code worden uitgevoerd
+    li.querySelector('.weg').onclick = () => { namen.splice(i, 1); bewaar(); teken(); };
+    lijst.appendChild(li);
+  });
+}
+
+function voegToe() {
+  const naam = vak.value.trim().replace(/\s+/g, ' ');
+  melding.textContent = '';
+  if (!naam) { melding.textContent = 'Typ eerst een naam.'; vak.focus(); return; }
+  if (namen.length >= MAX_NAMEN) { melding.textContent = 'Er passen maximaal ' + MAX_NAMEN + ' namen in.'; return; }
+  if (namen.some(n => n.toLowerCase() === naam.toLowerCase())) { melding.textContent = naam + ' staat er al in.'; vak.select(); return; }
+  namen.push(naam);
+  bewaar(); teken();
+  vak.value = ''; vak.focus();
+}
+
+document.getElementById('voegToe').onclick = voegToe;
+vak.addEventListener('keydown', e => { if (e.key === 'Enter') voegToe(); });
+document.getElementById('allesWeg').onclick = () => { namen = []; bewaar(); teken(); vak.focus(); };
+
+teken();
+</script>
+</body>
+</html>
