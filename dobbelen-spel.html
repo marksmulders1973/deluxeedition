@@ -41,15 +41,19 @@
   body.goud #beurt .klein { color: #8f0b20; }
   body.goud #beurt .naam { color: #8f0b20; text-shadow: 0 2px 0 rgba(255,255,255,.55); }
   body.zelf #zelf { display: flex; }
-  body { box-sizing: border-box; padding-top: 104px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5vh;
+  body { box-sizing: border-box; padding-top: 104px; padding-bottom: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3.5vh;
          font-family: "Segoe UI", system-ui, sans-serif; color: #fff; text-align: center; }
   #beurt { min-height: 92px; padding: 0 16px; }
+  /* Stap 10 (10 nov): bovenaan staat hoeveel cadeautjes er zijn (het aantal dat bij de namen is ingevuld). */
+  #cadeauTeller { display: inline-block; margin-bottom: 14px; padding: 6px 16px; border-radius: 999px; font-size: 17px; font-weight: 800;
+                  color: #8f0b20; background: #fff; box-shadow: 0 3px 0 rgba(77,6,18,.45); }
+  #cadeauTeller:empty { display: none; }
   #beurt .klein { font-size: 15px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; color: #f3e3a6; }
   #beurt .naam { font-size: clamp(34px, 9vw, 60px); font-weight: 900; line-height: 1.1; margin-top: 4px; overflow-wrap: anywhere;
                  text-shadow: 0 3px 0 rgba(77,6,18,.45); }
   #beurt.wissel .naam { animation: nieuw .45s ease-out; }
   @keyframes nieuw { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-  #steen { width: min(56vw, 44vh, 320px); height: auto; display: block; cursor: pointer; overflow: visible;
+  #steen { width: min(56vw, 38vh, 320px); height: auto; display: block; cursor: pointer; overflow: visible;
            -webkit-tap-highlight-color: transparent; user-select: none; }
   #steen.rolt { animation: rol 1.1s cubic-bezier(.3,.1,.3,1); }
   @keyframes rol {
@@ -66,7 +70,7 @@
 <body data-boom="vaag">
 <div id="ballen" aria-hidden="true"></div>
 <canvas id="decor" aria-hidden="true"></canvas>
-<div id="beurt" aria-live="polite"><div class="klein"></div><div class="naam"></div></div>
+<div id="beurt" aria-live="polite"><div id="cadeauTeller"></div><div class="klein"></div><div class="naam"></div></div>
 <div id="cadeau">Pak een cadeau</div>
 <svg id="steen" viewBox="0 0 200 200" role="img" aria-label="dobbelsteen">
   <defs>
@@ -161,6 +165,11 @@ document.getElementById('verder').addEventListener('click', () => {
 });
 toon(5);
 toonBeurt();
+
+// Hoeveel cadeautjes er zijn (ingevuld bij de namen).
+let cadeaus = 0;
+try { cadeaus = parseInt(localStorage.getItem('deluxe-dobbelen-cadeaus') || '', 10) || 0; } catch (e) { cadeaus = 0; }
+if (cadeaus >= 1 && cadeaus <= 999) document.getElementById('cadeauTeller').textContent = '🎁 ' + cadeaus + (cadeaus === 1 ? ' cadeautje' : ' cadeautjes');
 </script>
 <script src="dobbelen-kerst.js"></script>
 </body>
