@@ -49,6 +49,13 @@
   @keyframes flits { from { background: rgba(12,74,39,.84); } to { background: rgba(200,16,46,.84); } }
   @keyframes schud { 0% { transform: rotate(-2deg) scale(1); } 50% { transform: rotate(2deg) scale(1.05); } 100% { transform: rotate(-2deg) scale(1); } }
   @media (prefers-reduced-motion: reduce) { #alarm.aan, #alarm .hoho { animation: none; } }
+  /* Stap 18 (10 nov): na het alarm een gouden scherm "Het spel is afgelopen". Er kan dan niet meer gedobbeld worden. */
+  #einde { display: none; position: relative; z-index: 2; padding: 0 16px; color: #8f0b20; font-weight: 900; font-size: clamp(36px, 10vw, 84px); line-height: 1.08;
+           text-shadow: 0 3px 0 rgba(255,255,255,.6); }
+  html.klaar, body.klaar { background: #e3b93a; }
+  body.klaar { background: radial-gradient(circle at 50% 42%, #fff3b8 0%, #f1cd55 38%, #d4a321 100%); cursor: default; }
+  body.klaar #einde { display: block; animation: nieuw .5s ease-out; }
+  body.klaar #beurt, body.klaar #steen, body.klaar #zelf, body.klaar #zelfKnop, body.klaar #cadeau, body.klaar #merry, body.klaar #kerstman { display: none; }
   /* Stap 16 (10 nov): een zes op het groene scherm = het gouden scherm mét een kerstman erbij (zelf getekend, geen plaatje van internet). */
   #kerstman { display: none; position: fixed; z-index: 2; right: 7vw; bottom: 64px; height: min(52vh, 420px); width: auto; pointer-events: none; }
   body.groen.goud #kerstman { display: block; animation: kerstmanOp .5s ease-out; }
@@ -95,6 +102,7 @@
 <div id="ballen" aria-hidden="true"></div>
 <canvas id="decor" aria-hidden="true"></canvas>
 <div id="beurt" aria-live="polite"><div id="cadeauTeller"></div><div class="klein"></div><div class="naam"></div></div>
+<div id="einde">Het spel is afgelopen</div>
 <div id="cadeau">Pak een cadeau</div>
 <svg id="steen" viewBox="0 0 200 200" role="img" aria-label="dobbelsteen">
   <defs>
@@ -298,8 +306,15 @@ function zeg() {
     speechSynthesis.speak(zin);
   } catch (e) {}
 }
+// Stap 18: het einde. Gouden scherm met "Het spel is afgelopen"; dobbelen kan niet meer (bezig blijft aan).
+function eindeAan() {
+  bezig = true;
+  document.documentElement.classList.remove('goud'); document.body.classList.remove('goud', 'zelf');
+  document.documentElement.classList.add('klaar'); document.body.classList.add('klaar');
+}
 function alarmAf() {
-  try { if (localStorage.getItem(ALARM_SLEUTEL) === String(eindtijd)) return; localStorage.setItem(ALARM_SLEUTEL, String(eindtijd)); } catch (e) {}
+  // was het alarm van deze timer al geweest (pagina opnieuw geopend)? Dan meteen het eindscherm.
+  try { if (localStorage.getItem(ALARM_SLEUTEL) === String(eindtijd)) { eindeAan(); return; } localStorage.setItem(ALARM_SLEUTEL, String(eindtijd)); } catch (e) {}
   alarmVak.classList.add('aan');
   // Stap 17 (10 nov, Brian): het alarm duurt 7 seconden en stopt dan vanzelf. 2 seconden sirene, daarna de stem.
   sirene(2);
@@ -311,6 +326,7 @@ function alarmUit() {
   try { if (alarmToon) alarmToon.stop(); } catch (e) {}
   try { speechSynthesis.cancel(); } catch (e) {}
   alarmVak.classList.remove('aan');
+  eindeAan();
 }
 alarmVak.addEventListener('click', (e) => { e.stopPropagation(); alarmUit(); });
 let eindtijd = 0, timerWacht = 0;
