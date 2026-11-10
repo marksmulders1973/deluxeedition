@@ -7,10 +7,22 @@
 <title>DOBBELEN — Deluxe Edition</title>
 <style>
   /* 🎲 DOBBELEN — stap 2 (10 nov 2026, Brian): na de knop DOBBELEN kom je op een rood scherm.
-     Stap 3 (10 nov): op het scherm staat alleen een dobbelsteen. Hij doet nog niets. */
+     Stap 3 (10 nov): op het scherm staat alleen een dobbelsteen.
+     Stap 4 (10 nov): klik erop en hij rolt, en blijft dan op een toevallig getal liggen. */
   html, body { margin: 0; height: 100%; background: #c8102e; }
   body { display: flex; align-items: center; justify-content: center; }
-  #steen { width: min(56vw, 56vh, 320px); height: auto; display: block; }
+  #steen { width: min(56vw, 56vh, 320px); height: auto; display: block; cursor: pointer; overflow: visible;
+           -webkit-tap-highlight-color: transparent; user-select: none; }
+  #steen.rolt { animation: rol 1.1s cubic-bezier(.3,.1,.3,1); }
+  @keyframes rol {
+    0%   { transform: translateY(0) rotate(0) scale(1); }
+    20%  { transform: translateY(-34%) rotate(200deg) scale(1.08); }
+    40%  { transform: translateY(0) rotate(400deg) scale(.96); }
+    58%  { transform: translateY(-16%) rotate(560deg) scale(1.04); }
+    76%  { transform: translateY(0) rotate(680deg) scale(.98); }
+    88%  { transform: translateY(-5%) rotate(712deg) scale(1.01); }
+    100% { transform: translateY(0) rotate(720deg) scale(1); }
+  }
 </style>
 </head>
 <body>
@@ -31,13 +43,42 @@
   </defs>
   <rect x="22" y="18" width="156" height="156" rx="30" fill="url(#vlak)" filter="url(#schaduw)"/>
   <rect x="27" y="23" width="146" height="146" rx="26" fill="none" stroke="#ffffff" stroke-width="3" opacity=".8"/>
-  <g fill="url(#oog)">
-    <circle cx="64" cy="60" r="14"/>
-    <circle cx="136" cy="60" r="14"/>
-    <circle cx="100" cy="96" r="14"/>
-    <circle cx="64" cy="132" r="14"/>
-    <circle cx="136" cy="132" r="14"/>
-  </g>
+  <g id="ogen" fill="url(#oog)"></g>
 </svg>
+<script>
+// Waar de ogen staan bij elk getal (de steen is 200 bij 200).
+const L = 64, M = 100, R = 136, B = 60, C = 96, O = 132;
+const OGEN = {
+  1: [[M, C]],
+  2: [[L, B], [R, O]],
+  3: [[L, B], [M, C], [R, O]],
+  4: [[L, B], [R, B], [L, O], [R, O]],
+  5: [[L, B], [R, B], [M, C], [L, O], [R, O]],
+  6: [[L, B], [R, B], [L, C], [R, C], [L, O], [R, O]]
+};
+const steen = document.getElementById('steen'), ogen = document.getElementById('ogen');
+let getal = 5, bezig = false;
+
+function toon(n) {
+  getal = n;
+  ogen.innerHTML = OGEN[n].map(([x, y]) => '<circle cx="' + x + '" cy="' + y + '" r="14"/>').join('');
+  steen.setAttribute('aria-label', 'dobbelsteen: ' + n);
+}
+function gooi() { return 1 + Math.floor(Math.random() * 6); }
+
+function rol() {
+  if (bezig) return;
+  bezig = true;
+  const uitkomst = gooi();
+  steen.classList.remove('rolt'); void steen.getBoundingClientRect(); steen.classList.add('rolt');
+  // tijdens het rollen springt hij langs andere getallen
+  const wissel = setInterval(() => { let n; do { n = gooi(); } while (n === getal); toon(n); }, 90);
+  setTimeout(() => { clearInterval(wissel); toon(uitkomst); }, 900);
+  setTimeout(() => { steen.classList.remove('rolt'); bezig = false; }, 1120);
+}
+
+steen.addEventListener('click', rol);
+toon(5);
+</script>
 </body>
 </html>
