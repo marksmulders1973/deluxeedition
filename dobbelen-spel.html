@@ -17,7 +17,19 @@
   #ballen .bal { position: absolute; top: 0; transform-origin: 50% 0; animation: wieg 4s ease-in-out infinite alternate; }
   @keyframes wieg { from { transform: rotate(-3.2deg); } to { transform: rotate(3.2deg); } }
   @media (prefers-reduced-motion: reduce) { #ballen .bal { animation: none; } }
-  #beurt, #steen { position: relative; z-index: 2; }
+  #beurt, #steen, #zelf, #zelfKnop { position: relative; z-index: 2; }
+  /* Stap 7 (10 nov): knop "zelf dobbelen" onderin. Dan verdwijnt de steen, staat er "Je dobbelt zelf" en ga je met VERDER naar de volgende. */
+  .knop { font: inherit; font-weight: 800; letter-spacing: 1px; border: 0; border-radius: 14px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .knop:active { transform: translateY(3px); }
+  #zelfKnop { position: fixed; left: 50%; bottom: 22px; translate: -50% 0; font-size: 16px; padding: 12px 22px; color: #8f0b20;
+              background: #fff; box-shadow: 0 4px 0 #6d0716; white-space: nowrap; }
+  #zelfKnop:active { box-shadow: 0 1px 0 #6d0716; }
+  #zelf { display: none; flex-direction: column; align-items: center; gap: 26px; min-height: min(56vw, 44vh, 320px); justify-content: center; padding: 0 16px; }
+  #zelf .tekst { font-size: clamp(26px, 7vw, 42px); font-weight: 800; text-shadow: 0 3px 0 rgba(77,6,18,.45); }
+  #verder { font-size: 22px; padding: 16px 44px; color: #fff; background: #146b3a; box-shadow: 0 5px 0 #0c4a27; }
+  #verder:active { box-shadow: 0 1px 0 #0c4a27; }
+  body.zelf #steen, body.zelf #zelfKnop { display: none; }
+  body.zelf #zelf { display: flex; }
   body { box-sizing: border-box; padding-top: 104px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5vh;
          font-family: "Segoe UI", system-ui, sans-serif; color: #fff; text-align: center; }
   #beurt { min-height: 92px; padding: 0 16px; }
@@ -63,6 +75,8 @@
   <rect x="27" y="23" width="146" height="146" rx="26" fill="none" stroke="#ffffff" stroke-width="3" opacity=".8"/>
   <g id="ogen" fill="url(#oog)"></g>
 </svg>
+<div id="zelf"><div class="tekst">Je dobbelt zelf</div><button class="knop" id="verder">VERDER</button></div>
+<button class="knop" id="zelfKnop">ZELF DOBBELEN</button>
 <script>
 // Waar de ogen staan bij elk getal (de steen is 200 bij 200).
 const L = 64, M = 100, R = 136, B = 60, C = 96, O = 132;
@@ -114,6 +128,13 @@ function rol() {
 }
 
 steen.addEventListener('click', rol);
+
+// Zelf dobbelen: deze beurt gooit de speler met een echte dobbelsteen. VERDER = de volgende is aan de beurt, weer met de steen op het scherm.
+document.getElementById('zelfKnop').addEventListener('click', () => { if (!bezig) document.body.classList.add('zelf'); });
+document.getElementById('verder').addEventListener('click', () => {
+  document.body.classList.remove('zelf');
+  if (namen.length) { beurt = (beurt + 1) % namen.length; toonBeurt(); }
+});
 toon(5);
 toonBeurt();
 </script>
