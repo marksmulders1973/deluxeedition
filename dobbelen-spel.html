@@ -60,9 +60,9 @@
   #admin { display: none; position: fixed; left: 10px; bottom: 10px; z-index: 4; text-align: left; }
   #admin.mag { display: block; }
   body.klaar #admin { display: none; }
-  /* Stap 20 (10 nov): de admin-knop is onzichtbaar. NovaX tikt 3 keer snel in de hoek linksonder om het paneel te openen. */
-  #adminKnop { display: block; width: 64px; height: 64px; padding: 0; opacity: 0; background: transparent; box-shadow: none; cursor: default; }
-  #adminKnop:active { transform: none; }
+  /* Stap 23 (10 nov): de admin-knop is weer gewoon zichtbaar (paars, linksonder), maar alleen als je bent ingelogd als NovaX.
+     De onzichtbare knop van stap 20 is weg: Brian zag zijn paneel niet meer. */
+  #adminKnop { font-size: 13px; padding: 8px 12px; color: #fff; background: #5b2a9c; box-shadow: 0 3px 0 #33145e; }
   #adminLijst { display: none; flex-direction: column; gap: 8px; margin-bottom: 8px; padding: 10px; border-radius: 14px; background: rgba(20,10,40,.9); }
   #admin.open #adminLijst { display: flex; }
   #adminLijst .knop { font-size: 14px; padding: 10px 14px; color: #fff; background: #7a3fd0; box-shadow: 0 3px 0 #33145e; text-align: left; white-space: nowrap; }
@@ -190,7 +190,7 @@
     <button class="knop" id="adminZes">🎲 Geef een 6</button>
     <button class="knop" id="adminTimer">⏰ Laat de timer afgaan</button>
   </div>
-  <button class="knop" id="adminKnop" tabindex="-1" aria-hidden="true"></button>
+  <button class="knop" id="adminKnop">👑 ADMIN</button>
 </div>
 <div id="alarm" role="alert"><div class="hoho">HO HO HO HO</div><div class="regel">VEEL CADEAUTJES HÈ</div><div class="regel">FIJNE KERSTFEEST</div></div>
 <script>
@@ -358,13 +358,7 @@ if (isNovaX) admin.classList.add('mag');
 // Niet NovaX? Dan doet geen enkele admin-knop iets (de tik wordt hier al tegengehouden).
 admin.addEventListener('click', (e) => { if (!isNovaX) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
 admin.addEventListener('click', (e) => e.stopPropagation()); // een tik op het paneel mag het gouden scherm niet wegtikken
-// De knop is een onzichtbaar vakje linksonder: 3 keer tikken binnen ruim een seconde opent of sluit het paneel.
-let adminTikken = [];
-document.getElementById('adminKnop').addEventListener('click', () => {
-  const nu = Date.now();
-  adminTikken = adminTikken.filter((t) => nu - t < 1300); adminTikken.push(nu);
-  if (adminTikken.length >= 3) { adminTikken = []; admin.classList.toggle('open'); }
-});
+document.getElementById('adminKnop').addEventListener('click', () => admin.classList.toggle('open'));
 // Na een keuze klapt het paneel meteen weer dicht, zodat het niet in beeld blijft staan.
 document.getElementById('adminLijst').addEventListener('click', () => admin.classList.remove('open'));
 // Skip ronde (stap 22): de rode ronde overslaan en meteen naar het groene scherm. Het is NIET een beurt overslaan.
