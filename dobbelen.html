@@ -48,6 +48,14 @@
   .leeg { text-align: center; color: #6b6b6b; padding: 22px 10px; border: 2px dashed var(--goud); border-radius: 14px; background: #fffdf5; }
   .alles-weg { display: block; margin: 16px auto 0; background: transparent; border: 0; color: #6b6b6b; font: inherit;
                font-size: 14px; text-decoration: underline; cursor: pointer; }
+  /* Stap 9 (10 nov, Brian): vóór het dobbelen moet je invullen hoeveel cadeautjes er zijn. */
+  .cadeaus { margin-top: 26px; padding: 14px; border: 2px solid var(--goud); border-radius: 14px; background: #fffdf5;
+             display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .cadeaus label { font-weight: 800; font-size: 17px; color: var(--donkergroen); }
+  .cadeaus input { font: inherit; font-size: 22px; font-weight: 800; width: 110px; padding: 10px 12px; text-align: center; border-radius: 12px;
+                   border: 2px solid var(--groen); background: #fff; color: var(--inkt); outline: none; }
+  .cadeaus input:focus { box-shadow: 0 0 0 3px rgba(20,107,58,.18); }
+  #cadeauMelding { text-align: center; }
   .dobbel-knop { display: block; width: fit-content; margin: 28px auto 0; padding: 16px 44px; font-size: 22px; letter-spacing: 2px; text-decoration: none; }
 </style>
 </head>
@@ -70,7 +78,12 @@
   <ul class="lijst" id="lijst"></ul>
   <button class="alles-weg" id="allesWeg">alle namen weghalen</button>
 
-  <a class="knop dobbel-knop" href="dobbelen-spel.html">🎲 DOBBELEN</a>
+  <div class="cadeaus">
+    <label for="cadeauVak">🎁 Hoeveel cadeautjes zijn er?</label>
+    <input id="cadeauVak" type="number" inputmode="numeric" min="1" max="999" step="1" placeholder="0" autocomplete="off">
+  </div>
+  <div class="melding" id="cadeauMelding"></div>
+  <a class="knop dobbel-knop" id="dobbelKnop" href="dobbelen-spel.html">🎲 DOBBELEN</a>
 </div>
 
 <script>
@@ -120,6 +133,28 @@ function voegToe() {
 document.getElementById('voegToe').onclick = voegToe;
 vak.addEventListener('keydown', e => { if (e.key === 'Enter') voegToe(); });
 document.getElementById('allesWeg').onclick = () => { namen = []; bewaar(); teken(); vak.focus(); };
+
+// Hoeveel cadeautjes er zijn: bewaard op dit apparaat. Zonder een aantal kun je niet gaan dobbelen.
+const CADEAU_SLEUTEL = 'deluxe-dobbelen-cadeaus', MAX_CADEAUS = 999;
+const cadeauVak = document.getElementById('cadeauVak'), cadeauMelding = document.getElementById('cadeauMelding');
+function aantalCadeaus() {
+  const tekst = cadeauVak.value.trim();
+  if (!/^[0-9]{1,3}$/.test(tekst)) return 0;
+  const n = parseInt(tekst, 10);
+  return n >= 1 && n <= MAX_CADEAUS ? n : 0;
+}
+try { const eerder = parseInt(localStorage.getItem(CADEAU_SLEUTEL) || '', 10); if (eerder >= 1 && eerder <= MAX_CADEAUS) cadeauVak.value = eerder; } catch (e) {}
+cadeauVak.addEventListener('input', () => {
+  cadeauMelding.textContent = '';
+  const n = aantalCadeaus();
+  try { if (n) localStorage.setItem(CADEAU_SLEUTEL, String(n)); else localStorage.removeItem(CADEAU_SLEUTEL); } catch (e) {}
+});
+document.getElementById('dobbelKnop').addEventListener('click', (e) => {
+  if (aantalCadeaus()) return;
+  e.preventDefault();
+  cadeauMelding.textContent = 'Vul eerst in hoeveel cadeautjes er zijn (1 tot ' + MAX_CADEAUS + ').';
+  cadeauVak.focus();
+});
 
 teken();
 </script>
