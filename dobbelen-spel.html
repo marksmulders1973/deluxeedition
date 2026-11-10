@@ -191,7 +191,24 @@ function cadeauEraf() {
 toonCadeaus();
 
 // Alle cadeautjes op: het scherm wordt groen. Het spel gaat gewoon door (steen, zelf dobbelen, goud bij een zes).
-function groenAan() { document.documentElement.classList.add('groen'); document.body.classList.add('groen'); }
+function groenAan() { document.documentElement.classList.add('groen'); document.body.classList.add('groen'); startTimer(); }
+
+// Stap 14 (10 nov): zodra het scherm groen wordt, zet de site zelf een geheime timer: een toevallige tijd tussen 50 en 70 minuten.
+// Het eindtijdstip wordt bewaard, zodat de timer doorloopt als je de pagina opnieuw opent. Je ziet hem nergens.
+// Als de tijd om is gebeurt er nog niets, behalve dat body het kenmerk data-tijd="om" krijgt (klaar voor de volgende stap).
+const TIMER_SLEUTEL = 'deluxe-dobbelen-eindtijd', TIMER_MIN = 50, TIMER_MAX = 70;
+let eindtijd = 0, timerWacht = 0;
+function startTimer() {
+  if (eindtijd) return; // loopt al
+  try { const bewaard = parseInt(localStorage.getItem(TIMER_SLEUTEL) || '', 10); if (bewaard > 0) eindtijd = bewaard; } catch (e) {}
+  if (!eindtijd) {
+    const seconden = TIMER_MIN * 60 + Math.floor(Math.random() * ((TIMER_MAX - TIMER_MIN) * 60 + 1));
+    eindtijd = Date.now() + seconden * 1000;
+    try { localStorage.setItem(TIMER_SLEUTEL, String(eindtijd)); } catch (e) {}
+  }
+  const kijk = () => { if (Date.now() >= eindtijd) { document.body.dataset.tijd = 'om'; clearInterval(timerWacht); } };
+  timerWacht = setInterval(kijk, 1000); kijk();
+}
 if (cadeaus === 0) groenAan();
 </script>
 <script src="dobbelen-kerst.js"></script>

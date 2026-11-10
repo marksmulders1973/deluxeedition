@@ -148,6 +148,8 @@ cadeauVak.addEventListener('input', () => {
   cadeauMelding.textContent = '';
   const n = aantalCadeaus();
   try { if (n) localStorage.setItem(CADEAU_SLEUTEL, String(n)); else localStorage.removeItem(CADEAU_SLEUTEL); } catch (e) {}
+  // een nieuw aantal cadeautjes = een nieuw spel: de timer van het groene scherm begint dan ook opnieuw
+  try { localStorage.removeItem('deluxe-dobbelen-eindtijd'); } catch (e) {}
 });
 document.getElementById('dobbelKnop').addEventListener('click', (e) => {
   if (aantalCadeaus()) return;
