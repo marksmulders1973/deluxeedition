@@ -227,10 +227,12 @@ function toon(n) {
 }
 function gooi() { return 1 + Math.floor(Math.random() * 6); }
 
-function rol(vast) {
+let zesKlaar = false;
+function rol() {
   if (bezig) return;
   bezig = true;
-  const uitkomst = vast === 6 ? 6 : gooi(); // vast === 6: de admin geeft een zes (stap 19)
+  const uitkomst = zesKlaar ? 6 : gooi(); // zesKlaar: de admin heeft "Geef een 6" gekozen, deze worp wordt een zes (stap 21)
+  zesKlaar = false; document.getElementById('adminZes').textContent = '🎲 Geef een 6';
   steen.classList.remove('rolt'); void steen.getBoundingClientRect(); steen.classList.add('rolt');
   // tijdens het rollen springt hij langs andere getallen
   const wissel = setInterval(() => { let n; do { n = gooi(); } while (n === getal); toon(n); }, 90);
@@ -371,11 +373,11 @@ document.getElementById('adminSkip').addEventListener('click', () => {
   document.body.classList.remove('zelf');
   beurt = (beurt + 1) % namen.length; toonBeurt();
 });
-// Geef een 6: de steen rolt en komt zeker op zes (voor wie nu aan de beurt is).
+// Geef een 6 (stap 21): er gebeurt nog niets te zien. De eerstvolgende keer dat iemand op de dobbelsteen tikt, wordt het een zes.
+// Nog een keer kiezen zet het weer uit. "Skip ronde" laat het staan: dan is de zes voor de volgende speler.
 document.getElementById('adminZes').addEventListener('click', () => {
-  if (bezig) return;
-  document.body.classList.remove('zelf');
-  rol(6);
+  zesKlaar = !zesKlaar;
+  document.getElementById('adminZes').textContent = zesKlaar ? '🎲 Geef een 6 ✔ (staat klaar)' : '🎲 Geef een 6';
 });
 // Laat de timer afgaan: het alarm gaat nu af (ook als het scherm nog rood is); daarna is het spel afgelopen.
 document.getElementById('adminTimer').addEventListener('click', () => {
