@@ -264,10 +264,11 @@ function groenAan() { document.documentElement.classList.add('groen'); document.
 // Als de tijd om is gaat het alarm af (stap 15, zie alarmAf).
 const TIMER_SLEUTEL = 'deluxe-dobbelen-eindtijd', TIMER_MIN = 50, TIMER_MAX = 70;
 
-// Stap 15: het alarm. Een harde sirene (zelf gemaakt geluid), daarna zegt een stem de tekst; dat drie keer achter elkaar.
-// Een tik op het scherm zet het alarm uit. Het gaat per timer maar één keer af (onthouden in ALARM_SLEUTEL).
+// Stap 15: het alarm. Een harde sirene (zelf gemaakt geluid), daarna zegt een stem de tekst. Na 7 seconden stopt het vanzelf (stap 17).
+// Een tik op het scherm zet het alarm eerder uit. Het gaat per timer maar één keer af (onthouden in ALARM_SLEUTEL).
 // Een browser mag pas geluid maken nadat er op de pagina getikt is; daarom wordt het geluid bij de eerste tik "ontgrendeld".
 const ALARM_SLEUTEL = 'deluxe-dobbelen-alarm-gedaan', ALARM_TEKST = 'Ho, ho, ho, ho! Veel cadeautjes hè! Fijne kerstfeest!';
+const ALARM_DUUR = 7000;
 const alarmVak = document.getElementById('alarm');
 let geluid = null, alarmWachters = [], alarmToon = null;
 function ontgrendel() {
@@ -291,7 +292,7 @@ function zeg() {
   try {
     if (!('speechSynthesis' in window)) return;
     const zin = new SpeechSynthesisUtterance(ALARM_TEKST);
-    zin.lang = 'nl-NL'; zin.pitch = 0.5; zin.rate = 0.85; zin.volume = 1;
+    zin.lang = 'nl-NL'; zin.pitch = 0.5; zin.rate = 1; zin.volume = 1;
     const stem = speechSynthesis.getVoices().find((v) => /^nl/i.test(v.lang));
     if (stem) zin.voice = stem;
     speechSynthesis.speak(zin);
@@ -300,10 +301,10 @@ function zeg() {
 function alarmAf() {
   try { if (localStorage.getItem(ALARM_SLEUTEL) === String(eindtijd)) return; localStorage.setItem(ALARM_SLEUTEL, String(eindtijd)); } catch (e) {}
   alarmVak.classList.add('aan');
-  for (let ronde = 0; ronde < 3; ronde++) {
-    alarmWachters.push(setTimeout(() => sirene(2.4), ronde * 9000));
-    alarmWachters.push(setTimeout(zeg, ronde * 9000 + 2500));
-  }
+  // Stap 17 (10 nov, Brian): het alarm duurt 7 seconden en stopt dan vanzelf. 2 seconden sirene, daarna de stem.
+  sirene(2);
+  alarmWachters.push(setTimeout(zeg, 2000));
+  alarmWachters.push(setTimeout(alarmUit, ALARM_DUUR));
 }
 function alarmUit() {
   alarmWachters.forEach(clearTimeout); alarmWachters = [];
