@@ -367,11 +367,16 @@ document.getElementById('adminKnop').addEventListener('click', () => {
 });
 // Na een keuze klapt het paneel meteen weer dicht, zodat het niet in beeld blijft staan.
 document.getElementById('adminLijst').addEventListener('click', () => admin.classList.remove('open'));
-// Skip ronde: de volgende is meteen aan de beurt, zonder te gooien.
+// Skip ronde (stap 22): de rode ronde overslaan en meteen naar het groene scherm. Het is NIET een beurt overslaan.
+// De cadeautjes gaan op 0 (groen = alle cadeautjes op) en de geheime timer van 50 tot 70 minuten begint. Wie aan de beurt is blijft dat.
 document.getElementById('adminSkip').addEventListener('click', () => {
-  if (bezig || !namen.length) return;
-  document.body.classList.remove('zelf');
-  beurt = (beurt + 1) % namen.length; toonBeurt();
+  if (document.body.classList.contains('groen')) return; // we zijn al in de groene ronde
+  document.documentElement.classList.remove('goud'); document.body.classList.remove('goud');
+  cadeaus = 0;
+  try { localStorage.setItem(CADEAU_SLEUTEL, '0'); } catch (e) {}
+  toonCadeaus();
+  groenAan();
+  if (!document.getElementById('steen').classList.contains('rolt')) bezig = false; // stond het gouden scherm open, dan kan er weer gegooid worden
 });
 // Geef een 6 (stap 21): er gebeurt nog niets te zien. De eerstvolgende keer dat iemand op de dobbelsteen tikt, wordt het een zes.
 // Nog een keer kiezen zet het weer uit. "Skip ronde" laat het staan: dan is de zes voor de volgende speler.
