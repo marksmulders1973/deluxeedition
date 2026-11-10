@@ -6,10 +6,38 @@
 <meta name="theme-color" content="#c8102e">
 <title>DOBBELEN — Deluxe Edition</title>
 <style>
-  /* 🎲 DOBBELEN — stap 2 (10 nov 2026, Brian): na de knop DOBBELEN kom je op een rood scherm. Alleen dat, verder nog niets. */
+  /* 🎲 DOBBELEN — stap 2 (10 nov 2026, Brian): na de knop DOBBELEN kom je op een rood scherm.
+     Stap 3 (10 nov): op het scherm staat alleen een dobbelsteen. Hij doet nog niets. */
   html, body { margin: 0; height: 100%; background: #c8102e; }
+  body { display: flex; align-items: center; justify-content: center; }
+  #steen { width: min(56vw, 56vh, 320px); height: auto; display: block; }
 </style>
 </head>
 <body>
+<svg id="steen" viewBox="0 0 200 200" role="img" aria-label="dobbelsteen">
+  <defs>
+    <linearGradient id="vlak" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".6" stop-color="#f4f1ec"/>
+      <stop offset="1" stop-color="#d9d3ca"/>
+    </linearGradient>
+    <radialGradient id="oog" cx="38%" cy="34%" r="70%">
+      <stop offset="0" stop-color="#4a4a4a"/>
+      <stop offset="1" stop-color="#0d0d0d"/>
+    </radialGradient>
+    <filter id="schaduw" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#4d0612" flood-opacity=".55"/>
+    </filter>
+  </defs>
+  <rect x="22" y="18" width="156" height="156" rx="30" fill="url(#vlak)" filter="url(#schaduw)"/>
+  <rect x="27" y="23" width="146" height="146" rx="26" fill="none" stroke="#ffffff" stroke-width="3" opacity=".8"/>
+  <g fill="url(#oog)">
+    <circle cx="64" cy="60" r="14"/>
+    <circle cx="136" cy="60" r="14"/>
+    <circle cx="100" cy="96" r="14"/>
+    <circle cx="64" cy="132" r="14"/>
+    <circle cx="136" cy="132" r="14"/>
+  </g>
+</svg>
 </body>
 </html>
